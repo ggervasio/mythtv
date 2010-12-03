@@ -2319,6 +2319,15 @@ static void mpeg_decode_user_data(AVCodecContext *avctx,
 
             p += 9;
         }
+#if 0
+    } else {
+        int  i;
+        av_log(avctx, AV_LOG_ERROR, "user data:  ");
+        for (i = 0; i < len; i++) {
+            av_log(avctx, AV_LOG_ERROR, "%02x  ", p[i]);
+        }
+        av_log(avctx, AV_LOG_ERROR, "\n");
+#endif
     }
     // For other CEA-608 embedding options see:
     /* SCTE 21 */
