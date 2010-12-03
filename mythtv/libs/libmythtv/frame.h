@@ -88,7 +88,7 @@ static inline void init(VideoFrame *vf, VideoFrameType _codec,
     vf->qscale_table = 0;
     vf->qstride      = 0;
 
-    vf->interlaced_frame = 1;
+    vf->interlaced_frame = -1;
     vf->top_field_first  = 1;
     vf->repeat_pict      = 0;
     vf->forcekey         = 0;
