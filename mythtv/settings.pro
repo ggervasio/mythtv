@@ -125,6 +125,7 @@ release:contains( ARCH_POWERPC, yes ) {
 
 # figure out defines
 DEFINES += $$CONFIG_DEFINES
+DEFINES += CC_DUMP
 DEFINES += _GNU_SOURCE
 
 # construct linking path

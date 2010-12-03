@@ -166,6 +166,10 @@ class MPUBLIC RecorderBase
      */
     virtual int GetVideoFd(void) = 0;
 
+#ifdef CC_DUMP    
+    void SetTextDump(int fd) { textfd = fd; }
+#endif
+
     /** \brief Returns closest keyframe position before the desired frame.
      *
      *   This returns -1 if a keyframe position cannot be found
@@ -271,6 +275,9 @@ class MPUBLIC RecorderBase
     bool           ntsc_framerate;
     double         video_frame_rate;
 
+#ifdef CC_DUMP
+    int textfd;
+#endif
     uint           m_videoAspect; // AspectRatio
 
     uint           m_videoHeight;
