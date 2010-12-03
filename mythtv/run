@@ -1,0 +1,12 @@
+#!/bin/sh
+
+DIR=$1
+shift
+export LD_LIBRARY_PATH
+
+for i in $(find $DIR/external/FFmpeg $DIR/libs $DIR/filters -type d) ; do
+	LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$DIR/$i
+done
+
+echo LD_LIBRARY_PATH=$LD_LIBRARY_PATH
+exec $*
