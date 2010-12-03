@@ -53,7 +53,7 @@ class CC608Decoder
     void DecodeVPS(const unsigned char *buf);
     void DecodeWSS(const unsigned char *buf);
 
-    void SetIgnoreTimecode(bool val) { ignore_time_code = val; }
+    void SetDigitalTimecode(bool val) { digital_time_code = val; }
 
     uint    GetRatingSystems(bool future) const;
     uint    GetRating(uint i, bool future) const;
@@ -83,7 +83,7 @@ class CC608Decoder
 
     CC608Input *reader;
 
-    bool ignore_time_code;
+    bool digital_time_code;
 
     time_t last_seen[4];
 

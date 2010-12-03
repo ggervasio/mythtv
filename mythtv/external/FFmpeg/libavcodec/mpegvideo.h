@@ -656,6 +656,8 @@ typedef struct MpegEncContext {
     /// frame for these packets has been created in MPV_frame_start().
     uint8_t tmp_atsc_cc_buf[ATSC_CC_BUF_SIZE];
     int     tmp_atsc_cc_len;
+    uint8_t tmp_scte_cc_buf[ATSC_CC_BUF_SIZE];
+    int     tmp_scte_cc_len;
 
     int (*decode_mb)(struct MpegEncContext *s, DCTELEM block[6][64]); // used by some codecs to avoid a switch()
 #define SLICE_OK         0

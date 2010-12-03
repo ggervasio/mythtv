@@ -18,7 +18,7 @@ using namespace std;
 static void init_xds_program_type(QString xds_program_type[96]);
 
 CC608Decoder::CC608Decoder(CC608Input *ccr)
-    : reader(ccr),                  ignore_time_code(false),
+    : reader(ccr),                  digital_time_code(false),
       rbuf(new unsigned char[sizeof(ccsubtitle)+255]),
       vps_l(0),
       wss_flags(0),                 wss_valid(false),
@@ -188,10 +188,10 @@ void CC608Decoder::FormatCCField(int tc, int field, int data)
 
     if (FalseDup(tc, field, data))
     {
-        if (ignore_time_code)
+        if (digital_time_code)
             return;
         else
-            goto skip;
+           goto skip;
     }
 
     XDSDecode(field, b1, b2);
@@ -432,7 +432,7 @@ void CC608Decoder::FormatCCField(int tc, int field, int data)
                             style[mode] = CC_STYLE_ROLLUP;
                             break;
                         case 0x2C:      //erase displayed memory
-                            if (ignore_time_code ||
+                            if (digital_time_code ||
                                 (tc - lastclr[mode]) > 5000 ||
                                 lastclr[mode] == 0)
                                 // don't overflow the frontend with
@@ -467,7 +467,7 @@ void CC608Decoder::FormatCCField(int tc, int field, int data)
                                     // flush
                                     BufferCC(mode, len, 0);
                             }
-                            else if (ignore_time_code ||
+                            else if (digital_time_code ||
                                      (tc - lastclr[mode]) > 5000 ||
                                      lastclr[mode] == 0)
                                 // clear and flush
@@ -521,7 +521,7 @@ void CC608Decoder::FormatCCField(int tc, int field, int data)
     for (mode = field*4; mode < (field*4 + 4); mode++)
     {
         len = ccbuf[mode].length();
-        if ((ignore_time_code || ((tc - timecode[mode]) > 100)) &&
+        if ((digital_time_code || ((tc - timecode[mode]) > 100)) &&
              (style[mode] != CC_STYLE_POPUP) && len)
         {
             // flush unfinished line if waiting too long
@@ -549,9 +549,11 @@ int CC608Decoder::FalseDup(int tc, int field, int data)
     b1 = data & 0x7f;
     b2 = (data >> 8) & 0x7f;
 
-    if (ignore_time_code)
+    if (digital_time_code)
     {
-        // just suppress every other repeated control code
+        // most digital streams with encoded VBI
+        // have duplicate control codes;
+        // suppress every other repeated control code
         if ((data == lastcode[field]) &&
             ((b1 & 0x70) == 0x10))
         {
