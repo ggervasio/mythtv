@@ -31,6 +31,9 @@ class SubtitleScreen : public MythScreenType
   private:
     void OptimiseDisplayedArea(void);
     void DisplayAVSubtitles(void);
+    int  DisplayScaledAVSubtitles(const AVSubtitleRect *rect, QRect &bbox,
+                                  bool top, QRect &display,
+                                  long long displayuntil, long long late);
     void DisplayTextSubtitles(void);
     void SetFontParams(void);
     void DisplayRawTextSubtitles(void);
@@ -58,6 +61,7 @@ class SubtitleScreen : public MythScreenType
     int                m_fontwidth;
     QRegExp            m_removeHTML;
     int                m_subtitleType;
+    int                m_subtitleZoom;
     QHash<MythUIType*, long long> m_expireTimes;
     int                m_708fontSizes[3];
     int                m_textFontZoom;
