@@ -5722,6 +5722,7 @@ void MainServer::SetExitCode(int exitCode, bool closeApplication)
 QString MainServer::LocalFilePath(const QUrl &url, const QString &wantgroup)
 {
     QString lpath = url.path();
+    VERBOSE(VB_FILE, QString("Raw local file path: %1").arg(lpath));
 
     if (lpath.section('/', -2, -2) == "channels")
     {
@@ -5748,6 +5749,7 @@ QString MainServer::LocalFilePath(const QUrl &url, const QString &wantgroup)
     else
     {
         lpath = lpath.section('/', -1);
+        VERBOSE(VB_FILE, QString("Basename file path: %1").arg(lpath));
 
         QString fpath = lpath;
         if (fpath.right(4) == ".png")
