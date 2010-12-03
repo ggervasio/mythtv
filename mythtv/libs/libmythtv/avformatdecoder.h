@@ -276,6 +276,8 @@ class AvFormatDecoder : public DecoderBase
     long long lastvpts;
     long long lastapts;
     long long lastccptsu;
+    long long lastvbiptsu;
+    long long firstvbiptsu;
 
     int64_t faulty_pts;
     int64_t faulty_dts;
