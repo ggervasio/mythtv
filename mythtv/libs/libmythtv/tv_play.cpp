@@ -8885,6 +8885,7 @@ void TV::DoTogglePictureAttribute(const PlayerContext *ctx,
     QString title = toTitleString(type);
 
     int value = 99;
+    int pos = 0;
     if (kAdjustingPicture_Playback == type)
     {
         if (!ctx->player)
@@ -8892,14 +8893,19 @@ void TV::DoTogglePictureAttribute(const PlayerContext *ctx,
             ctx->UnlockDeletePlayer(__FILE__, __LINE__);
             return;
         }
-        if (kPictureAttribute_Volume != adjustingPictureAttribute)
+        if (kPictureAttribute_Volume == adjustingPictureAttribute)
+        {
+            if (ctx->player->HasAudioOut())
+            {
+                value = ctx->player->GetVolume();
+                title = tr("Adjust Volume");
+                pos = value;
+            }
+        }
+        else
         {
             value = ctx->player->getVideoOutput()->GetPictureAttribute(attr);
-        }
-        else if (ctx->player->HasAudioOut())
-        {
-            value = ctx->player->GetVolume();
-            title = tr("Adjust Volume");
+            pos = value;
         }
     }
     ctx->UnlockDeletePlayer(__FILE__, __LINE__);
