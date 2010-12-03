@@ -1027,6 +1027,7 @@ void NuppelVideoRecorder::ProbeV4L2(void)
 
     if (ioctl(channelfd, VIDIOC_QUERYCAP, &vcap) < 0)
     {
+        cerr << "v4l2 query failed, falling back to v4l\n";
         usingv4l2 = false;
     }
 
