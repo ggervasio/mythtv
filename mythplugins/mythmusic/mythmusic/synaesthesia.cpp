@@ -633,8 +633,13 @@ bool Synaesthesia::draw(QPainter *p, const QColor &back)
         int i = outWidth / 4;
 
         do {
+#ifdef __BIG_ENDIAN__
+            register unsigned int const r2 = *(ptrOutput++);
+            register unsigned int const r1 = *(ptrOutput++);
+#else
             register unsigned int const r1 = *(ptrOutput++);
             register unsigned int const r2 = *(ptrOutput++);
+#endif
             register unsigned int const v = ((r1 & 0x000000f0ul) >> 4)  |
                                             ((r1 & 0x0000f000ul) >> 8)  |
                                             ((r1 & 0x00f00000ul) >> 12) |
