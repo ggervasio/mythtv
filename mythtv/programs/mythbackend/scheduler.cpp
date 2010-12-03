@@ -3727,6 +3727,9 @@ void Scheduler::AddNotListed(void) {
 
             result.value(24).toInt() == COMM_DETECT_COMMFREE);
 
+        if (p == NULL)
+            continue;
+
         tmpList.push_back(p);
     }
 
