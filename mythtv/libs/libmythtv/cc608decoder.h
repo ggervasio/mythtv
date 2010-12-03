@@ -44,6 +44,8 @@ class CC608Decoder
     CC608Decoder(CC608Input *ccr);
     ~CC608Decoder();
 
+    void Flush(void);
+    void FlushField(int field);
     void FormatCC(int tc, int code1, int code2);
     void FormatCCField(int tc, int field, int data);
     int FalseDup(int tc, int field, int data);

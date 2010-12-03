@@ -675,6 +675,7 @@ void AvFormatDecoder::SeekReset(long long newKey, uint skipFrames,
         lastccptsu = 0;
         lastvbiptsu = 0;
         firstvbiptsu = 0;
+        ccd608->Flush();
         faulty_pts = faulty_dts = 0;
         last_pts_for_fault_detection = 0;
         last_dts_for_fault_detection = 0;
