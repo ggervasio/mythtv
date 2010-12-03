@@ -458,7 +458,7 @@ class MPUBLIC MythPlayer
     // Private initialization stuff
     void InitFilters(void);
     FrameScanType detectInterlace(FrameScanType newScan, FrameScanType scan,
-                                  float fps, int video_height);
+                                  float fps, int video_height, int video_width);
     virtual void AutoDeint(VideoFrame* frame, bool allow_lock = true);
 
     // Private Sets

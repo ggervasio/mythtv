@@ -695,7 +695,7 @@ static inline QString toQString(FrameScanType scan) {
 
 FrameScanType MythPlayer::detectInterlace(FrameScanType newScan,
                                           FrameScanType scan,
-                                          float fps, int video_height)
+                                          float fps, int video_height, int video_width)
 {
     QString dbg = QString("detectInterlace(") + toQString(newScan) +
         QString(", ") + toQString(scan) + QString(", ") + QString("%1").arg(fps) +
@@ -708,6 +708,8 @@ FrameScanType MythPlayer::detectInterlace(FrameScanType newScan,
 
         scan = kScan_Interlaced; // default to interlaced
         if (720 == video_height) // ATSC 720p
+            scan = kScan_Progressive;
+        else if (480 == video_height && 480 == video_width) // HACK: deinterlaced during recording
             scan = kScan_Progressive;
         else if (fps > 45) // software deinterlacing
             scan = kScan_Progressive;
@@ -886,7 +888,7 @@ void MythPlayer::SetVideoParams(int width, int height, double fps,
         return;
 
     SetScanType(detectInterlace(scan, m_scan, video_frame_rate,
-                                video_disp_dim.height()));
+                                video_disp_dim.height(), video_disp_dim.width()));
     m_scan_locked  = false;
     m_scan_tracker = (m_scan == kScan_Interlaced) ? 2 : 0;
 }
