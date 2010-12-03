@@ -743,7 +743,7 @@ void MythPlayer::AutoDeint(VideoFrame *frame, bool allow_lock)
     if (!frame || m_scan_locked)
         return;
 
-    if (frame->interlaced_frame)
+    if (frame->interlaced_frame > 0)
     {
         if (m_scan_tracker < 0)
         {
