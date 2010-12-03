@@ -264,6 +264,7 @@ AvFormatDecoder::AvFormatDecoder(MythPlayer *parent,
       start_code_state(0xffffffff),
       lastvpts(0),                  lastapts(0),
       lastccptsu(0),
+      lastvbiptsu(0),               firstvbiptsu(0),
       faulty_pts(0),                faulty_dts(0),
       last_pts_for_fault_detection(0),
       last_dts_for_fault_detection(0),
@@ -600,6 +601,7 @@ bool AvFormatDecoder::DoFastForward(long long desiredFrame, bool discardFrames)
                                 (int64_t)AV_TIME_BASE * (int64_t)st->time_base.num,
                                 st->time_base.den);
 
+        // convert current timestamp to frame number
         lastKey = (long long)((newts*(long double)fps)/AV_TIME_BASE);
         framesPlayed = lastKey;
         framesRead = lastKey;
@@ -655,6 +657,8 @@ void AvFormatDecoder::SeekReset(long long newKey, uint skipFrames,
         lastapts = 0;
         lastvpts = 0;
         lastccptsu = 0;
+        lastvbiptsu = 0;
+        firstvbiptsu = 0;
         faulty_pts = faulty_dts = 0;
         last_pts_for_fault_detection = 0;
         last_dts_for_fault_detection = 0;
@@ -2770,6 +2774,7 @@ void AvFormatDecoder::MpegPreProcessPkt(AVStream *stream, AVPacket *pkt)
                 gopset = false;
                 prevgoppos = 0;
                 lastapts = lastvpts = lastccptsu = 0;
+                lastvbiptsu = firstvbiptsu = 0;
                 faulty_pts = faulty_dts = 0;
                 last_pts_for_fault_detection = 0;
                 last_dts_for_fault_detection = 0;
@@ -3266,7 +3271,8 @@ void AvFormatDecoder::ProcessVBIDataPacket(
 
     const uint8_t *buf     = pkt->data;
     uint64_t linemask      = 0;
-    unsigned long long utc = lastccptsu;
+    unsigned long long utc = lastvbiptsu - firstvbiptsu;
+    unsigned long long inc = 0;
 
     // [i]tv0 means there is a linemask
     // [I]TV0 means there is no linemask and all lines are present
@@ -3318,8 +3324,9 @@ void AvFormatDecoder::ProcessVBIDataPacket(
                     int data = (buf[2] << 8) | buf[1];
                     if (cc608_good_parity(cc608_parity_table, data))
                         ccd608->FormatCCField(utc/1000, field, data);
-                    utc += 33367;
                 }
+                if (field == 0)
+                    inc += 33367;
                 break;
             case VBI_TYPE_VPS: // Video Programming System
                 // PAL   line 16
@@ -3333,7 +3340,7 @@ void AvFormatDecoder::ProcessVBIDataPacket(
         }
         buf += 43;
     }
-    lastccptsu = utc;
+    lastvbiptsu += inc;
     UpdateCaptionTracksFromStreams(true, false);
 }
 
