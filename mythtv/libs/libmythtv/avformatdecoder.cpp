@@ -2615,14 +2615,15 @@ void AvFormatDecoder::UpdateCaptionTracksFromStreams(
     bool seen_708[64];
     if (check_708 || need_change_608)
     {
-        ccd708->services(15/*seconds*/, seen_708);
+        uint sec = check_708 ? 15 : 600;
+        ccd708->services(sec, seen_708);
         for (uint i = 1; i < 64 && !need_change_608 && !need_change_708; i++)
         {
             need_change_708 |= (seen_708[i] && !ccX08_in_tracks[i+4]) ||
                 (!seen_708[i] && ccX08_in_tracks[i+4] && !ccX08_in_pmt[i+4]);
         }
         if (need_change_708 && !check_608)
-            ccd608->GetServices(15/*seconds*/, seen_608);
+            ccd608->GetServices(600/*seconds*/, seen_608);
     }
 
     if (!need_change_608 && !need_change_708)
