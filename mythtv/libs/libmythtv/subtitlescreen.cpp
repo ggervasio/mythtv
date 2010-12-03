@@ -21,6 +21,9 @@ SubtitleScreen::SubtitleScreen(MythPlayer *player, const char * name,
     MythScreenType((MythScreenType*)NULL, name),
     m_player(player),  m_subreader(NULL),   m_608reader(NULL),
     m_708reader(NULL), m_safeArea(QRect()), m_useBackground(false),
+    m_608fontZoom(100),
+    m_teletextmode(false), m_xmid(0),       m_yoffset(0),
+    m_fontwidth(100),
     m_removeHTML(QRegExp("</?.+>")),        m_subtitleType(kDisplayNone),
     m_textFontZoom(100),                    m_refreshArea(false),
     m_fontStretch(fontStretch)
@@ -69,6 +72,7 @@ bool SubtitleScreen::Create(void)
     if (!m_708reader)
         VERBOSE(VB_IMPORTANT, LOC_WARN + "Failed to get CEA-708 reader.");
     m_useBackground = (bool)gCoreContext->GetNumSetting("CCBackground", 0);
+    m_608fontZoom   = gCoreContext->GetNumSetting("OSDCC608TextZoom", 100);
     m_textFontZoom  = gCoreContext->GetNumSetting("OSDCC708TextZoom", 100);
     return true;
 }
@@ -546,11 +550,26 @@ void SubtitleScreen::DisplayDVDButton(AVSubtitle* dvdButton, QRect &buttonPos)
     AddScaledImage(fg_image, button);
 }
 
+void SubtitleScreen::SetFontParams(void)
+{
+    //int xscale = m_teletextmode ? 40 : 36;
+    int yscale = m_teletextmode ? 25 : 17;
+    gTextSubFont->GetFace()->setPixelSize(m_safeArea.height() * m_608fontZoom
+                                          / (yscale * 1.2 * 100));
+    m_xmid = m_safeArea.width()/2;
+    m_yoffset = 0;
+
+    QFontMetrics font(*(gTextSubFont->GetFace()));
+    m_fontwidth = font.averageCharWidth();
+    VERBOSE(VB_PLAYBACK, LOC + QString("xmid = %1, fontwidth = %4").
+                                       arg(m_xmid).arg(m_fontwidth));
+}
+
 void SubtitleScreen::DisplayCC608Subtitles(void)
 {
     static const QColor clr[8] =
     {
-        Qt::white,   Qt::red,     Qt::green, Qt::yellow,
+        Qt::lightGray,   Qt::red,     Qt::green, Qt::yellow,
         Qt::blue,    Qt::magenta, Qt::cyan,  Qt::white,
     };
 
@@ -563,8 +582,11 @@ void SubtitleScreen::DisplayCC608Subtitles(void)
     {
         QRect oldsafe = m_safeArea;
         m_safeArea = m_player->getVideoOutput()->GetSafeRect();
-        if (oldsafe != m_safeArea)
+        if (oldsafe != m_safeArea || m_xmid == 0)
+        {
             changed = true;
+            SetFontParams();
+        }
     }
     else
     {
@@ -588,9 +610,11 @@ void SubtitleScreen::DisplayCC608Subtitles(void)
 
     vector<CC608Text*>::iterator i = textlist->buffers.begin();
     bool teletextmode = (*i)->teletextmode;
-    int xscale = teletextmode ? 40 : 36;
-    int yscale = teletextmode ? 25 : 17;
-    gTextSubFont->GetFace()->setPixelSize(m_safeArea.height() / (yscale * 1.2));
+    if (teletextmode != m_teletextmode)
+    {
+        m_teletextmode = teletextmode;
+        SetFontParams();
+    }
     QFontMetrics font(*(gTextSubFont->GetFace()));
     QBrush bgfill = QBrush(QColor(0, 0, 0), Qt::SolidPattern);
     int height = font.height() * (1 + PAD_HEIGHT);
@@ -602,27 +626,64 @@ void SubtitleScreen::DisplayCC608Subtitles(void)
 
         if (cc && (cc->text != QString::null))
         {
-            int width  = font.width(cc->text) + pad_width * 2;
-            int x = teletextmode ? cc->y : (cc->x + 3);
-            int y = teletextmode ? cc->x : cc->y;
-            x = (int)(((float)x / (float)xscale) * (float)m_safeArea.width());
-            y = (int)(((float)y / (float)yscale) * (float)m_safeArea.height());
+            int width = font.width(cc->text);
+            int x, y;
+            int rows, cols;
+
+            if (cc->teletextmode)
+            {
+                // teletext expects a 24 row / 40 char grid
+                rows = 24+1;
+                cols = 40;
+            }
+            else
+            {
+                // CC has 15 rows, 32 columns
+                // - add one row top and bottom for margin
+                rows = 15+2;
+                cols = 32;
+            }
+
+            // position as if we use a fixed size font
+            // - font size already has zoom factor applied
+
+            // center horizontally
+            x = m_xmid + (cc->x - cols/2) * m_fontwidth;
+
+            if (cc->y < rows/2)
+                // top half -- clamp up
+                y = m_yoffset + (cc->y * m_safeArea.height() * m_608fontZoom / (rows * 100));
+            else
+                // bottom half -- clamp down
+                y = m_yoffset + m_safeArea.height()
+                    - ((rows - cc->y) * m_safeArea.height() * m_608fontZoom / (rows * 100));
+
+            //int maxx = x + width;
+            //int maxy = y + font.height() * 3 / 2;
+            //
+            //if (maxx > surface->width)
+            //    maxx = surface->width;
+            //
+            //if (maxy > surface->height)
+            //    maxy = surface->height;
+
             QRect rect(x, y, width, height);
+            QRect bgrect((x - pad_width), y, (width + pad_width*2), height); // with padding
 
             if (!teletextmode && m_useBackground)
             {
                 MythUIShape *shape = new MythUIShape(this,
                     QString("cc608bg%1%2%3").arg(cc->x).arg(cc->y).arg(width));
                 shape->SetFillBrush(bgfill);
-                shape->SetArea(MythRect(rect));
+                shape->SetArea(MythRect(bgrect));
             }
 
-            gTextSubFont->SetColor(clr[max(min(0, cc->color), 7)]);
+            gTextSubFont->SetColor(clr[min(max(0, cc->color), 7)]);
             MythUIText *text = new MythUIText(
                    cc->text, *gTextSubFont, rect, rect, (MythUIType*)this,
                    QString("cc608txt%1%2%3").arg(cc->x).arg(cc->y).arg(width));
             if (text)
-                text->SetJustification(Qt::AlignCenter);
+                text->SetJustification(Qt::AlignLeft);
             m_refreshArea = true;
             VERBOSE(VB_VBI, QString("x %1 y %2 String: '%3'")
                                 .arg(cc->x).arg(cc->y).arg(cc->text));

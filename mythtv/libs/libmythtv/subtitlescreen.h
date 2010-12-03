@@ -32,6 +32,7 @@ class SubtitleScreen : public MythScreenType
     void OptimiseDisplayedArea(void);
     void DisplayAVSubtitles(void);
     void DisplayTextSubtitles(void);
+    void SetFontParams(void);
     void DisplayRawTextSubtitles(void);
     void OptimiseTextSubs(QStringList &list);
     void DrawTextSubtitles(QStringList &wrappedsubs, uint64_t start,
@@ -50,6 +51,11 @@ class SubtitleScreen : public MythScreenType
     CC708Reader       *m_708reader;
     QRect              m_safeArea;
     bool               m_useBackground;
+    int                m_608fontZoom;
+    bool               m_teletextmode;
+    int                m_xmid;
+    int                m_yoffset;
+    int                m_fontwidth;
     QRegExp            m_removeHTML;
     int                m_subtitleType;
     QHash<MythUIType*, long long> m_expireTimes;
