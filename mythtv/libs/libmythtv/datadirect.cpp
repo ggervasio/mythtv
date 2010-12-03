@@ -992,7 +992,7 @@ FILE *DataDirectProcessor::DDPost(
     {
         QMutexLocker locker(&user_agent_lock);
         command = QString(
-            "wget --http-user='%1' --http-passwd='%2' --post-file='%3' "
+            "wget -nv --http-user='%1' --http-passwd='%2' --post-file='%3' "
             " %4 --user-agent='%5' --output-document=- ")
             .arg(userid).arg(password).arg(postFilename).arg(ddurl)
             .arg(user_agent);
@@ -1073,7 +1073,7 @@ bool DataDirectProcessor::GrabNextSuggestedTime(void)
     {
         QMutexLocker locker(&user_agent_lock);
         command = QString(
-            "wget --http-user='%1' --http-passwd='%2' --post-file='%3' %4 "
+            "wget -nv --http-user='%1' --http-passwd='%2' --post-file='%3' %4 "
             "--user-agent='%5' --output-document='%6'")
             .arg(GetUserID().replace('\'', "'\\''"))
             .arg(GetPassword().replace('\'', "'\\''")).arg(postFilename)
