@@ -3582,9 +3582,11 @@ void TVRec::HandleTuning(void)
         else
             TuningNewRecorder(streamData);
 
+#if 0
         // If we got this far it is safe to set a new starting channel...
         if (channel)
             channel->StoreInputChannels();
+#endif
     }
 }
 
