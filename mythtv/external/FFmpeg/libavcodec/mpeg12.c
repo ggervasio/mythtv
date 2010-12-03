@@ -2168,14 +2168,17 @@ static void mpeg_decode_user_data(AVCodecContext *avctx,
         unsigned int cc_bytes = (cc_bits + 7 - 3) / 8;
         Mpeg1Context *s1 = avctx->priv_data;
         MpegEncContext *s = &s1->mpeg_enc_ctx;
-        if (buf_end - p >= (2+cc_bytes) && (s->tmp_atsc_cc_len + 2 + 3*cc_count) < ATSC_CC_BUF_SIZE) {
-            int atsc_cnt_loc = s->tmp_atsc_cc_len;
+        if (buf_end - p >= (2+cc_bytes) && (s->tmp_scte_cc_len + 2 + 3*cc_count) < ATSC_CC_BUF_SIZE) {
+            int scte_cnt_loc = s->tmp_scte_cc_len;
             uint8_t real_count = 0, marker = 1, i;
             GetBitContext gb;
             init_get_bits(&gb, p+2, (buf_end-p-2) * sizeof(uint8_t));
             get_bits(&gb, 5); // swallow cc_count
-            s->tmp_atsc_cc_buf[s->tmp_atsc_cc_len++] = 0x40 | (0x1f&cc_count);
-            s->tmp_atsc_cc_buf[s->tmp_atsc_cc_len++] = 0x00; // em_data
+            s->tmp_scte_cc_buf[s->tmp_scte_cc_len++] = 0x40 | (0x1f&cc_count);
+            s->tmp_scte_cc_buf[s->tmp_scte_cc_len++] = 0x00; // em_data
+#if 0
+            av_log(avctx, AV_LOG_ERROR, "SCTE20 data:  %02x %02x\n", p[2], p[3]);
+#endif
             for (i = 0; i < cc_count; i++) {
                 uint8_t valid, cc608_hdr;
                 uint8_t priority = get_bits(&gb, 2);
@@ -2183,31 +2186,35 @@ static void mpeg_decode_user_data(AVCodecContext *avctx,
                 uint8_t line_offset = get_bits(&gb, 5);
                 uint8_t cc_data_1 = av_reverse[get_bits(&gb, 8)];
                 uint8_t cc_data_2 = av_reverse[get_bits(&gb, 8)];
-                uint8_t type = (1 == field_no) ? 0x00 : 0x01;
+                uint8_t type = field_no - 1;
                 (void) priority; // we use all the data, don't need priority
                 marker &= get_bits(&gb, 1);
                 // dump if marker bit missing
                 valid = marker;
-                // ignore forbidden and repeated (3:2 pulldown) field numbers
-                valid = valid && (1 == field_no || 2 == field_no);
+                // ignore forbidden field numbers
+                valid = valid && (field_no > 0);
                 // ignore content not in line 21
                 valid = valid && (11 == line_offset);
+#if 0
+                cc608_hdr = 0xf8 | (valid ? 0x04 : 0x00) | type;
+                av_log(avctx, AV_LOG_ERROR, "SCTE20 decode:  %02x %02x %02x (v=%d, f=%d, t=%d)\n", cc608_hdr, cc_data_1, cc_data_2, valid, field_no, type);
+#endif
                 if (!valid)
                     continue;
                 cc608_hdr = 0xf8 | (valid ? 0x04 : 0x00) | type;
                 real_count++;
-                s->tmp_atsc_cc_buf[s->tmp_atsc_cc_len++] = cc608_hdr;
-                s->tmp_atsc_cc_buf[s->tmp_atsc_cc_len++] = cc_data_1;
-                s->tmp_atsc_cc_buf[s->tmp_atsc_cc_len++] = cc_data_2;
+                s->tmp_scte_cc_buf[s->tmp_scte_cc_len++] = cc608_hdr;
+                s->tmp_scte_cc_buf[s->tmp_scte_cc_len++] = cc_data_1;
+                s->tmp_scte_cc_buf[s->tmp_scte_cc_len++] = cc_data_2;
             }
             if (!real_count)
             {
-                s->tmp_atsc_cc_len = atsc_cnt_loc;
+                s->tmp_scte_cc_len = scte_cnt_loc;
             }
             else
             {
-                s->tmp_atsc_cc_buf[atsc_cnt_loc] = 0x40 | (0x1f&real_count);
-                s->tmp_atsc_cc_len = atsc_cnt_loc + 2 + 3 * real_count;
+                s->tmp_scte_cc_buf[scte_cnt_loc] = 0x40 | (0x1f&real_count);
+                s->tmp_scte_cc_len = scte_cnt_loc + 2 + 3 * real_count;
             }
         }
     } else if (buf_end - p >= 11 &&

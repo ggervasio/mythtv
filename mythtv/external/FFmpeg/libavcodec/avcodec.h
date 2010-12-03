@@ -1059,6 +1059,8 @@ typedef struct AVPanScan{
      */\
     uint8_t atsc_cc_buf[1024];\
     int atsc_cc_len;\
+    uint8_t scte_cc_buf[1024];\
+    int scte_cc_len;\
 \
 
 #define FF_QSCALE_TYPE_MPEG1 0

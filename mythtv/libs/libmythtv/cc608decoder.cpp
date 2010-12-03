@@ -551,7 +551,9 @@ int CC608Decoder::FalseDup(int tc, int field, int data)
 
     if (ignore_time_code)
     {
-        // just suppress every other repeated control code
+        // most digital streams with encoded VBI
+        // have duplicate control codes;
+        // suppress every other repeated control code
         if ((data == lastcode[field]) &&
             ((b1 & 0x70) == 0x10))
         {
