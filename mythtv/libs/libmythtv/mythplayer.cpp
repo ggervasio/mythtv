@@ -1446,7 +1446,7 @@ void MythPlayer::SetCaptionsEnabled(bool enable, bool osd_msg)
         DisableCaptions(origMode, osd_msg);
         return;
     }
-    int mode = NextCaptionTrack(kDisplayNone);
+    int mode = NextCaptionTrack(kDisplayNone, origMode);
     if (origMode != (uint)mode)
     {
         DisableCaptions(origMode, false);
@@ -1592,13 +1592,17 @@ void MythPlayer::ChangeCaptionTrack(int dir)
     }
 }
 
-int MythPlayer::NextCaptionTrack(int mode)
+int MythPlayer::NextCaptionTrack(int mode, int prefer)
 {
     // Text->TextStream->708/608->608/708->AVSubs->Teletext->NUV->None
     // NUV only offerred if PAL
     bool pal      = (vbimode == VBIMode::PAL_TT);
     int  nextmode = kDisplayNone;
 
+    if (prefer != kDisplayNone)
+        nextmode = prefer;
+    else
+    {
     if (kDisplayTextSubtitle == mode)
         nextmode = kDisplayRawTextSubtitle;
     if (kDisplayRawTextSubtitle == mode)
@@ -1615,6 +1619,7 @@ int MythPlayer::NextCaptionTrack(int mode)
         nextmode = kDisplayNone;
     else if (kDisplayNone == mode)
         nextmode = kDisplayTextSubtitle;
+    }
 
     if (((nextmode == kDisplayTextSubtitle) && HasTextSubtitles()) ||
          (nextmode == kDisplayNUVTeletextCaptions) ||
@@ -1627,6 +1632,8 @@ int MythPlayer::NextCaptionTrack(int mode)
     {
         return nextmode;
     }
+    if (prefer != kDisplayNone)
+        nextmode = kDisplayNone;
     return NextCaptionTrack(nextmode);
 }
 
