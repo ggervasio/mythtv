@@ -174,6 +174,10 @@ NuppelVideoRecorder::NuppelVideoRecorder(TVRec *rec, ChannelBase *channel)
     inpixfmt = FMT_YV12;
     correct_bttv = false;
 
+#ifdef CC_DUMP
+    textfd = -1;
+#endif
+
     usingv4l2 = false;
 
     prev_bframe_save_pos = -1;
@@ -2648,6 +2652,14 @@ void NuppelVideoRecorder::FormatCC(struct cc *cc)
     // compute the difference  between now and stm (start time)
     int tc = (tnow.tv_sec - stm.tv_sec) * 1000 +
              tnow.tv_usec / 1000 - stm.tv_usec / 1000;
+
+#ifdef CC_DUMP
+    if (textfd > 0) {
+        write(textfd, &tc, 4);
+        write(textfd, &cc->code1, 2);  // FIXME: ENDIAN
+        write(textfd, &cc->code2, 2);  // FIXME: ENDIAN
+    }
+#endif
 
     ccd->FormatCC(tc, cc->code1, cc->code2);
 }

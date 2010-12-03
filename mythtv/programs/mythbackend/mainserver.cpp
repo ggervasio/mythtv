@@ -1859,6 +1859,8 @@ void MainServer::DoDeleteThread(const DeleteStruct *ds)
         return;
     }
 
+    delete_file_immediately(ds->filename + ".txd", followLinks, true);
+
     /* Delete all preview thumbnails. */
 
     QFileInfo fInfo( ds->filename );

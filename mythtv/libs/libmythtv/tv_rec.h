@@ -322,6 +322,9 @@ class MPUBLIC TVRec : public SignalMonitorListener
     ChannelBase      *channel;
     SignalMonitor    *signalMonitor;
     EITScanner       *scanner;
+#ifdef CC_DUMP
+    int           textfd;
+#endif
 
     // Various threads
     /// Event processing thread, runs RunTV().

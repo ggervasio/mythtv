@@ -3,6 +3,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <unistd.h>
+#include <fcntl.h>
 #include <pthread.h>
 #include <sched.h> // for sched_yield
 
@@ -105,6 +106,9 @@ TVRec::TVRec(int capturecardnum)
        // Various components TVRec coordinates
     : recorder(NULL), channel(NULL), signalMonitor(NULL),
       scanner(NULL),
+#ifdef CC_DUMP
+      textfd(-1),
+#endif
       // Event processing thread, runs RunTV()
       event_thread(pthread_t()),
       // Recorder thread, runs RecorderBase::StartRecording()
@@ -267,6 +271,10 @@ bool TVRec::Init(void)
     overRecordSecCat  = gCoreContext->GetNumSetting("CategoryOverTime") * 60;
     overRecordCategory= gCoreContext->GetSetting("OverTimeCategory");
 
+#ifdef CC_DUMP
+    textfd = -1;
+#endif
+
     pthread_create(&event_thread, NULL, EventThread, this);
 
     WaitForEventThreadSleep();
@@ -300,6 +308,14 @@ void TVRec::TeardownAll(void)
         delete scanner;
         scanner = NULL;
     }
+
+#ifdef CC_DUMP
+    if (textfd > 0)
+    {
+        close(textfd);
+        textfd = -1;
+    }
+#endif
 
     if (channel)
     {
@@ -1083,6 +1099,9 @@ bool TVRec::SetupRecorder(RecordingProfile &profile)
 #ifdef USING_V4L
         // V4L/MJPEG/GO7007 from here on
         recorder = new NuppelVideoRecorder(this, channel);
+#ifdef CC_DUMP
+        recorder->SetTextDump(textfd);
+#endif
         recorder->SetOption("skipbtaudio", genOpt.skip_btaudio);
 #endif // USING_V4L
     }
@@ -1166,6 +1185,14 @@ void TVRec::TeardownRecorder(bool killFile)
         delete recorder;
         recorder = NULL;
     }
+
+#ifdef CC_DUMP
+    if (textfd > 0)
+    {
+        close(textfd);
+        textfd = -1;
+    }
+#endif
 
     if (ringBuffer)
         ringBuffer->StopReads();
@@ -3568,6 +3595,10 @@ void TVRec::HandleTuning(void)
             return;
 
         ClearFlags(kFlagWaitingForRecPause);
+#ifdef CC_DUMP
+        if (textfd > 0)
+            lseek(textfd, SEEK_SET, 12);
+#endif
         VERBOSE(VB_RECORD, LOC + "Recorder paused, calling TuningFrequency");
         TuningFrequency(lastTuningRequest);
     }
@@ -3647,6 +3678,10 @@ void TVRec::TuningShutdowns(const TuningRequest &request)
 
     if (scanner && !request.IsOnSameMultiplex())
         scanner->StopPassiveScan();
+#ifdef CC_DUMP
+    if (textfd > 0)
+        lseek(textfd, SEEK_SET, 12);
+#endif
 
     if (HasFlags(kFlagSignalMonitorRunning))
     {
@@ -4080,6 +4115,19 @@ void TVRec::TuningNewRecorder(MPEGStreamData *streamData)
             ClearFlags(kFlagPendingActions);
             goto err_ret;
         }
+#ifdef CC_DUMP
+        QString textfname = QString("%1.txd").arg(rec->GetPathname());
+        textfd = open(textfname.toAscii(), 
+                      O_WRONLY|O_TRUNC|O_CREAT|O_LARGEFILE, 
+                      0644);
+        if (textfd <= 0)
+        {
+            cerr << "ERROR opening text dump file.\n";
+            perror(textfname.toAscii());
+        }
+        static const char finfo[12] = "MythTVCC-02";
+        write(textfd, finfo, 12);
+#endif
     }
 
     if (!ringBuffer)
