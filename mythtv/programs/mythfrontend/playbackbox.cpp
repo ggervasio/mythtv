@@ -784,8 +784,10 @@ void PlaybackBox::UpdateUIListItem(
     item->DisplayState(rating, "ratingstate");
 
     QString oldimgfile = item->GetImage("preview");
+#if 1
     if (oldimgfile.isEmpty() || force_preview_reload)
         m_preview_tokens.insert(m_helper.GetPreviewImage(*pginfo));
+#endif
 
     if ((GetFocusWidget() == m_recordingList) && is_sel)
     {

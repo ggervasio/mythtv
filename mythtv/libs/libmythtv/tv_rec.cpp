@@ -1174,8 +1174,10 @@ void TVRec::TeardownRecorder(bool killFile)
     {
         if (!killFile)
         {
+#if 1
             if (curRecording->IsLocal())
                 PreviewGeneratorQueue::GetPreviewImage(*curRecording, "");
+#endif
 
             if (!tvchain)
             {
@@ -4556,8 +4558,10 @@ bool TVRec::SwitchLiveTVRingBuffer(const QString & channum,
         {
             if (!oldinfo->IsLocal())
                 oldinfo->SetPathname(oldinfo->GetPlaybackURL(false,true));
+#if 1
             if (oldinfo->IsLocal())
                 PreviewGeneratorQueue::GetPreviewImage(*oldinfo, "");
+#endif
         }
         delete oldinfo;
     }
