@@ -1896,6 +1896,16 @@ static HostComboBox __attribute__ ((unused)) *DecodeVBIFormat()
     return gc;
 }
 
+static HostSpinBox *OSDCC608TextZoomPercentage(void)
+{
+    HostSpinBox *gs = new HostSpinBox("OSDCC608TextZoom", 50, 200, 5);
+    gs->setLabel(QObject::tr("VBI caption text zoom percentage"));
+    gs->setValue(100);
+    gs->setHelpText(QObject::tr("Use this to enlarge or shrink captions."));
+
+    return gs;
+}
+
 static HostSpinBox *OSDCC708TextZoomPercentage(void)
 {
     HostSpinBox *gs = new HostSpinBox("OSDCC708TextZoom", 50, 200, 5);
@@ -4164,6 +4174,7 @@ OSDSettings::OSDSettings()
     osd->addChild(DefaultCCMode());
     osd->addChild(PreferCC708());
     osd->addChild(SubtitleFont());
+    osd->addChild(OSDCC608TextZoomPercentage());
     osd->addChild(OSDCC708TextZoomPercentage());
     osd->addChild(SubtitleCodec());
     //osd->addChild(UDPNotifyPort());
