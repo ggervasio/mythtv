@@ -47,6 +47,16 @@ bool PulseHandler::Suspend(enum PulseAction action)
         return true;
     }
 
+    if (getenv("DEBUG_PULSE_AUDIO_ALSA_EMULATION"))
+    {
+        VERBOSE(VB_IMPORTANT, "WARNING: ");
+        VERBOSE(VB_IMPORTANT, "WARNING: ***Pulse Audio is running!!!!***");
+        VERBOSE(VB_IMPORTANT, "WARNING: ");
+        VERBOSE(VB_IMPORTANT, "WARNING: You have told MythTV to ignore it.");
+        VERBOSE(VB_IMPORTANT, "WARNING: ");
+        return false;
+    }
+
     // do nothing if PulseAudio is not currently running
     if (!IsPulseAudioRunning())
     {
