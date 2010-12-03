@@ -430,7 +430,7 @@ class MPUBLIC MythPlayer
     int  GetTrack(uint type);
     int  ChangeTrack(uint type, int dir);
     void ChangeCaptionTrack(int dir);
-    int  NextCaptionTrack(int mode);
+    int  NextCaptionTrack(int mode, int prefer = kDisplayNone);
 
     // Teletext Menu and non-NUV teletext decoder
     void EnableTeletext(int page = 0x100);
