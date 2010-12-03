@@ -6,9 +6,9 @@ endif
 
 REAL_PREFIX = $(PREFIX)
 ifneq ($(PREFIX:/=), /usr)
-	ifneq ($(PREFIX:/=), /usr/local)
+#	ifneq ($(PREFIX:/=), /usr/local)
 		PREFIX_FLAGS=--prefix="$(PREFIX)"
-	endif
+#	endif
 endif
 
 all: python_build
