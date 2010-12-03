@@ -90,6 +90,27 @@ CC608Decoder::~CC608Decoder(void)
         delete [] rbuf;
 }
 
+void CC608Decoder::Flush(void)
+{
+    FlushField(0);
+    FlushField(1);
+}
+
+void CC608Decoder::FlushField(int field)
+{
+    // TODO:  flush reader buffer
+    if (ccmode[field] != -1)
+    {
+        for (int mode = field*4; mode < (field*4 + 4); mode++)
+            ResetCC(mode);
+        xds[field] = 0;
+        badvbi[field] = 0;
+        ccmode[field] = -1;
+        txtmode[field*2] = 0;
+        txtmode[field*2 + 1] = 0;
+    }
+}
+
 void CC608Decoder::FormatCC(int tc, int code1, int code2)
 {
     FormatCCField(tc, 0, code1);
@@ -140,17 +161,7 @@ void CC608Decoder::FormatCCField(int tc, int field, int data)
 
     if (data == -1)              // invalid data. flush buffers to be safe.
     {
-        // TODO:  flush reader buffer
-        if (ccmode[field] != -1)
-        {
-            for (mode = field*4; mode < (field*4 + 4); mode++)
-                ResetCC(mode);
-            xds[field] = 0;
-            badvbi[field] = 0;
-            ccmode[field] = -1;
-            txtmode[field*2] = 0;
-            txtmode[field*2 + 1] = 0;
-        }
+        FlushField(field);
         return;
     }
 
