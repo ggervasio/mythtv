@@ -2524,6 +2524,7 @@ bool TVRec::SetVideoFiltersForChannel(uint  sourceid,
     QString videoFilters = ChannelUtil::GetVideoFilters(sourceid, channum);
     if (!videoFilters.isEmpty())
     {
+        cerr << "### setting videofilters\n";
         recorder->SetVideoFilters(videoFilters);
         return true;
     }
