@@ -4103,11 +4103,11 @@ void TVRec::TuningNewRecorder(MPEGStreamData *streamData)
 
     if (lastTuningRequest.flags & kFlagRecording)
     {
-        bool write = genOpt.cardtype != "IMPORT";
+        bool wr = genOpt.cardtype != "IMPORT";
         VERBOSE(VB_IMPORTANT, LOC + QString("rec->GetPathname(): '%1'")
                 .arg(rec->GetPathname()));
-        SetRingBuffer(new RingBuffer(rec->GetPathname(), write));
-        if (!ringBuffer->IsOpen() && write)
+        SetRingBuffer(new RingBuffer(rec->GetPathname(), wr));
+        if (!ringBuffer->IsOpen() && wr)
         {
             VERBOSE(VB_IMPORTANT, LOC_ERR +
                     QString("RingBuffer '%1' not open...")
