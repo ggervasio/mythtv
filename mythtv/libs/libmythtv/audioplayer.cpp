@@ -331,11 +331,12 @@ bool AudioPlayer::CanPassthrough(int samplerate, int channels)
 
 void AudioPlayer::AddAudioData(char *buffer, int len, int64_t timecode)
 {
-    if (m_parent->PrepareAudioSample(timecode) && m_audioOutput &&
-        !no_audio_out)
+    if (!m_audioOutput)
+        return;
+    if (m_parent->PrepareAudioSample(timecode) && !no_audio_out)
         m_audioOutput->Drain();
     int samplesize = m_channels * AudioOutputSettings::SampleSize(m_format);
-    if ((samplesize <= 0) || !m_audioOutput)
+    if (samplesize <= 0)
         return;
     int frames = len / samplesize;
     if (!m_audioOutput->AddFrames(buffer, frames, timecode))
@@ -350,4 +351,15 @@ bool AudioPlayer::GetBufferStatus(uint &fill, uint &total)
         return false;
     m_audioOutput->GetBufferStatus(fill, total);
     return true;
+}
+
+bool AudioPlayer::IsBufferAlmostFull(void)
+{
+    uint ofill = 0, ototal = 0, othresh = 0;
+    if (GetBufferStatus(ofill, ototal))
+    {
+        othresh =  ((ototal>>1) + (ototal>>2));
+        return ofill > othresh;
+    }
+    return false;
 }

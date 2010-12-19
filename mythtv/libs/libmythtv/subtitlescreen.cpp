@@ -493,6 +493,12 @@ void SubtitleScreen::DisplayTextSubtitles(void)
 
     DeleteAllChildren();
     SetRedraw();
+    if (playPos == 0)
+    {
+        subs->Unlock();
+        return;
+    }
+
     QStringList rawsubs = subs->GetSubtitles(playPos);
     if (rawsubs.empty())
     {
@@ -752,7 +758,7 @@ void SubtitleScreen::DisplayCC608Subtitles(void)
 
         if (cc && (cc->text != QString::null))
         {
-            int width = font.width(cc->text);
+            int width = font.width(cc->text) + pad_width;
             int x, y;
             int rows, cols;
 
@@ -794,13 +800,13 @@ void SubtitleScreen::DisplayCC608Subtitles(void)
             //    maxy = surface->height;
 
             QRect rect(x, y, width, height);
-            QRect bgrect((x - pad_width), y, (width + pad_width*2), height); // with padding
 
             if (!teletextmode && m_useBackground)
             {
                 MythUIShape *shape = new MythUIShape(this,
                     QString("cc608bg%1%2%3").arg(cc->x).arg(cc->y).arg(width));
                 shape->SetFillBrush(bgfill);
+                QRect bgrect(x - pad_width, y, width + pad_width, height);
                 shape->SetArea(MythRect(bgrect));
             }
 

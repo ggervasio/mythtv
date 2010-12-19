@@ -362,26 +362,18 @@ bool TV::StartTV(ProgramInfo *tvrec, uint flags)
 
         // Process Events
         VERBOSE(VB_PLAYBACK, LOC + "StartTV -- process events begin");
-        MythTimer st; st.start();
-        bool is_started = false;
+
         while (true)
         {
             qApp->processEvents();
 
-            QMutexLocker locker(&tv->stateChangeCondLock);
-            TVState state   = tv->GetState(0);
-            bool is_err     = kState_Error == state;
-            bool is_none    = kState_None  == state;
-            is_started = is_started ||
-                (st.elapsed() > (int) TV::kEndOfPlaybackFirstCheckTimer) ||
-                (!is_none && !is_err && kState_ChangingState != state);
-            if (is_err || (is_none && is_started))
+            TVState state = tv->GetState(0);
+            bool is_err   = kState_Error == state;
+            bool is_none  = kState_None  == state;
+            if (is_err || is_none)
                 break;
-
-            // timeout needs to be low enough to process keyboard input
-            unsigned long timeout = 20; // milliseconds
-            tv->stateChangeCond.wait(&tv->stateChangeCondLock, timeout);
         }
+
         VERBOSE(VB_PLAYBACK, LOC + "StartTV -- process events end");
 
         if (tv->getJumpToProgram())
@@ -841,14 +833,6 @@ void TV::ResetKeys(void)
 }
 
 
-class TVInitRunnable : public QRunnable
-{
-  public:
-    TVInitRunnable(TV *ourTV) : tv(ourTV) {}
-    virtual void run(void) { tv->InitFromDB(); }
-    TV *tv;
-};
-
 /** \fn TV::TV(void)
  *  \sa Init(void)
  */
@@ -950,7 +934,7 @@ TV::TV(void)
     playerActive = 0;
     playerLock.unlock();
 
-    QThreadPool::globalInstance()->start(new TVInitRunnable(this), 99);
+    InitFromDB();
 
     VERBOSE(VB_PLAYBACK, LOC + "ctor -- end");
 }
@@ -1177,14 +1161,28 @@ bool TV::Init(bool createWindow)
         }
     }
 
-    mainLoopCondLock.lock();
-    start();
-    mainLoopCond.wait(&mainLoopCondLock);
+    PlayerContext *mctx = GetPlayerReadLock(0, __FILE__, __LINE__);
+    mctx->paused = false;
+    mctx->ff_rew_state = 0;
+    mctx->ff_rew_index = kInitFFRWSpeed;
+    mctx->ff_rew_speed = 0;
+    mctx->ts_normal    = 1.0f;
+    ReturnPlayerLock(mctx);
+
+    sleep_index = 0;
+
+    SetUpdateOSDPosition(false);
+
+    const PlayerContext *ctx = GetPlayerReadLock(0, __FILE__, __LINE__);
+    ClearInputQueues(ctx, false);
+    ReturnPlayerLock(ctx);
+
+    switchToRec = NULL;
+    SetExitPlayer(false, false);
+
     errorRecoveryTimerId = StartTimer(kErrorRecoveryCheckFrequency, __LINE__);
     lcdTimerId           = StartTimer(1, __LINE__);
     speedChangeTimerId   = StartTimer(kSpeedChangeCheckFrequency, __LINE__);
-
-    mainLoopCondLock.unlock();
 
     VERBOSE(VB_PLAYBACK, LOC + "Init -- end");
     return true;
@@ -1213,9 +1211,6 @@ TV::~TV(void)
         myWindow->Close();
         myWindow = NULL;
     }
-
-    TV::exit(0);
-    TV::wait();
 
     VERBOSE(VB_PLAYBACK, "TV::~TV() -- lock");
 
@@ -1925,9 +1920,6 @@ void TV::HandleStateChange(PlayerContext *mctx, PlayerContext *ctx)
         VERBOSE(VB_IMPORTANT, LOC + "HandleStateChange() Warning, "
                 "called with no state to change to.");
         ctx->UnlockState();
-
-        QMutexLocker locker(&stateChangeCondLock);
-        stateChangeCond.wakeAll();
         return;
     }
 
@@ -1944,9 +1936,6 @@ void TV::HandleStateChange(PlayerContext *mctx, PlayerContext *ctx)
                 "Attempting to set to an error state!");
         SetErrored(ctx);
         ctx->UnlockState();
-
-        QMutexLocker locker(&stateChangeCondLock);
-        stateChangeCond.wakeAll();
         return;
     }
 
@@ -2289,9 +2278,6 @@ void TV::HandleStateChange(PlayerContext *mctx, PlayerContext *ctx)
     VERBOSE(VB_PLAYBACK, LOC +
             QString("HandleStateChange(%1) -- end")
             .arg(find_player_index(ctx)));
-
-    QMutexLocker locker(&stateChangeCondLock);
-    stateChangeCond.wakeAll();
 }
 #undef TRANSITION
 #undef SET_NEXT
@@ -2446,44 +2432,6 @@ void TV::TeardownPlayer(PlayerContext *mctx, PlayerContext *ctx)
     }
 }
 
-void TV::run(void)
-{
-    PlayerContext *mctx = GetPlayerReadLock(0, __FILE__, __LINE__);
-    mctx->paused = false;
-    mctx->ff_rew_state = 0;
-    mctx->ff_rew_index = kInitFFRWSpeed;
-    mctx->ff_rew_speed = 0;
-    mctx->ts_normal    = 1.0f;
-    ReturnPlayerLock(mctx);
-
-    sleep_index = 0;
-
-    SetUpdateOSDPosition(false);
-
-    const PlayerContext *ctx = GetPlayerReadLock(0, __FILE__, __LINE__);
-    ClearInputQueues(ctx, false);
-    ReturnPlayerLock(ctx);
-
-    switchToRec = NULL;
-    SetExitPlayer(false, false);
-
-    mainLoopCondLock.lock();
-    mainLoopCond.wakeAll();
-    mainLoopCondLock.unlock();
-
-    exec();
-
-    mctx = GetPlayerWriteLock(0, __FILE__, __LINE__);
-    if (!mctx->IsErrored() && (GetState(mctx) != kState_None))
-    {
-        mctx->ForceNextStateNone();
-        HandleStateChange(mctx, mctx);
-        if (jumpToProgram)
-            TeardownPlayer(mctx, mctx);
-    }
-    ReturnPlayerLock(mctx);
-}
-
 void TV::timerEvent(QTimerEvent *te)
 {
     const int timer_id = te->timerId();
@@ -2492,7 +2440,6 @@ void TV::timerEvent(QTimerEvent *te)
     if (mctx->IsErrored())
     {
         ReturnPlayerLock(mctx);
-        QThread::exit(1);
         return;
     }
     ReturnPlayerLock(mctx);
@@ -3458,7 +3405,7 @@ bool TV::event(QEvent *e)
             break;
     }
 
-    return QThread::event(e);
+    return QObject::event(e);
 }
 
 bool TV::HandleTrackAction(PlayerContext *ctx, const QString &action)

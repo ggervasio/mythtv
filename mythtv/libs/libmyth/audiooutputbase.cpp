@@ -714,7 +714,7 @@ void AudioOutputBase::Reset()
 void AudioOutputBase::SetTimecode(int64_t timecode)
 {
     audbuf_timecode = audiotime = timecode;
-    frames_buffered = (int64_t)((timecode * source_samplerate) / 1000);
+    frames_buffered = (timecode * (int64_t)source_samplerate) / 1000LL;
 }
 
 /**
@@ -771,10 +771,10 @@ int AudioOutputBase::audioready()
  */
 int64_t AudioOutputBase::GetAudiotime(void)
 {
-    if (audbuf_timecode == 0)
-        return 0;
+    if (audbuf_timecode == 0LL)
+        return 0LL;
 
-    int obpf = output_bytes_per_frame;
+    int64_t obpf = (int64_t)output_bytes_per_frame;
     int64_t oldaudiotime;
 
     /* We want to calculate 'audiotime', which is the timestamp of the audio
@@ -793,8 +793,8 @@ int64_t AudioOutputBase::GetAudiotime(void)
 
     QMutexLocker lockav(&avsync_lock);
 
-    int64_t soundcard_buffer = GetBufferedOnSoundcard(); // bytes
-    int64_t main_buffer = audioready();
+    int64_t soundcard_buffer = (int64_t)GetBufferedOnSoundcard(); // bytes
+    int64_t main_buffer =(int64_t)audioready();
 
     /* audioready tells us how many bytes are in audiobuffer
        scaled appropriately if output format != internal format */
@@ -806,8 +806,8 @@ int64_t AudioOutputBase::GetAudiotime(void)
        processing latencies are catered for in AddFrames/SetAudiotime
        to eliminate race */
     audiotime = audbuf_timecode - (
-        ((main_buffer + soundcard_buffer) * eff_stretchfactor ) /
-        (effdsp * obpf));
+        ((main_buffer + soundcard_buffer) * (int64_t)eff_stretchfactor ) /
+        ((int64_t)effdsp * obpf));
 
     /* audiotime should never go backwards, but we might get a negative
        value if GetBufferedOnSoundcard() isn't updated by the driver very
@@ -837,33 +837,39 @@ int64_t AudioOutputBase::GetAudiotime(void)
  */
 void AudioOutputBase::SetAudiotime(int frames, int64_t timecode)
 {
-    int64_t processframes_stretched = 0;
-    int64_t processframes_unstretched = 0;
+    int64_t processframes_stretched = 0LL;
+    int64_t processframes_unstretched = 0LL;
+    int64_t old_audbuf_timecode = audbuf_timecode;
 
     if (needs_upmix && upmixer)
-        processframes_unstretched -= upmixer->frameLatency();
+        processframes_unstretched -= (int64_t)upmixer->frameLatency();
 
     if (pSoundStretch)
     {
-        processframes_unstretched -= pSoundStretch->numUnprocessedSamples();
-        processframes_stretched -= pSoundStretch->numSamples();
+        processframes_unstretched -=
+            (int64_t)pSoundStretch->numUnprocessedSamples();
+        processframes_stretched   -=
+            (int64_t)pSoundStretch->numSamples();
     }
 
     if (encoder)
+    {
         // the input buffered data is still in audio_bytes_per_sample format
-        processframes_stretched -= encoder->Buffered() / output_bytes_per_frame;
+        processframes_stretched -=
+            (int64_t)(encoder->Buffered() / output_bytes_per_frame);
+    }
 
-    int64_t old_audbuf_timecode = audbuf_timecode;
-
-    audbuf_timecode = timecode +
-                (((frames + processframes_unstretched) * 100000) +
-                  (processframes_stretched * eff_stretchfactor )) / effdsp;
+    audbuf_timecode =
+        timecode + (
+            ((int64_t)frames + processframes_unstretched * 100000LL) +
+            (processframes_stretched * (int64_t)eff_stretchfactor)
+                    ) / (int64_t)effdsp;
 
     // check for timecode wrap and reset audiotime if detected
     // timecode will always be monotonic asc if not seeked and reset
     // happens if seek or pause happens
     if (audbuf_timecode < old_audbuf_timecode)
-        audiotime = 0;
+        audiotime = 0LL;
 
     VBAUDIOTS(QString("SetAudiotime atc=%1 tc=%2 f=%3 pfu=%4 pfs=%5")
               .arg(audbuf_timecode)
@@ -883,10 +889,10 @@ void AudioOutputBase::SetAudiotime(int frames, int64_t timecode)
  */
 int64_t AudioOutputBase::GetAudioBufferedTime(void)
 {
-    int ret = audbuf_timecode - GetAudiotime();
+    int64_t ret = audbuf_timecode - (int64_t)GetAudiotime();
     // Pulse can give us values that make this -ve
-    if (ret < 0)
-        return 0;
+    if (ret < 0LL)
+        return 0LL;
     return ret;
 }
 
@@ -997,26 +1003,17 @@ int AudioOutputBase::CopyWithUpmix(char *buffer, int frames, int &org_waud)
     off =  processing ? 4 : output_settings->SampleSize(format);
     off *= source_channels;
 
-    int remaining_frames = frames;
     len = 0;
-    do
+    int i = 0;
+    while (i < frames)
     {
-        int i;
-        frames = remaining_frames;
-        if (frames * source_channels > SURROUND_BUFSIZE)
-        {
-            frames = SURROUND_BUFSIZE / source_channels;
-        }
+        int nFrames;
 
-        i = 0;
-        while (i < frames)
-            i += upmixer->putFrames(buffer + i * off,
-                                    frames - i, source_channels);
+        i += upmixer->putFrames(buffer + i * off,
+                                frames - i, source_channels);
 
-        remaining_frames -= i;
-        buffer += i * off;
+        nFrames = upmixer->numFrames();
 
-        int nFrames = upmixer->numFrames();
         if (!nFrames)
             continue;
 
@@ -1034,7 +1031,6 @@ int AudioOutputBase::CopyWithUpmix(char *buffer, int frames, int &org_waud)
 
         org_waud += nFrames * bpf;
     }
-    while (remaining_frames > 0);
     return len;
 }
 
@@ -1074,8 +1070,8 @@ bool AudioOutputBase::AddFrames(void *in_buffer, int in_frames,
     if (timecode < 0)
     {
         // Send original samples to mythmusic visualisation
-        timecode = (int64_t)(frames_buffered) * 1000 / source_samplerate;
-        frames_buffered += frames;
+        timecode = (frames_buffered * 1000LL) / (int64_t)source_samplerate;
+        frames_buffered += (int64_t)frames;
         dispatchVisual((uchar *)in_buffer, len, timecode, source_channels,
                        output_settings->FormatToBits(format));
         music = true;
@@ -1113,13 +1109,13 @@ bool AudioOutputBase::AddFrames(void *in_buffer, int in_frames,
     }
 
     int frames_remaining = in_frames;
-    int frames_offset = 0;
     int frames_final = 0;
-    int maxframes = (kAudioSRCInputSize / source_bytes_per_frame) & ~0xf;
+    int maxframes = (kAudioSRCInputSize / source_channels) & ~0xf;
+    int offset = 0;
 
     while(frames_remaining > 0)
     {
-        buffer = (char *)in_buffer + frames_offset;
+        buffer = (char *)in_buffer + offset;
         frames = frames_remaining;
 
         len = frames * source_bytes_per_frame;
@@ -1130,7 +1126,7 @@ bool AudioOutputBase::AddFrames(void *in_buffer, int in_frames,
             {
                 frames = maxframes;
                 len = frames * source_bytes_per_frame;
-                frames_offset += len;
+                offset += len;
             }
             // Convert to floats
             len = AudioOutputUtil::toFloat(format, src_in, buffer, len);
@@ -1155,14 +1151,9 @@ bool AudioOutputBase::AddFrames(void *in_buffer, int in_frames,
 
             buffer = src_out;
             frames = src_data.output_frames_gen;
-            frames_final += frames;
         }
-        else
-        {
-            frames_final += frames;
-            if (processing)
-                buffer = src_in;
-        }
+        else if (processing)
+            buffer = src_in;
 
         /* we want the timecode of the last sample added but we are given the
            timecode of the first - add the time in ms that the frames added
@@ -1175,6 +1166,7 @@ bool AudioOutputBase::AddFrames(void *in_buffer, int in_frames,
         }
 
         frames = len / bpf;
+        frames_final += frames;
 
         bdiff = kAudioRingBufferSize - waud;
 
@@ -1236,15 +1228,16 @@ bool AudioOutputBase::AddFrames(void *in_buffer, int in_frames,
             int remaining       = len;
             int to_get          = 0;
             // The AC3 encoder can only work on 128kB of data at a time
-            int maxframes       = ((INBUFSIZE / encoder->FrameSize() - 1) *
-                                   encoder->FrameSize()) & ~0xf;
+            int maxlength       =
+                ((ENCODER_INBUFSIZE / encoder->FrameSize() - 1) *
+                 encoder->FrameSize()) & ~0xf;
 
             do
             {
                 len = remaining;
-                if (len > maxframes)
+                if (len > maxlength)
                 {
-                    len = maxframes;
+                    len = maxlength;
                 }
                 remaining -= len;
 
@@ -1331,8 +1324,8 @@ void AudioOutputBase::OutputAudioLoop(void)
 
     // to reduce startup latency, write silence in 8ms chunks
     int zero_fragment_size = (int)(0.008*samplerate/channels);
-    // make sure its a multiple of bytes_per_frame
-    zero_fragment_size *= bytes_per_frame;
+    // make sure its a multiple of output_bytes_per_frame
+    zero_fragment_size *= output_bytes_per_frame;
     if (zero_fragment_size > fragment_size)
         zero_fragment_size = fragment_size;
 
