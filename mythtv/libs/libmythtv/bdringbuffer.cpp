@@ -1,4 +1,5 @@
 #include <QImage>
+#include <QDir>
 
 #include <cstring>
 
@@ -36,9 +37,9 @@ static void HandleOverlayCallback(
     bdrb->m_inMenu = true;
 
     const BD_PG_RLE_ELEM *rlep = overlay->img;
+
     uint8_t *yuvimg = (uint8_t*)malloc(overlay->w * overlay->h);
     unsigned pixels = overlay->w * overlay->h;
-
 
     for (unsigned i = 0; i < pixels; i += rlep->len, rlep++)
     {
@@ -50,10 +51,25 @@ static void HandleOverlayCallback(
     uint32_t *origpalette = (uint32_t *)(overlay->palette);
     QVector<unsigned int> palette;
     for (int i = 0; i < 256; i++)
-        palette.push_back(origpalette[i]);
+    {
+        int y  = (origpalette[i] >> 0) & 0xff;
+        int cr = (origpalette[i] >> 8) & 0xff;
+        int cb = (origpalette[i] >> 16) & 0xff;
+        int a  = (origpalette[i] >> 24) & 0xff;
+        int r  = int(y + 1.4022 * (cr - 128));
+        int b  = int(y + 1.7710 * (cb - 128));
+        int g  = int(1.7047 * y - (0.1952 * b) - (0.5647 * r));
+        if (r < 0) r = 0;
+        if (g < 0) g = 0;
+        if (b < 0) b = 0;
+        if (r > 0xff) r = 0xff;
+        if (g > 0xff) g = 0xff;
+        if (b > 0xff) b = 0xff;
+        palette.push_back((a << 24) | (r << 16) | (g << 8) | b);
+    }
 
     qoverlay.setColorTable(palette);
-    qoverlay.save(QString("bluray.menuimg.%1.%2.png").arg(overlay->w).arg(overlay->h));
+    qoverlay.save(QString("%1/bluray.menuimg.%2.%3.jpg").arg(QDir::home().path()).arg(overlay->w).arg(overlay->h));
 
     VERBOSE(VB_PLAYBACK|VB_EXTRA, QString("In Menu Callback, ready to draw "
                         "an overlay of %1x%2 at %3,%4 (%5 pixels).")
@@ -615,18 +631,29 @@ void BDRingBuffer::PressButton(int32_t key, int64_t pts)
     bd_user_input(bdnav, pts, key);
 }
 
+void BDRingBuffer::ClickButton(int64_t pts, uint16_t x, uint16_t y)
+{
+    if (!bdnav)
+        return;
+
+    if (pts <= 0 || x <= 0 || y <= 0)
+        return;
+
+    bd_mouse_select(bdnav, pts, x, y);
+}
+
 /** \brief jump to a Blu-ray root or popup menu
  */
-bool BDRingBuffer::GoToMenu(const QString str)
+bool BDRingBuffer::GoToMenu(const QString str, int64_t pts)
 {
-    if (!m_is_hdmv_navigation)
+    if (!m_is_hdmv_navigation || pts <= 0)
         return false;
 
     VERBOSE(VB_PLAYBACK, QString("BDRingBuf: GoToMenu %1").arg(str));
 
     if (str.compare("root") == 0)
     {
-        if (bd_menu_call(bdnav))
+        if (bd_menu_call(bdnav, pts))
         {
             VERBOSE(VB_PLAYBACK, QString("BDRingBuf: Invoked Menu Successfully"));
             return true;
@@ -667,6 +694,10 @@ void BDRingBuffer::HandleBDEvent(BD_EVENT &ev)
             VERBOSE(VB_PLAYBACK,
                     QString("BDRingBuf: EVENT_ERROR %1").arg(ev.param));
             break;
+        case BD_EVENT_ENCRYPTED:
+            VERBOSE(VB_IMPORTANT,
+                    QString("BDRingBuf: EVENT_ENCRYPTED, playback will fail."));
+            break;
 
         /* current playback position */
 
@@ -678,6 +709,11 @@ void BDRingBuffer::HandleBDEvent(BD_EVENT &ev)
         case BD_EVENT_TITLE:
             VERBOSE(VB_PLAYBACK|VB_EXTRA,
                     QString("BDRingBuf: EVENT_TITLE %1").arg(ev.param));
+            break;
+        case BD_EVENT_END_OF_TITLE:
+            VERBOSE(VB_PLAYBACK|VB_EXTRA,
+                    QString("BDRingBuf: EVENT_END_OF_TITLE"));
+            // TODO: Signal the player to flush buffers before reading further.
             break;
         case BD_EVENT_PLAYLIST:
             VERBOSE(VB_PLAYBACK|VB_EXTRA,
@@ -696,13 +732,19 @@ void BDRingBuffer::HandleBDEvent(BD_EVENT &ev)
                     QString("BDRingBuf: EVENT_CHAPTER %1").arg(ev.param));
             m_currentChapter = ev.param;
             break;
-
-        /* Interactive Graphics */
-
         case BD_EVENT_STILL:
             VERBOSE(VB_PLAYBACK|VB_EXTRA,
                     QString("BDRingBuf: EVENT_STILL %1").arg(ev.param));
             m_still = ev.param;
+            break;
+        case BD_EVENT_STILL_TIME:
+            VERBOSE(VB_PLAYBACK|VB_EXTRA,
+                    QString("BDRingBuf: EVENT_STILL_TIME %1").arg(ev.param));
+            // TODO: Handle still playback.  0 = infinite, 1-300 = seconds.
+            break;
+        case BD_EVENT_SEEK:
+            VERBOSE(VB_PLAYBACK|VB_EXTRA,
+                    QString("BDRingBuf: EVENT_SEEK"));
             break;
 
         /* stream selection */

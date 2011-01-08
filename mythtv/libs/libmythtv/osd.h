@@ -6,9 +6,6 @@ using namespace std;
 #include "programtypes.h"
 #include "mythscreentype.h"
 
-class MythDialogBox;
-struct AVSubtitle;
-
 #define OSD_DLG_VIDEOEXIT "OSD_VIDEO_EXIT"
 #define OSD_DLG_MENU      "OSD_MENU"
 #define OSD_DLG_SLEEP     "OSD_SLEEP"
@@ -19,6 +16,7 @@ struct AVSubtitle;
 #define OSD_DLG_EDITOR    "OSD_EDITOR"
 #define OSD_DLG_CUTPOINT  "OSD_CUTPOINT"
 #define OSD_DLG_DELETE    "OSD_DELETE"
+#define OSD_DLG_CONFIRM   "mythconfirmpopup"
 #define OSD_WIN_TELETEXT  "OSD_TELETEXT"
 #define OSD_WIN_SUBTITLE  "OSD_SUBTITLES"
 #define OSD_WIN_INTERACT  "OSD_INTERACTIVE"
@@ -27,12 +25,8 @@ struct AVSubtitle;
 
 class MythPlayer;
 class TeletextScreen;
-class TeletextViewer;
-class ccText;
-class CC708Service;
-class TV;
 class SubtitleScreen;
-class SubtitleReader;
+struct AVSubtitle;
 
 enum OSDFunctionalType
 {

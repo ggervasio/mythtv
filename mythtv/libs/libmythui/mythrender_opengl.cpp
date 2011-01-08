@@ -24,8 +24,7 @@ static const GLuint kTextureOffset = 8 * sizeof(GLfloat);
 static const GLuint kVertexSize    = 16 * sizeof(GLfloat);
 
 static const QString kDefaultVertexShader =
-"GLSL_VERSION"
-"GLSL_EXTENSIONS"
+"GLSL_DEFINES"
 "attribute vec4 a_color;\n"
 "attribute vec2 a_texcoord0;\n"
 "varying   vec4 v_color;\n"
@@ -37,8 +36,7 @@ static const QString kDefaultVertexShader =
 "}\n";
 
 static const QString kDefaultFragmentShader =
-"GLSL_VERSION"
-"GLSL_EXTENSIONS"
+"GLSL_DEFINES"
 "uniform sampler2D s_texture0;\n"
 "varying vec4 v_color;\n"
 "varying vec2 v_texcoord0;\n"
@@ -48,8 +46,7 @@ static const QString kDefaultFragmentShader =
 "}\n";
 
 static const QString kSimpleVertexShader =
-"GLSL_VERSION"
-"GLSL_EXTENSIONS"
+"GLSL_DEFINES"
 "attribute vec4 a_color;\n"
 "varying   vec4 v_color;\n"
 "void main() {\n"
@@ -58,8 +55,7 @@ static const QString kSimpleVertexShader =
 "}\n";
 
 static const QString kSimpleFragmentShader =
-"GLSL_VERSION"
-"GLSL_EXTENSIONS"
+"GLSL_DEFINES"
 "varying vec4 v_color;\n"
 "void main(void)\n"
 "{\n"
@@ -70,7 +66,7 @@ static inline int __glCheck__(const QString &loc, const char* fileName, int n)
 {
     int error = glGetError();
     if (error)
-    { 
+    {
         VERBOSE(VB_IMPORTANT, QString("%1: %2 @ %3, %4")
             .arg(loc).arg((const char*)gluErrorString(error))
             .arg(fileName).arg(n));
@@ -279,7 +275,7 @@ void MythRenderOpenGL::Flush(bool use_fence)
     {
         glFlush();
     }
-    
+
     doneCurrent();
 }
 
@@ -811,7 +807,10 @@ bool MythRenderOpenGL::CreateFragmentProgram(const QString &program, uint &prog)
     }
 
     if (success)
+    {
+        VERBOSE(VB_PLAYBACK|VB_EXTRA, "\n" + program + "\n");
         m_programs.push_back(glfp);
+    }
     else
         m_glDeleteProgramsARB(1, &glfp);
 
@@ -1176,7 +1175,51 @@ void MythRenderOpenGL::DrawBitmapHigh(uint *textures, uint texture_count,
                                       const QRectF *src, const QRectF *dst,
                                       uint prog)
 {
+    if (prog && !m_shader_objects.contains(prog))
+        prog = 0;
+    if (prog == 0)
+        prog = m_shaders[kShaderDefault];
 
+    uint first = textures[0];
+
+    EnableShaderObject(prog);
+    SetBlend(false);
+
+    EnableTextures(first);
+    uint active_tex = 0;
+    for (uint i = 0; i < texture_count; i++)
+    {
+        if (m_textures.contains(textures[i]))
+        {
+            ActiveTexture(GL_TEXTURE0 + active_tex++);
+            glBindTexture(m_textures[textures[i]].m_type, textures[i]);
+        }
+    }
+
+    m_glBindBufferARB(GL_ARRAY_BUFFER_ARB, m_textures[first].m_vbo);
+    UpdateTextureVertices(first, src, dst);
+    m_glBufferDataARB(GL_ARRAY_BUFFER_ARB, kVertexSize, NULL, GL_STREAM_DRAW);
+    void* target = m_glMapBufferARB(GL_ARRAY_BUFFER_ARB, GL_WRITE_ONLY);
+    if (target)
+        memcpy(target, m_textures[first].m_vertex_data, kVertexSize);
+    m_glUnmapBufferARB(GL_ARRAY_BUFFER_ARB);
+
+    m_glEnableVertexAttribArray(VERTEX_INDEX);
+    m_glEnableVertexAttribArray(TEXTURE_INDEX);
+
+    m_glVertexAttribPointer(VERTEX_INDEX, VERTEX_SIZE, GL_FLOAT, GL_FALSE,
+                            VERTEX_SIZE * sizeof(GLfloat),
+                            (const void *) kVertexOffset);
+    m_glVertexAttrib4f(COLOR_INDEX, 1.0, 1.0, 1.0, 1.0);
+    m_glVertexAttribPointer(TEXTURE_INDEX, TEXTURE_SIZE, GL_FLOAT, GL_FALSE,
+                            TEXTURE_SIZE * sizeof(GLfloat),
+                            (const void *) kTextureOffset);
+
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+
+    m_glDisableVertexAttribArray(TEXTURE_INDEX);
+    m_glDisableVertexAttribArray(VERTEX_INDEX);
+    m_glBindBufferARB(GL_ARRAY_BUFFER_ARB, 0);
 }
 
 void MythRenderOpenGL::DrawRectLegacy(const QRect &area, bool drawFill,
@@ -1370,6 +1413,8 @@ void MythRenderOpenGL::InitProcs(void)
         GetProcAddress("glGetUniformLocationARB");
     m_glUniform4f = (MYTH_GLUNIFORM4F)
         GetProcAddress("glUniform4fARB");
+    m_glUniformMatrix4fv = (MYTH_GLUNIFORMMATRIX4FV)
+        GetProcAddress("glUniformMatrix4fvARB");
     m_glVertexAttribPointer = (MYTH_GLVERTEXATTRIBPOINTER)
         GetProcAddress("glVertexAttribPointer");
     m_glEnableVertexAttribArray = (MYTH_GLENABLEVERTEXATTRIBARRAY)
@@ -1451,7 +1496,8 @@ void MythRenderOpenGL::InitFeatures(void)
         m_glUseProgram    && m_glGetInfoLog &&
         m_glDetachObject  && m_glGetObjectParameteriv &&
         m_glDeleteObject  && m_glGetUniformLocation &&
-        m_glUniform4f     && m_glVertexAttribPointer &&
+        m_glUniform4f     && m_glUniformMatrix4fv &&
+        m_glVertexAttribPointer &&
         m_glEnableVertexAttribArray &&
         m_glDisableVertexAttribArray &&
         m_glBindAttribLocation &&
@@ -1598,6 +1644,7 @@ void MythRenderOpenGL::ResetProcs(void)
     m_glDeleteObject = NULL;
     m_glGetUniformLocation = NULL;
     m_glUniform4f = NULL;
+    m_glUniformMatrix4fv = NULL;
     m_glVertexAttribPointer = NULL;
     m_glEnableVertexAttribArray = NULL;
     m_glDisableVertexAttribArray = NULL;
@@ -1743,7 +1790,7 @@ void MythRenderOpenGL::DeleteDefaultShaders(void)
     }
 }
 
-uint MythRenderOpenGL::CreateShader(int type, const QString source)
+uint MythRenderOpenGL::CreateShader(int type, const QString &source)
 {
     uint result = m_glCreateShaderObject(type);
     QByteArray src = source.toAscii();
@@ -1821,8 +1868,7 @@ void MythRenderOpenGL::OptimiseShaderSource(QString &source)
         source.replace("texture2D", "texture2DRect");
     }
 
-    source.replace("GLSL_VERSION", version);
-    source.replace("GLSL_EXTENSIONS", extensions);
+    source.replace("GLSL_DEFINES", version + extensions);
 
     VERBOSE(VB_EXTRA, "\n" + source);
 }
@@ -2073,19 +2119,27 @@ uint MythRenderOpenGL::GetBufferSize(QSize size, uint fmt, uint type)
     return size.width() * size.height() * bpp * bytes;
 }
 
-void MythRenderOpenGL::SetFragmentParams(uint fp, void* vals)
+void MythRenderOpenGL::SetProgramParams(uint prog, void* vals)
 {
     makeCurrent();
+    const float *v = (float*)vals;
 
-    EnableFragmentProgram(fp);
-
-    float *v = (float*)vals;
-    m_glProgramLocalParameter4fARB(
-        GL_FRAGMENT_PROGRAM_ARB, 0, v[0], v[1], v[2], v[3]);
-    m_glProgramLocalParameter4fARB(
-        GL_FRAGMENT_PROGRAM_ARB, 1, v[4], v[5], v[6], v[7]);
-    m_glProgramLocalParameter4fARB(
-        GL_FRAGMENT_PROGRAM_ARB, 2, v[8], v[9], v[10], v[11]);
+    if (kGLLegacyProfile == m_profile)
+    {
+        EnableFragmentProgram(prog);
+        m_glProgramLocalParameter4fARB(
+            GL_FRAGMENT_PROGRAM_ARB, 0, v[0], v[1], v[2], v[3]);
+        m_glProgramLocalParameter4fARB(
+            GL_FRAGMENT_PROGRAM_ARB, 1, v[4], v[5], v[6], v[7]);
+        m_glProgramLocalParameter4fARB(
+            GL_FRAGMENT_PROGRAM_ARB, 2, v[8], v[9], v[10], v[11]);
+    }
+    else if (kGLHighProfile == m_profile)
+    {
+        EnableShaderObject(prog);
+        GLint loc = m_glGetUniformLocation(prog, "m_colourMatrix");
+        m_glUniformMatrix4fv(loc, 1, GL_FALSE, v);
+    }
 
     doneCurrent();
 }

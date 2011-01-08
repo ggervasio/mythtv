@@ -194,7 +194,7 @@ class MPUBLIC MythPlayer
     bool    IsPlaying(uint wait_ms = 0, bool wait_for = true) const;
     bool    AtNormalSpeed(void) const         { return next_normal_speed; }
     bool    IsReallyNearEnd(void) const;
-    bool    IsNearEnd(int64_t framesRemaining = -1);
+    bool    IsNearEnd(void);
     bool    HasAudioOut(void) const           { return audio.HasAudioOut(); }
     bool    IsPIPActive(void) const           { return pip_active; }
     bool    IsPIPVisible(void) const          { return pip_visible; }
@@ -513,6 +513,9 @@ class MPUBLIC MythPlayer
     void  WrapTimecode(int64_t &timecode, TCTypes tc_type);
     void  InitAVSync(void);
     virtual void AVSync(VideoFrame *buffer, bool limit_delay = false);
+    void  ResetAVSync(void);
+    int64_t AVSyncGetAudiotime(void);
+    void  SetFrameInterval(FrameScanType scan, double speed);
     void  FallbackDeint(void);
     void  CheckExtraAudioDecode(void);
 
@@ -702,6 +705,8 @@ class MPUBLIC MythPlayer
     int        avsync_delay;
     int        avsync_adjustment;
     int        avsync_avg;
+    int        avsync_predictor;
+    bool       avsync_predictor_enabled;
     int        refreshrate;
     bool       lastsync;
     bool       decode_extra_audio;

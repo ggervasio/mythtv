@@ -33,6 +33,7 @@
 #include "programinfo.h"
 #include "channelutil.h"
 #include "storagegroup.h"
+#include "mythsystem.h"
 
 #include "rssparse.h"
 #include "netutils.h"
@@ -123,6 +124,7 @@ MythXMLMethod MythXML::GetMethod( const QString &sURI )
     if (sURI == "GetVideoArt"           ) return MXML_GetVideoArt;
     if (sURI == "GetInternetSearch"     ) return MXML_GetInternetSearch;
     if (sURI == "GetInternetSources"    ) return MXML_GetInternetSources;
+    if (sURI == "GetInternetContent"    ) return MXML_GetInternetContent;
 
     return MXML_Unknown;
 }
@@ -228,6 +230,9 @@ bool MythXML::ProcessRequest( HttpWorkerThread *pThread, HTTPRequest *pRequest )
                     return true;
                 case MXML_GetInternetSources :
                     GetInternetSources( pRequest );
+                    return true;
+                case MXML_GetInternetContent :
+                    GetInternetContent( pRequest );
                     return true;
 
                 case MXML_GetConnectionInfo    :
@@ -1645,12 +1650,13 @@ void MythXML::GetInternetSources( HTTPRequest *pRequest )
     for (QStringList::const_iterator i = Grabbers.begin();
             i != Grabbers.end(); ++i)
     {
-        QProcess scriptCheck;
         QString commandline = GrabberDir + (*i);
-        scriptCheck.setReadChannel(QProcess::StandardOutput);
-        scriptCheck.start(commandline, QStringList() << "-v");
-        scriptCheck.waitForFinished();
-        QString result = scriptCheck.readAll();
+        MythSystem scriptcheck(commandline, QStringList("-v"),
+                               kMSRunShell | kMSStdOut | kMSBuffered);
+        scriptcheck.Run();
+        scriptcheck.Wait();
+        QByteArray result = scriptcheck.ReadAll();
+
         if (!result.isEmpty() && result.toLower().startsWith("<grabber>"))
             ret += result;
     }
@@ -1660,6 +1666,34 @@ void MythXML::GetInternetSources( HTTPRequest *pRequest )
     list.push_back( NameValue( "InternetContent", ret ));
 
     pRequest->FormatActionResponse( list );
+}
+
+void MythXML::GetInternetContent( HTTPRequest *pRequest )
+{
+    pRequest->m_eResponseType   = ResponseTypeHTML;
+
+    QString grabber =  pRequest->m_mapParams[ "Grabber" ];
+
+    if (grabber.isEmpty())
+        return;
+
+    QString contentDir = QString("%1internetcontent/").arg(GetShareDir());
+    QString htmlFile(contentDir + grabber);
+
+    // Try to prevent directory traversal
+    QFileInfo fileInfo(htmlFile);
+    if (fileInfo.canonicalFilePath().startsWith(contentDir) &&
+        QFile::exists( htmlFile ))
+    {
+        pRequest->m_eResponseType   = ResponseTypeFile;
+        pRequest->m_nResponseStatus = 200;
+        pRequest->m_sFileName       = htmlFile;
+    }
+    else
+    {
+        pRequest->FormatRawResponse( QString("<HTML>File %1 does "
+                  "not exist!</HTML>").arg(htmlFile) );
+    }
 }
 
 /////////////////////////////////////////////////////////////////////////////

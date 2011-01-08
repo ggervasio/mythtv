@@ -50,6 +50,7 @@ using namespace std;
 #include "screensaver.h"
 #include "lirc.h"
 #include "lircevent.h"
+#include "mythudplistener.h"
 
 #ifdef USING_APPLEREMOTE
 #include "AppleRemoteListener.h"
@@ -68,6 +69,7 @@ using namespace std;
 #include "mythpainter_qt.h"
 #include "mythgesture.h"
 #include "mythuihelper.h"
+#include "mythdialogbox.h"
 
 #ifdef USING_VDPAU
 #include "mythpainter_vdpau.h"
@@ -162,7 +164,9 @@ class MythMainWindowPrivate
 
         AllowInput(true),
 
+        gesture(MythGesture()),
         gestureTimer(NULL),
+        hideMouseTimer(NULL),
 
         paintwin(NULL),
 
@@ -172,7 +176,9 @@ class MythMainWindowPrivate
         m_drawDisabledDepth(0),
         m_drawEnabled(true),
 
-        m_themeBase(NULL)
+        m_themeBase(NULL),
+
+        m_udpListener(NULL)
     {
     }
 
@@ -253,6 +259,7 @@ class MythMainWindowPrivate
     bool m_drawEnabled;
 
     MythThemeBase *m_themeBase;
+    MythUDPListener *m_udpListener;
 };
 
 // Make keynum in QKeyEvent be equivalent to what's in QKeySequence
@@ -455,6 +462,8 @@ MythMainWindow::MythMainWindow(const bool useDB)
     if (d->appleRemote->isListeningToRemote())
         d->appleRemote->start();
 #endif
+
+    d->m_udpListener = new MythUDPListener();
 
     InitKeys();
 
@@ -2099,6 +2108,14 @@ void MythMainWindow::customEvent(QEvent *ce)
                         message.mid(tokens[0].length() +
                                     tokens[1].length() + 2));
         }
+    }
+    else if ((MythEvent::Type)(ce->type()) == MythEvent::MythUserMessage)
+    {
+        MythEvent *me = (MythEvent *)ce;
+        QString message = me->Message();
+
+        if (!message.isEmpty())
+            ShowOkPopup(message);
     }
 }
 

@@ -11,7 +11,7 @@ CC608Reader::CC608Reader(MythPlayer *parent)
     m_ccPageNum(0x888), m_outputText(""), m_outputCol(0),
     m_outputRow(0),     m_changed(true)
 {
-    bzero(&m_inputBuffers, sizeof(m_inputBuffers));
+    memset(&m_inputBuffers, 0, sizeof(m_inputBuffers));
     m_maxTextSize = 8 * (sizeof(teletextsubtitle) + VT_WIDTH);
     for (int i = 0; i < MAXTBUFFER; i++)
         m_inputBuffers[i].buffer = new unsigned char[m_maxTextSize + 1];
@@ -41,7 +41,6 @@ CC608Buffer* CC608Reader::GetOutputText(bool &changed)
     if (!m_enabled || !m_parent)
         return NULL;
 
-    changed = m_changed;
     VideoFrame *last = NULL;
     if (m_parent->getVideoOutput())
         last = m_parent->getVideoOutput()->GetLastShownFrame();

@@ -612,7 +612,7 @@ class MythDB( DBCache ):
             airdate,    stereo,     subtitled,  hdtv,       closecaptioned,
             partnumber, parttotal,  seriesid,   showtype,   programid,
             manualid,   generic,    cast,       livetv,     basename,
-            syndicatedepisodenumber
+            syndicatedepisodenumber,            olderthan,  newerthan
 
         Multiple keywords can be chained as such:
             obj.searchRecorded(title='Title', commflagged=False)
@@ -622,7 +622,7 @@ class MythDB( DBCache ):
             # table and join descriptor
             init.table = 'recorded'
             init.handler = Recorded
-            init.required = ('livetv,')
+            init.require = ('livetv',)
             init.joins = (init.Join(table='recordedprogram',
                                     tableto='recorded',
                                     fields=('chanid','starttime')),
@@ -646,9 +646,9 @@ class MythDB( DBCache ):
             return ('recorded.%s=%%s' % key, datetime.duck(value), 0)
 
         if key == 'olderthan':
-            return ('recorded.starttime>%s', datetime.duck(value), 0)
-        if key == 'newerthan':
             return ('recorded.starttime<%s', datetime.duck(value), 0)
+        if key == 'newerthan':
+            return ('recorded.starttime>%s', datetime.duck(value), 0)
 
         # recordedprogram matches
         if key in ('category_type','airdate','stereo','subtitled','hdtv',
@@ -661,8 +661,9 @@ class MythDB( DBCache ):
             return ('people.name', 'recordedcredits', 4, 1)
 
         if key == 'livetv':
-            if value is None:
+            if (value is None) or (value == False):
                 return ('recorded.recgroup!=%s', 'LiveTV', 0)
+            return ()
 
         return None
 
@@ -994,6 +995,10 @@ class MythXML( XMLConnection ):
         for grabber in self._queryTree('GetInternetSources').\
                         find('InternetContent').findall('grabber'):
             yield InternetSource.fromEtree(grabber, self)
+
+    def getInternetContentUrl(self, grabber, videocode):
+        return "mythflash://%s:%s/Myth/GetInternetContent?Grabber=%s&videocode=%s" \
+            % (self.host, self.port, grabber, videocode)
 
     def getPreviewImage(self, chanid, starttime, width=None, \
                                                  height=None, secsin=None):

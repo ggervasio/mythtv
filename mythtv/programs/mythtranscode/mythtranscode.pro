@@ -9,6 +9,7 @@ target.path = $${PREFIX}/bin
 INSTALLS = target
 
 QMAKE_CLEAN += $(TARGET)
+QMAKE_CFLAGS += -w
 
 # Input
 SOURCES += main.cpp transcode.cpp mpeg2fix.cpp helper.c
@@ -25,5 +26,8 @@ INCLUDEPATH += ../../libs/libavutil
 INCLUDEPATH += ../../libs/
 
 !contains( CONFIG_LIBMPEG2EXTERNAL, yes) {
+        DEPENDPATH  += ../../libs/libmythmpeg2
         INCLUDEPATH += ../../libs/libmythmpeg2
+        LIBS += -L../../libs/libmythmpeg2 -lmythmpeg2-$$LIBVERSION
+        TARGETDEPS += ../../libs/libmythmpeg2/libmythmpeg2-$${MYTH_LIB_EXT}
 }

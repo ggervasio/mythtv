@@ -522,6 +522,8 @@ qint64 HTTPRequest::SendFile( QFile &file, qint64 llStart, qint64 llBytes )
     } 
     else 
     { 
+        qint64     llSent = 0;
+
         do 
         { 
             // SSIZE_MAX should work in kernels 2.6.16 and later. 
@@ -531,12 +533,18 @@ qint64 HTTPRequest::SendFile( QFile &file, qint64 llStart, qint64 llBytes )
                 getSocketHandle(), fd, &offset, 
                 (size_t) ((llBytes > INT_MAX) ? INT_MAX : llBytes)); 
   
-            llBytes  -= ( offset - llStart ); 
-            VERBOSE(VB_UPNP, QString("SendResponseFile : --- " 
-            "size = %1, offset = %2, sent = %3") 
-            .arg(llBytes).arg(offset).arg(sent)); 
+            if (sent >= 0)
+            {
+                llBytes -= sent; 
+                llSent  += sent;
+                VERBOSE(VB_UPNP, QString("SendResponseFile : --- " 
+                        "size = %1, offset = %2, sent = %3") 
+                        .arg(llBytes).arg(offset).arg(sent)); 
+            }
         } 
         while (( sent >= 0 ) && ( llBytes > 0 )); 
+
+        sent = llSent;
     } 
 
 #endif
@@ -844,8 +852,8 @@ long HTTPRequest::GetParameters( QString sParams, QStringMap &mapParams  )
 
             if ((sName.length() != 0) && (sValue.length() !=0))
             {
-                sName  = QUrl::fromPercentEncoding(sName.toLatin1());
-                sValue = QUrl::fromPercentEncoding(sValue.toLatin1());
+                sName  = QUrl::fromPercentEncoding(sName.toUtf8());
+                sValue = QUrl::fromPercentEncoding(sValue.toUtf8());
 
                 mapParams.insert( sName.trimmed(), sValue );
                 nCount++;
@@ -1085,12 +1093,12 @@ void HTTPRequest::ProcessRequestLine( const QString &sLine )
         if (nCount > 1)
         {
             //m_sBaseUrl = tokens[1].section( '?', 0, 0).trimmed();
-            m_sBaseUrl = (QUrl::fromPercentEncoding(tokens[1].toLatin1())).section( '?', 0, 0).trimmed();
+            m_sBaseUrl = (QUrl::fromPercentEncoding(tokens[1].toUtf8())).section( '?', 0, 0).trimmed();
 
             // Process any Query String Parameters
 
             //QString sQueryStr = tokens[1].section( '?', 1, 1   );
-            QString sQueryStr = (QUrl::fromPercentEncoding(tokens[1].toLatin1())).section( '?', 1, 1 );
+            QString sQueryStr = (QUrl::fromPercentEncoding(tokens[1].toUtf8())).section( '?', 1, 1 );
 
             if (sQueryStr.length() > 0)
                 GetParameters( sQueryStr, m_mapParams );
@@ -1299,8 +1307,8 @@ bool HTTPRequest::ProcessSOAPPayload( const QString &sSOAPAction )
                     if (!oText.isNull())
                         sValue = oText.nodeValue();
 
-                    sName  = QUrl::fromPercentEncoding(sName.toLatin1());
-                    sValue = QUrl::fromPercentEncoding(sValue.toLatin1());
+                    sName  = QUrl::fromPercentEncoding(sName.toUtf8());
+                    sValue = QUrl::fromPercentEncoding(sValue.toUtf8());
 
                     m_mapParams.insert( sName.trimmed(), sValue );
                 }

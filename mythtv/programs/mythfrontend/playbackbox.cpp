@@ -2169,6 +2169,13 @@ void PlaybackBox::upcoming()
         ShowUpcoming(pginfo);
 }
 
+void PlaybackBox::upcomingScheduled()
+{
+    ProgramInfo *pginfo = CurrentItem();
+    if (pginfo)
+        ShowUpcomingScheduled(pginfo);
+}
+
 ProgramInfo *PlaybackBox::CurrentItem(void)
 {
     ProgramInfo *pginfo = NULL;
@@ -3737,6 +3744,8 @@ bool PlaybackBox::keyPressEvent(QKeyEvent *event)
                 customEdit();
             else if (action == "UPCOMING")
                 upcoming();
+            else if (action == "VIEWSCHEDULED")
+                upcomingScheduled();
             else
                 handled = false;
         }
@@ -4338,10 +4347,19 @@ void PlaybackBox::showGroupFilter(void)
     {
         connect(recGroupPopup, SIGNAL(result(QString)),
                 SLOT(displayRecGroup(QString)));
+        connect(recGroupPopup, SIGNAL(Exiting()),
+                SLOT(groupSelectorClosed()));
         m_popupStack->AddScreen(recGroupPopup);
     }
     else
         delete recGroupPopup;
+}
+
+void PlaybackBox::groupSelectorClosed(void)
+{
+    if ((gCoreContext->GetNumSetting("QueryInitialFilter", 0) == 1) &&
+        ((m_titleList.size() <= 1)))
+        Close();
 }
 
 void PlaybackBox::setGroupFilter(const QString &recGroup)
@@ -4366,6 +4384,11 @@ void PlaybackBox::setGroupFilter(const QString &recGroup)
 
     if (m_groupnameAsAllProg)
         m_groupDisplayName = ProgramInfo::i18n(m_recGroup);
+
+    // Since the group filter is changing, the current position in the lists
+    // is meaningless -- so reset the lists so the position won't be saved.
+    m_recordingList->Reset();
+    m_groupList->Reset();
 
     UpdateUILists();
 

@@ -57,7 +57,7 @@ class MPUBLIC BDRingBuffer : public RingBuffer
                           uint retry_ms = kDefaultOpenTimeout);
     void close(void);
 
-    bool GoToMenu(const QString str);
+    bool GoToMenu(const QString str, int64_t pts);
     bool SwitchTitle(uint32_t index);
     bool SwitchPlaylist(uint32_t index);
     bool SwitchAngle(uint angle);
@@ -72,7 +72,8 @@ class MPUBLIC BDRingBuffer : public RingBuffer
     void HandleBDEvent(BD_EVENT &event);
 
     // navigation
-    void PressButton(int32_t key, int64_t pts);
+    void PressButton(int32_t key, int64_t pts); // Keyboard
+    void ClickButton(int64_t pts, uint16_t x, uint16_t y); // Mouse
 
   protected:
     BLURAY            *bdnav;

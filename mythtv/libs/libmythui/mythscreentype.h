@@ -74,8 +74,8 @@ class MPUBLIC MythScreenType : public MythUIType
     bool IsLoading(void) { return m_IsLoading; }
     bool IsLoaded(void) { return m_IsLoaded; }
 
-    void SetTextFromMap(QHash<QString, QString> &infoMap);
-    void ResetMap(QHash<QString, QString> &infoMap);
+    void SetTextFromMap(InfoMap &infoMap);
+    void ResetMap(InfoMap &infoMap);
 
     virtual MythPainter *GetPainter(void);
 
@@ -98,11 +98,13 @@ class MPUBLIC MythScreenType : public MythUIType
     virtual void Load(void);   // ONLY to be used for loading data, NO UI WORK
     virtual void Init(void);   // UI work to draw data loaded
 
-    void LoadInBackground(void);
+    void LoadInBackground(QString message = "");
     void ReloadInBackground(void);
 
     void OpenBusyPopup(QString message = "");
     void CloseBusyPopup(void);
+    void SetBusyPopupMessage(const QString &message);
+    void ResetBusyPopup(void);
 
     bool m_FullScreen;
     bool m_IsDeleting;

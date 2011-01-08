@@ -30,8 +30,6 @@ void VideoOutputVDPAU::GetRenderOptions(render_opts &opts)
         (*opts.safe_renderers)["vdpau"].append("vdpau");
     if (opts.decoders->contains("ffmpeg"))
         (*opts.safe_renderers)["ffmpeg"].append("vdpau");
-    if (opts.decoders->contains("libmpeg2"))
-        (*opts.safe_renderers)["libmpeg2"].append("vdpau");
     if (opts.decoders->contains("crystalhd"))
         (*opts.safe_renderers)["crystalhd"].append("vdpau");
     (*opts.safe_renderers)["dummy"].append("vdpau");
@@ -960,7 +958,6 @@ void VideoOutputVDPAU::CheckFrameStates(void)
             }
             else
             {
-                vbuffers.RemoveInheritence(frame);
                 vbuffers.safeEnqueue(kVideoBuffer_avail, frame);
                 vbuffers.end_lock();
                 it = vbuffers.begin_lock(kVideoBuffer_displayed);

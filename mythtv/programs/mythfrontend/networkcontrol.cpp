@@ -1,4 +1,4 @@
-#include <unistd.h>
+# include <unistd.h>
 
 #include <QCoreApplication>
 #include <QRegExp>
@@ -311,6 +311,8 @@ void NetworkControl::processNetworkControlCommand(NetworkCommand *nc)
         result = saveScreenshot(nc);
     else if (is_abbrev("help", nc->getArg(0)))
         result = processHelp(nc);
+    else if (is_abbrev("message", nc->getArg(0)))
+        result = processMessage(nc);
     else if ((nc->getArg(0).toLower() == "exit") || (nc->getArg(0).toLower() == "quit"))
         QCoreApplication::postEvent(this,
                                 new NetworkControlCloseEvent(nc->getClient()));
@@ -416,7 +418,7 @@ void NetworkControlClient::readClient(void)
     while (socket->canReadLine())
     {
         lineIn = socket->readLine();
-        lineIn.replace(QRegExp("[^-a-zA-Z0-9\\s\\.:_#/$%&()*+,;<=>?\\[\\]\\|]"), "");
+//        lineIn.replace(QRegExp("[^-a-zA-Z0-9\\s\\.:_#/$%&()*+,;<=>?\\[\\]\\|]"), "");
         lineIn.replace(QRegExp("[\r\n]"), "");
         lineIn.replace(QRegExp("^\\s"), "");
 
@@ -653,6 +655,94 @@ QString NetworkControl::processPlay(NetworkCommand *nc, int clientID)
                              "%1, cannot play requested file.")
                              .arg(GetMythUI()->GetCurrentLocation());
         }
+    }
+    else if (is_abbrev("music", nc->getArg(1)))
+    {
+#if 0
+        if (GetMythUI()->GetCurrentLocation().toLower() != "playmusic")
+        {
+            return QString("ERROR: You are in %1 mode and this command is "
+                           "only for MythMusic")
+                        .arg(GetMythUI()->GetCurrentLocation());
+        }
+#endif
+
+        QString hostname = gCoreContext->GetHostName();
+
+        if (nc->getArgCount() == 3)
+        {
+            if (is_abbrev("play", nc->getArg(2)))
+                message = QString("MUSIC_COMMAND %1 PLAY").arg(hostname);
+            else if (is_abbrev("pause", nc->getArg(2)))
+                message = QString("MUSIC_COMMAND %1 PAUSE").arg(hostname);
+            else if (is_abbrev("stop", nc->getArg(2)))
+                message = QString("MUSIC_COMMAND %1 STOP").arg(hostname);
+            else if (is_abbrev("getvolume", nc->getArg(2)))
+            {
+                gotAnswer = false;
+
+                MythEvent me(QString("MUSIC_COMMAND %1 GET_VOLUME").arg(hostname));
+                gCoreContext->dispatch(me);
+
+                QTime timer;
+                timer.start();
+                while (timer.elapsed() < 2000 && !gotAnswer)
+                {
+                    qApp->processEvents();
+                    usleep(10000);
+                }
+
+                if (gotAnswer)
+                    return answer;
+
+                return "unknown";
+            }
+            else if (is_abbrev("getmeta", nc->getArg(2)))
+            {
+                gotAnswer = false;
+
+                MythEvent me(QString("MUSIC_COMMAND %1 GET_METADATA").arg(hostname));
+                gCoreContext->dispatch(me);
+
+                QTime timer;
+                timer.start();
+                while (timer.elapsed() < 2000 && !gotAnswer)
+                {
+                    qApp->processEvents();
+                    usleep(10000);
+                }
+
+                if (gotAnswer)
+                    return answer;
+
+                return "unknown";
+            }
+            else
+                return QString("ERROR: Invalid 'play music' command");
+        }
+        else if (nc->getArgCount() > 3)
+        {
+            if (is_abbrev("setvolume", nc->getArg(2)))
+                message = QString("MUSIC_COMMAND %1 SET_VOLUME %2")
+                                .arg(hostname)
+                                .arg(nc->getArg(3));
+            else if (is_abbrev("track", nc->getArg(2)))
+                message = QString("MUSIC_COMMAND %1 PLAY_TRACK %2")
+                                .arg(hostname)
+                                .arg(nc->getArg(3));
+            else if (is_abbrev("url", nc->getArg(2)))
+                message = QString("MUSIC_COMMAND %1 PLAY_URL %2")
+                                .arg(hostname)
+                                .arg(nc->getArg(3));
+            else if (is_abbrev("file", nc->getArg(2)))
+                message = QString("MUSIC_COMMAND %1 PLAY_FILE '%2'")
+                                .arg(hostname)
+                                .arg(nc->getFrom(3));
+            else
+                return QString("ERROR: Invalid 'play music' command");
+        }
+        else
+            return QString("ERROR: Invalid 'play music' command");
     }
     // Everything below here requires us to be in playback mode so check to
     // see if we are
@@ -1010,35 +1100,44 @@ QString NetworkControl::processHelp(NetworkCommand *nc)
     else if (is_abbrev("play", command))
     {
         helpText +=
-            "play volume NUMBER%   - Change volume to given percentage value\r\n"
-            "play channel up       - Change channel Up\r\n"
-            "play channel down     - Change channel Down\r\n"
-            "play channel NUMBER   - Change to a specific channel number\r\n"
-            "play chanid NUMBER    - Change to a specific channel id (chanid)\r\n"
-            "play file FILENAME    - Play FILENAME (FILENAME may be a file or a myth:// URL)\r\n"
+            "play volume NUMBER%    - Change volume to given percentage value\r\n"
+            "play channel up        - Change channel Up\r\n"
+            "play channel down      - Change channel Down\r\n"
+            "play channel NUMBER    - Change to a specific channel number\r\n"
+            "play chanid NUMBER     - Change to a specific channel id (chanid)\r\n"
+            "play file FILENAME     - Play FILENAME (FILENAME may be a file or a myth:// URL)\r\n"
             "play program CHANID yyyy-MM-ddThh:mm:ss\r\n"
-            "                      - Play program with chanid & starttime\r\n"
+            "                       - Play program with chanid & starttime\r\n"
             "play program CHANID yyyy-MM-ddThh:mm:ss resume\r\n"
-            "                      - Resume program with chanid & starttime\r\n"
+            "                       - Resume program with chanid & starttime\r\n"
             "play save preview\r\n"
-            "                      - Save preview image from current position\r\n"
+            "                       - Save preview image from current position\r\n"
             "play save preview FILENAME\r\n"
-            "                      - Save preview image to FILENAME\r\n"
+            "                       - Save preview image to FILENAME\r\n"
             "play save preview FILENAME WxH\r\n"
-            "                      - Save preview image of size WxH\r\n"
-            "play seek beginning   - Seek to the beginning of the recording\r\n"
-            "play seek forward     - Skip forward in the video\r\n"
-            "play seek backward    - Skip backwards in the video\r\n"
-            "play seek HH:MM:SS    - Seek to a specific position\r\n"
-            "play speed pause      - Pause playback\r\n"
-            "play speed normal     - Playback at normal speed\r\n"
-            "play speed 1x         - Playback at normal speed\r\n"
-            "play speed SPEEDx     - Playback where SPEED must be a decimal\r\n"
-            "play speed 1/8x       - Playback at 1/8x speed\r\n"
-            "play speed 1/4x       - Playback at 1/4x speed\r\n"
-            "play speed 1/3x       - Playback at 1/3x speed\r\n"
-            "play speed 1/2x       - Playback at 1/2x speed\r\n"
-            "play stop             - Stop playback\r\n";
+            "                       - Save preview image of size WxH\r\n"
+            "play seek beginning    - Seek to the beginning of the recording\r\n"
+            "play seek forward      - Skip forward in the video\r\n"
+            "play seek backward     - Skip backwards in the video\r\n"
+            "play seek HH:MM:SS     - Seek to a specific position\r\n"
+            "play speed pause       - Pause playback\r\n"
+            "play speed normal      - Playback at normal speed\r\n"
+            "play speed 1x          - Playback at normal speed\r\n"
+            "play speed SPEEDx      - Playback where SPEED must be a decimal\r\n"
+            "play speed 1/8x        - Playback at 1/8x speed\r\n"
+            "play speed 1/4x        - Playback at 1/4x speed\r\n"
+            "play speed 1/3x        - Playback at 1/3x speed\r\n"
+            "play speed 1/2x        - Playback at 1/2x speed\r\n"
+            "play stop              - Stop playback\r\n"
+            "play music play        - Resume playback (MythMusic)\r\n"
+            "play music pause       - Pause playback (MythMusic)\r\n"
+            "play music stop        - Stop Playback (MythMusic)\r\n"
+            "play music setvolume N - Set volume to number (MythMusic)\r\n"
+            "play music getvolume   - Get current volume (MythMusic)\r\n"
+            "play music getmeta     - Get metadata for current track (MythMusic)\r\n"
+            "play music file NAME   - Play specified file (MythMusic)\r\n"
+            "play music track N     - Switch to specified track (MythMusic)\r\n"
+            "play music url URL     - Play specified URL (MythMusic)\r\n";
     }
     else if (is_abbrev("query", command))
     {
@@ -1079,6 +1178,11 @@ QString NetworkControl::processHelp(NetworkCommand *nc)
         helpText +=
             "exit                  - Terminates session\r\n\r\n";
     }
+    else if ((is_abbrev("message", command)))
+    {
+        helpText +=
+            "message               - Displays a simple text message popup\r\n";
+    }
 
     if (!helpText.isEmpty())
         return helpText;
@@ -1095,11 +1199,25 @@ QString NetworkControl::processHelp(NetworkCommand *nc)
         "query              - Queries\r\n"
         "set                - Changes\r\n"
         "screenshot         - Capture screenshot\r\n"
+        "message            - Display a simple text message\r\n"
         "exit               - Exit Network Control\r\n"
         "\r\n"
         "Type 'help COMMANDNAME' for help on any specific command.\r\n";
 
     return helpText;
+}
+
+QString NetworkControl::processMessage(NetworkCommand *nc)
+{
+    if (nc->getArgCount() < 2)
+        return QString("ERROR: See 'help %1' for usage information")
+                       .arg(nc->getArg(0));
+
+    QString message = nc->getCommand().remove(0, 7).trimmed();
+    MythMainWindow *window = GetMythMainWindow();
+    MythEvent* me = new MythEvent(MythEvent::MythUserMessage, message);
+    qApp->postEvent(window, me);
+    return QString("OK");
 }
 
 void NetworkControl::notifyDataAvailable(void)
@@ -1137,35 +1255,49 @@ void NetworkControl::customEvent(QEvent *e)
         MythEvent *me = (MythEvent *)e;
         QString message = me->Message();
 
-        if (message.left(15) != "NETWORK_CONTROL")
-            return;
-
-        QStringList tokens = message.simplified().split(" ");
-        if ((tokens.size() >= 3) &&
-            (tokens[1] == "ANSWER"))
+        if (message.left(13) == "MUSIC_CONTROL")
         {
-            answer = tokens[2];
-            for (int i = 3; i < tokens.size(); i++)
-                answer += QString(" ") + tokens[i];
-            gotAnswer = true;
+            QStringList tokens = message.simplified().split(" ");
+            if ((tokens.size() >= 4) &&
+                (tokens[1] == "ANSWER") &&
+                (tokens[2] == gCoreContext->GetHostName()))
+            {
+                answer = tokens[3];
+                for (int i = 4; i < tokens.size(); i++)
+                    answer += QString(" ") + tokens[i];
+                gotAnswer = true;
+            } 
+
         }
-        else if ((tokens.size() >= 4) &&
-                 (tokens[1] == "RESPONSE"))
+        else if (message.left(15) == "NETWORK_CONTROL")
         {
-            int clientID = tokens[2].toInt();
-            QString response = tokens[3];
-            for (int i = 4; i < tokens.size(); i++)
-                response += QString(" ") + tokens[i];
+            QStringList tokens = message.simplified().split(" ");
+            if ((tokens.size() >= 3) &&
+                (tokens[1] == "ANSWER"))
+            {
+                answer = tokens[2];
+                for (int i = 3; i < tokens.size(); i++)
+                    answer += QString(" ") + tokens[i];
+                gotAnswer = true;
+            }
+            else if ((tokens.size() >= 4) &&
+                     (tokens[1] == "RESPONSE"))
+            {
+                int clientID = tokens[2].toInt();
+                QString response = tokens[3];
+                for (int i = 4; i < tokens.size(); i++)
+                    response += QString(" ") + tokens[i];
 
-            clientLock.lock();
-            NetworkControlClient *ncc = clients.at(clientID);
-            clientLock.unlock();
+                clientLock.lock();
+                NetworkControlClient *ncc = clients.at(clientID);
+                clientLock.unlock();
 
-            nrLock.lock();
-            networkControlReplies.push_back(new NetworkCommand(ncc, response));
-            nrLock.unlock();
+                nrLock.lock();
+                networkControlReplies.push_back(new NetworkCommand(ncc, response));
+                nrLock.unlock();
 
-            notifyDataAvailable();
+                notifyDataAvailable();
+            }
         }
     }
     else if (e->type() == kNetworkControlDataReadyEvent)

@@ -12,6 +12,7 @@
 #include "decoderbase.h"
 #include "privatedecoder.h"
 #include "audiooutputsettings.h"
+#include "spdifencoder.h"
 #include "vbilut.h"
 #include "H264Parser.h"
 #include "videodisplayprofile.h"
@@ -182,11 +183,6 @@ class AvFormatDecoder : public DecoderBase
     friend int get_avf_buffer(struct AVCodecContext *c, AVFrame *pic);
     friend void release_avf_buffer(struct AVCodecContext *c, AVFrame *pic);
 
-    friend int get_avf_buffer_xvmc(struct AVCodecContext *c, AVFrame *pic);
-    friend void release_avf_buffer_xvmc(struct AVCodecContext *c, AVFrame *pic);
-    friend void render_slice_xvmc(struct AVCodecContext *c, const AVFrame *src,
-                                  int offset[4], int y, int type, int height);
-
     friend int open_avf(URLContext *h, const char *filename, int flags);
     friend int read_avf(URLContext *h, uint8_t *buf, int buf_size);
     friend int write_avf(URLContext *h, uint8_t *buf, int buf_size);
@@ -233,6 +229,7 @@ class AvFormatDecoder : public DecoderBase
     bool GenerateDummyVideoFrame(void);
     bool HasVideo(const AVFormatContext *ic);
     float normalized_fps(AVStream *stream, AVCodecContext *enc);
+    void av_update_stream_timings_video(AVFormatContext *ic);
 
   private:
     PrivateDecoder *private_dec;
@@ -332,11 +329,10 @@ class AvFormatDecoder : public DecoderBase
     AudioInfo         audioIn;
     AudioInfo         audioOut;
 
-    // DVD
-    bool dvd_xvmc_enabled;
-    bool dvd_video_codec_changed;
-
     float m_fps;
+
+    // SPDIF Encoder for digital passthrough
+    SPDIFEncoder     *m_spdifenc;
 };
 
 #endif

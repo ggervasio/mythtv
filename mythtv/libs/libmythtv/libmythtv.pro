@@ -64,11 +64,6 @@ using_live: LIBS += -L../libmythlivemedia -lmythlivemedia-$$LIBVERSION
 using_hdhomerun: LIBS += -L../libmythhdhomerun -lmythhdhomerun-$$LIBVERSION
 using_backend: LIBS += -lmp3lame
 LIBS += $$EXTRA_LIBS $$QMAKE_LIBS_DYNLOAD
-!contains( CONFIG_LIBMPEG2EXTERNAL, yes) {
-        DEPENDPATH  += ../libmythmpeg2
-        LIBS += -L../libmythmpeg2 -lmythmpeg2-$$LIBVERSION
-        TARGETDEPS += ../libmythmpeg2/libmythmpeg2-$${MYTH_LIB_EXT}
-}
 
 TARGETDEPS += ../libmyth/libmyth-$${MYTH_SHLIB_EXT}
 TARGETDEPS += ../../external/FFmpeg/libavutil/$$avLibName(avutil)
@@ -247,6 +242,11 @@ SOURCES += dtvconfparser.cpp        dtvconfparserhelpers.cpp
 HEADERS += channelscan/scaninfo.h   channelscan/channelimporter.h
 SOURCES += channelscan/scaninfo.cpp channelscan/channelimporter.cpp
 
+inc.path = $${PREFIX}/include/mythtv/
+inc.files  = playgroup.h
+
+INSTALLS += inc
+
 using_frontend {
     # Recording profile stuff
     HEADERS += profilegroup.h
@@ -275,10 +275,10 @@ using_frontend {
     # A/V decoders
     HEADERS += decoderbase.h
     HEADERS += nuppeldecoder.h          avformatdecoder.h
-    HEADERS += privatedecoder.h         privatedecoder_mpeg2.h
+    HEADERS += privatedecoder.h
     SOURCES += decoderbase.cpp
     SOURCES += nuppeldecoder.cpp        avformatdecoder.cpp
-    SOURCES += privatedecoder.cpp       privatedecoder_mpeg2.cpp
+    SOURCES += privatedecoder.cpp
 
     using_crystalhd {
         DEFINES += USING_CRYSTALHD
@@ -294,10 +294,8 @@ using_frontend {
 
     # On screen display (video output overlay)
     HEADERS += osd.h                    teletextscreen.h
-    HEADERS += udpnotify.h
     HEADERS += subtitlescreen.h         interactivescreen.h
     SOURCES += osd.cpp                  teletextscreen.cpp
-    SOURCES += udpnotify.cpp
     SOURCES += subtitlescreen.cpp       interactivescreen.cpp
 
     # Video output
@@ -324,18 +322,10 @@ using_frontend {
 
     using_x11:DEFINES += USING_X11
 
-    using_xv:HEADERS += videoout_xv.h   XvMCSurfaceTypes.h
-    using_xv:HEADERS += osdxvmc.h       osdchromakey.h
-    using_xv:HEADERS += util-xvmc.h     util-xv.h
-    using_xv:SOURCES += videoout_xv.cpp XvMCSurfaceTypes.cpp
-    using_xv:SOURCES += osdxvmc.cpp     osdchromakey.cpp
-    using_xv:SOURCES += util-xvmc.cpp   util-xv.cpp
+    using_xv:HEADERS += videoout_xv.h   util-xv.h   osdchromakey.h
+    using_xv:SOURCES += videoout_xv.cpp util-xv.cpp osdchromakey.cpp
 
     using_xv:DEFINES += USING_XV
-
-    using_xvmc:DEFINES += USING_XVMC
-    using_xvmcw:DEFINES += USING_XVMCW
-    using_xvmc_vld:DEFINES += USING_XVMC_VLD
 
     using_vdpau {
         DEFINES += USING_VDPAU

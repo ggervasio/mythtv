@@ -33,7 +33,9 @@ using namespace std;
 #include "programrecpriority.h"
 #include "channelrecpriority.h"
 #include "custompriority.h"
+#include "audiooutput.h"
 #include "globalsettings.h"
+#include "audiogeneralsettings.h"
 #include "profilegroup.h"
 #include "playgroup.h"
 #include "networkcontrol.h"
@@ -458,14 +460,29 @@ static void startManualSchedule(void)
         delete mansched;
 }
 
+static bool isLiveTVAvailable(void)
+{
+    if (RemoteGetFreeRecorderCount() > 0)
+        return true;
+
+    QString msg = QObject::tr("All tuners are currently busy.");
+    if (TV::ConfiguredTunerCards() < 1)
+        msg = QObject::tr("There are no configured tuners.");
+
+    ShowOkPopup(msg);
+    return false;
+}
+
 static void startTVInGuide(void)
 {
-    TV::StartTV(NULL, kStartTVInGuide);
+    if (isLiveTVAvailable())
+        TV::StartTV(NULL, kStartTVInGuide);
 }
 
 static void startTVNormal(void)
 {
-    TV::StartTV(NULL, kStartTVNoFlags);
+    if (isLiveTVAvailable())
+        TV::StartTV(NULL, kStartTVNoFlags);
 }
 
 static void showStatus(void)
@@ -586,12 +603,22 @@ static void TVMenuCallback(void *data, QString &selection)
         GeneralSettings settings;
         settings.exec();
     }
+    else if (sel == "settings audiogeneral")
+    {
+        AudioGeneralSettings audiosettings;
+        audiosettings.exec();
+    }
     else if (sel == "settings maingeneral")
     {
         MainGeneralSettings mainsettings;
         mainsettings.exec();
         QStringList strlist( QString("REFRESH_BACKEND") );
         gCoreContext->SendReceiveStringList(strlist);
+    }
+    else if (sel == "settings audiogeneral")
+    {
+        AudioGeneralSettings audiosettings;
+        audiosettings.exec();
     }
     else if (sel == "settings playback")
     {
@@ -762,7 +789,7 @@ static int internal_play_media(const QString &mrl, const QString &plot,
         if (tmprbuf->IsDVD() &&
             tmprbuf->DVD()->GetNameAndSerialNum(name, serialid))
         {
-            QStringList fields = pginfo->QueryDVDBookmark(serialid, false);
+            QStringList fields = pginfo->QueryDVDBookmark(serialid);
             if (!fields.empty())
             {
                 QStringList::Iterator it = fields.begin();

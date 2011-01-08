@@ -31,6 +31,148 @@
 #include "mythuihelper.h"
 #include "mythcorecontext.h"
 
+
+/**
+ * @class BrowserApi
+ * @brief Adds a JavaScript object 
+ * \note allows the browser to control the music player
+ */
+BrowserApi::BrowserApi(QObject *parent) : QObject(parent)
+{
+    gCoreContext->addListener(this);
+}
+
+BrowserApi::~BrowserApi(void)
+{
+    gCoreContext->removeListener(this);
+}
+
+void BrowserApi::setWebView(QWebView *view)
+{
+    QWebPage *page = view->page();
+    m_frame = page->mainFrame();
+
+    attachObject();
+    connect(m_frame, SIGNAL(javaScriptWindowObjectCleared()), this, SLOT(attachObject()));
+}
+
+void BrowserApi::attachObject(void)
+{
+    m_frame->addToJavaScriptWindowObject(QString("MusicPlayer"), this);
+}
+
+void BrowserApi::Play(void)
+{
+    MythEvent me(QString("MUSIC_COMMAND %1 PLAY").arg(gCoreContext->GetHostName()));
+    gCoreContext->dispatch(me);
+}
+
+void BrowserApi::Stop(void)
+{
+    MythEvent me(QString("MUSIC_COMMAND %1 STOP").arg(gCoreContext->GetHostName()));
+    gCoreContext->dispatch(me);
+}
+
+void BrowserApi::Pause(void)
+{
+    MythEvent me(QString("MUSIC_COMMAND %1 PAUSE %1").arg(gCoreContext->GetHostName()));
+    gCoreContext->dispatch(me);
+}
+
+void BrowserApi::SetVolume(int volumn)
+{
+    MythEvent me(QString("MUSIC_COMMAND %1 SET_VOLUME %2")
+                .arg(gCoreContext->GetHostName()).arg(volumn));
+    gCoreContext->dispatch(me);
+}
+
+int BrowserApi::GetVolume(void)
+{
+    m_gotAnswer = false;
+
+    MythEvent me(QString("MUSIC_COMMAND %1 GET_VOLUME")
+                .arg(gCoreContext->GetHostName()));
+    gCoreContext->dispatch(me);
+
+    QTime timer;
+    timer.start();
+    while (timer.elapsed() < 2000  && !m_gotAnswer)
+    {
+        qApp->processEvents();
+        usleep(10000);
+    }
+
+    if (m_gotAnswer)
+        return m_answer.toInt();
+
+    return -1;
+}
+
+void BrowserApi::PlayFile(QString filename)
+{
+    MythEvent me(QString("MUSIC_COMMAND %1 PLAY_FILE '%2'")
+                .arg(gCoreContext->GetHostName()).arg(filename));
+    gCoreContext->dispatch(me);
+}
+
+void BrowserApi::PlayTrack(int trackID)
+{
+    MythEvent me(QString("MUSIC_COMMAND %1 PLAY_TRACK %2")
+                .arg(gCoreContext->GetHostName()).arg(trackID));
+    gCoreContext->dispatch(me);
+}
+
+void BrowserApi::PlayURL(QString url)
+{
+    MythEvent me(QString("MUSIC_COMMAND %1 PLAY_URL %2")
+                .arg(gCoreContext->GetHostName()).arg(url));
+    gCoreContext->dispatch(me);
+}
+
+QString BrowserApi::GetMetadata(void)
+{
+    m_gotAnswer = false;
+
+    MythEvent me(QString("MUSIC_COMMAND %1 GET_METADATA")
+                .arg(gCoreContext->GetHostName()));
+    gCoreContext->dispatch(me);
+
+    QTime timer;
+    timer.start();
+    while (timer.elapsed() < 2000  && !m_gotAnswer)
+    {
+        qApp->processEvents();
+        usleep(10000);
+    }
+
+    if (m_gotAnswer)
+        return m_answer;
+
+    return QString("unknown");
+}
+
+void BrowserApi::customEvent(QEvent *e)
+{
+    if ((MythEvent::Type)(e->type()) == MythEvent::MythEventMessage)
+    {
+        MythEvent *me = (MythEvent *)e;
+        QString message = me->Message();
+
+        if (message.left(13) != "MUSIC_CONTROL")
+            return;
+
+        QStringList tokens = message.simplified().split(" ");
+        if ((tokens.size() >= 4) && (tokens[1] == "ANSWER") 
+            && (tokens[2] == gCoreContext->GetHostName()))
+        {
+            m_answer = tokens[3];
+            for (int i = 4; i < tokens.size(); i++)
+                m_answer += QString(" ") + tokens[i];
+            m_gotAnswer = true;
+        }
+    }
+}
+
 /**
  * @class MythWebView
  * @brief Subclass of QWebView
@@ -45,6 +187,14 @@ MythWebView::MythWebView(QWidget *parent, MythUIWebBrowser *parentBrowser)
             this, SLOT(handleUnsupportedContent(QNetworkReply *)));
 
     page()->setForwardUnsupportedContent(true);
+
+    m_api = new BrowserApi(this);
+    m_api->setWebView(this);
+}
+
+MythWebView::~MythWebView(void)
+{
+    delete m_api;
 }
 
 /**
@@ -322,6 +472,7 @@ MythUIWebBrowser::~MythUIWebBrowser()
 {
     if (m_browser)
     {
+        m_browser->hide();
         m_browser->disconnect();
         m_browser->deleteLater();
         m_browser = NULL;
@@ -549,6 +700,18 @@ QUrl MythUIWebBrowser::GetUrl(void)
     }
     else
         return QUrl();
+}
+
+/** \fn MythUIWebBrowser::evaluateJavaScript(const QString& scriptSource)
+ *  \brief Evaluates the JavaScript code in \a scriptSource.
+ *  \return QVariant
+ */
+QVariant MythUIWebBrowser::evaluateJavaScript(const QString& scriptSource)
+{
+    if (m_browser)
+        return m_browser->page()->mainFrame()->evaluateJavaScript(scriptSource);
+    else
+        return QVariant();
 }
 
 void MythUIWebBrowser::slotLoadStarted(void)

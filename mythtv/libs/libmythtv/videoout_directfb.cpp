@@ -80,9 +80,9 @@ class DirectfbData
         bufferLock(QMutex::Recursive),
         has_blit(false)
     {
-        bzero(&videoLayerDesc,           sizeof(DFBDisplayLayerDescription));
-        bzero(&videoLayerConfig,         sizeof(DFBDisplayLayerConfig));
-        bzero(&videoSurfaceCapabilities, sizeof(DFBSurfaceCapabilities));
+        memset(&videoLayerDesc, 0,           sizeof(DFBDisplayLayerDescription));
+        memset(&videoLayerConfig, 0,         sizeof(DFBDisplayLayerConfig));
+        memset(&videoSurfaceCapabilities, 0, sizeof(DFBSurfaceCapabilities));
         init_keymap(qtKeyMap);
     }
 
@@ -270,8 +270,6 @@ void VideoOutputDirectfb::GetRenderOptions(render_opts &opts,
     (*opts.safe_renderers)["nuppel"].append("directfb");
     if (opts.decoders->contains("ffmpeg"))
         (*opts.safe_renderers)["ffmpeg"].append("directfb");
-    if (opts.decoders->contains("libmpeg2"))
-        (*opts.safe_renderers)["libmpeg2"].append("directfb");
     if (opts.decoders->contains("crystalhd"))
         (*opts.safe_renderers)["crystalhd"].append("directfb");
     opts.priorities->insert("directfb", 60);
@@ -405,11 +403,11 @@ bool VideoOutputDirectfb::Init(int width, int height, float aspect, WId winid,
     (DIRECTFB_MINOR_VERSION <= 9) && \
     (DIRECTFB_MICRO_VERSION <= 22)
     DFBCardCapabilities info;
-    bzero(&info, sizeof(DFBCardCapabilities));
+    memset(&info, 0, sizeof(DFBCardCapabilities));
     fberr = data->dfb->GetCardCapabilities(data->dfb, &info);
 #else
     DFBGraphicsDeviceDescription info;
-    bzero(&info, sizeof(DFBGraphicsDeviceDescription));
+    memset(&info, 0, sizeof(DFBGraphicsDeviceDescription));
     fberr = data->dfb->GetDeviceDescription(data->dfb, &info);
 #endif
 
@@ -755,10 +753,10 @@ void VideoOutputDirectfb::PrepareFrame(VideoFrame *frame, FrameScanType,
         memset(dst_frame.buf + dst_frame.offsets[0], 0x7f,
                (dst_frame.pitches[0]) * (dst_frame.height>>1));
 
-        bzero(dst_frame.buf + dst_frame.offsets[1],
+        memset(dst_frame.buf + dst_frame.offsets[1], 0,
               (dst_frame.pitches[1]) * (dst_frame.height>>2));
 
-        bzero(dst_frame.buf + dst_frame.offsets[2],
+        memset(dst_frame.buf + dst_frame.offsets[2], 0,
               (dst_frame.pitches[2]) * (dst_frame.height>>2));
 #endif
     }
@@ -914,7 +912,7 @@ bool VideoOutputDirectfb::InputChanged(const QSize &input_size,
                               aspect_only);
 
     DFBSurfaceDescription desc;
-    bzero(&desc, sizeof(DFBSurfaceDescription));
+    memset(&desc, 0, sizeof(DFBSurfaceDescription));
 
     desc.flags = (DFBSurfaceDescriptionFlags)
         (DSDESC_HEIGHT | DSDESC_WIDTH | DSDESC_PIXELFORMAT);

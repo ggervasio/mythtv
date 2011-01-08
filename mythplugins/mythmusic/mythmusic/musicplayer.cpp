@@ -468,8 +468,7 @@ void MusicPlayer::customEvent(QEvent *event)
                 stop(true);
             }
         }
-
-        if (me->Message().left(12) == "PLAYBACK_END")
+        else if (me->Message().left(12) == "PLAYBACK_END")
         {
             if (m_wasPlaying)
             {
@@ -485,6 +484,91 @@ void MusicPlayer::customEvent(QEvent *event)
 
                 m_wasPlaying = false;
             }
+        }
+        else if (me->Message().left(13) == "MUSIC_COMMAND")
+        {
+            QStringList list = me->Message().simplified().split(' ');
+
+            if (list.size() >= 3 && list[1] == gCoreContext->GetHostName())
+            {
+                if (list[2] == "PLAY")
+                    play();
+                else if (list[2] == "STOP")
+                    stop();
+                else if (list[2] == "PAUSE")
+                    pause();
+                else if (list[2] == "SET_VOLUME")
+                {
+                    if (list.size() >= 3)
+                    {
+                        int volume = list[3].toInt();
+                        if (volume >= 0 && volume <= 100) 
+                            setVolume(volume);
+                    }
+                }
+                else if (list[2] == "GET_VOLUME")
+                {
+                    QString message = QString("MUSIC_CONTROL ANSWER %1 %2")
+                            .arg(gCoreContext->GetHostName()).arg(getVolume());
+                    MythEvent me(message);
+                    gCoreContext->dispatch(me);
+                }
+                else if (list[2] == "PLAY_FILE")
+                {
+                    int start = me->Message().indexOf("'");
+                    int end = me->Message().lastIndexOf("'");
+
+                    if (start != -1 && end != -1 && start != end)
+                    {
+                        QString filename = me->Message().mid(start + 1, end - start - 1);
+                        Metadata mdata;
+                        mdata.setFilename(filename);
+                        playFile(mdata);
+                    }
+                    else
+                        VERBOSE(VB_IMPORTANT, QString("MusicPlayer: got invalid MUSIC_COMMAND PLAY_FILE - %1").arg(me->Message()));
+                }
+                else if (list[2] == "PLAY_URL")
+                {
+                    if (list.size() == 4)
+                    {
+                        QString filename = list[3];
+                        Metadata mdata;
+                        mdata.setFilename(filename);
+                        playFile(mdata);
+                    }
+                    else
+                        VERBOSE(VB_IMPORTANT, QString("MusicPlayer: got invalid MUSIC_COMMAND PLAY_URL - %1").arg(me->Message()));
+                }
+                else if (list[2] == "PLAY_TRACK")
+                {
+                    if (list.size() == 4)
+                    {
+                        int trackID = list[3].toInt();
+                        Metadata *mdata = gMusicData->all_music->getMetadata(trackID);
+                        if (mdata)
+                            playFile(*mdata);
+                    }
+                    else
+                        VERBOSE(VB_IMPORTANT, QString("MusicPlayer: got invalid MUSIC_COMMAND PLAY_TRACK - %1").arg(me->Message()));
+                }
+                else if (list[2] == "GET_METADATA")
+                {
+                    QString mdataStr;
+                    Metadata *mdata = getCurrentMetadata();
+                    if (mdata)
+                        mdataStr = QString("%1 by %2 from %3").arg(mdata->Title()).arg(mdata->Artist()).arg(mdata->Album());
+                    else
+                        mdataStr = "Unknown Track2";
+
+                    QString message = QString("MUSIC_CONTROL ANSWER %1 %2")
+                            .arg(gCoreContext->GetHostName()).arg(mdataStr);
+                    MythEvent me(message);
+                    gCoreContext->dispatch(me);
+                }
+            }
+            else
+                VERBOSE(VB_IMPORTANT, QString("MusicPlayer: got unknown/invalid MUSIC_COMMAND - %1").arg(me->Message()));
         }
     }
 

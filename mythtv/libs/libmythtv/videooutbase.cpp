@@ -213,7 +213,7 @@ VideoOutput *VideoOutput::Create(
         if (vo)
         {
             vo->SetPIPState(pipState);
-            vo->video_prate = video_prate;
+            vo->SetVideoFrameRate(video_prate);
             if (vo->Init(
                     video_dim.width(), video_dim.height(), video_aspect,
                     win_id, display_rect.x(), display_rect.y(),
@@ -313,8 +313,7 @@ VideoOutput::VideoOutput() :
     db_deint_filtername(QString::null),
 
     // Video parameters
-    video_codec_id(kCodec_NONE),
-    db_vdisp_profile(NULL),             video_prate(0.0),
+    video_codec_id(kCodec_NONE),        db_vdisp_profile(NULL),
 
     // Picture-in-Picture stuff
     pip_desired_display_size(160,128),  pip_display_size(0,0),
@@ -346,7 +345,7 @@ VideoOutput::VideoOutput() :
     osd_painter(NULL),                  osd_image(NULL)
 
 {
-    bzero(&pip_tmp_image, sizeof(pip_tmp_image));
+    memset(&pip_tmp_image, 0, sizeof(pip_tmp_image));
     db_display_dim = QSize(gCoreContext->GetNumSetting("DisplaySizeWidth",  0),
                            gCoreContext->GetNumSetting("DisplaySizeHeight", 0));
 
@@ -450,7 +449,6 @@ bool VideoOutput::IsPreferredRenderer(QSize video_size)
 
 void VideoOutput::SetVideoFrameRate(float playback_fps)
 {
-    video_prate = playback_fps;
     if (db_vdisp_profile)
         db_vdisp_profile->SetOutput(playback_fps);
 }
@@ -697,7 +695,7 @@ void VideoOutput::StopEmbedding(void)
 /**
  * \fn VideoOutput::DrawSlice(VideoFrame*, int, int, int, int)
  * \brief Informs video output of new data for frame,
- *        used for XvMC acceleration.
+ *        used for hardware accelerated decoding.
  */
 void VideoOutput::DrawSlice(VideoFrame *frame, int x, int y, int w, int h)
 {
@@ -958,8 +956,7 @@ void VideoOutput::ShowPIPs(VideoFrame *frame, const PIPMap &pipPlayers)
  * \fn VideoOutput::ShowPIP(VideoFrame*,MythPlayer*,PIPLocation)
  * \brief Composites PiP image onto a video frame.
  *
- *  Note: This only works with memory backed VideoFrames,
- *        that is not XvMC, OpenGL, VDPAU, etc.
+ *  Note: This only works with memory backed VideoFrames.
  *
  * \param frame     Frame to composite PiP onto.
  * \param pipplayer Picture-in-Picture Player.
@@ -1010,7 +1007,7 @@ void VideoOutput::ShowPIP(VideoFrame  *frame,
     {
         DoPipResize(pipw, piph);
 
-        bzero(&pip_tmp_image, sizeof(pip_tmp_image));
+        memset(&pip_tmp_image, 0, sizeof(pip_tmp_image));
 
         if (pip_tmp_buf && pip_scaling_context)
         {
@@ -1316,13 +1313,13 @@ bool VideoOutput::DisplayOSD(VideoFrame *frame, OSD *osd)
         }
         else if (FMT_AI44 == frame->codec)
         {
-            bzero(frame->buf, video_dim.width() * video_dim.height());
+            memset(frame->buf, 0, video_dim.width() * video_dim.height());
             yuv888_to_i44(frame->buf, osd_image, video_dim,
                           left, top, right, bottom, true);
         }
         else if (FMT_IA44 == frame->codec)
         {
-            bzero(frame->buf, video_dim.width() * video_dim.height());
+            memset(frame->buf, 0, video_dim.width() * video_dim.height());
             yuv888_to_i44(frame->buf, osd_image, video_dim,
                           left, top, right, bottom, false);
         }
@@ -1546,7 +1543,8 @@ void VideoOutput::ResizeForVideo(uint width, uint height)
     if ((width == 1920 || width == 1440) && height == 1088)
         height = 1080; // ATSC 1920x1080
 
-    if (display_res && display_res->SwitchToVideo(width, height, video_prate))
+    float rate = db_vdisp_profile ? db_vdisp_profile->GetOutput() : 0.0f;
+    if (display_res && display_res->SwitchToVideo(width, height, rate))
     {
         // Switching to custom display resolution succeeded
         // Make a note of the new size

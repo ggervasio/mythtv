@@ -82,7 +82,7 @@ Advanced options (experts only):
   --extra-cflags=ECFLAGS   add ECFLAGS to CFLAGS [$CFLAGS]
   --extra-cxxflags=ECXFLAGS add ECXXFLAGS to list of flags for C++ compile
   --extra-ldflags=ELDFLAGS add ELDFLAGS to LDFLAGS [$LDFLAGS]
-  --enable-symbol-visibility enables symbol visibility options
+  --disable-symbol-visibility disables symbol visibility options
   --arch=ARCH              select architecture [$arch]
   --tune=CPU               tune instruction usage for a particular CPU [$tune]
   --cpu=CPU                select the minimum required CPU (affects
@@ -133,9 +133,14 @@ Advanced options (experts only):
 
   --enable-mac-bundle      produce standalone OS X apps (e.g. mythfrontend.app)
 
+  --disable-libxml2        disable libxml2 support (disc metadata)
+  --libxml2-path=HDRLOC    location of directory containing
+                           'libxml/parser.h', not the
+                           directory with parser.h [$libxml2_path_default]
+
   --with-bindings=LIST     install the bindings specified in the
                            comma-separated list
-                           Supported bindings: perl, python
+                           Supported bindings: perl, python, php
                            comma-separated list
   --python=PATH            Force a specific python executable to use [$python_default]
   --perl-config-opts=OPTS  Additional options to pass when generating
@@ -357,8 +362,8 @@ die(){
     echolog "$@"
     cat <<EOF
 
-If you think configure made a mistake, make sure you are using the latest
-version from SVN.  If the latest version fails, report the problem to the
+If you think configure made a mistake, make sure that you are using the latest
+version of MythTV from git.  If the latest version fails, report the problem to the
 mythtv-dev@mythtv.org mailing list or IRC #mythtv on irc.freenode.net
 EOF
     if disabled logging; then
@@ -502,6 +507,11 @@ disable_bindings_python(){
 disable_bindings_perl(){
     echo "WARNING: disabling Perl bindings; missing $1"
     disable bindings_perl
+}
+
+disable_bindings_php(){
+    echo "WARNING: disabling PHP bindings; missing $1"
+    disable bindings_php
 }
 
 enabled(){
@@ -668,6 +678,15 @@ add_extralibs(){
 check_cmd(){
     log "$@"
     "$@" >> $logfile 2>&1
+}
+
+check_python(){
+    log check_python
+    check_cmd $python <<EOF
+import sys
+if sys.version_info < (2,6):
+    sys.exit(1)
+EOF
 }
 
 check_py_lib(){
@@ -1195,6 +1214,7 @@ HAVE_LIST="
     attribute_may_alias
     attribute_packed
     bswap
+    byteswap_h
     closesocket
     cmov
     conio_h
@@ -1265,6 +1285,7 @@ HAVE_LIST="
     symver
     symver_gnu_asm
     symver_asm_label
+    sys_endian_h
     sys_mman_h
     sys_resource_h
     sys_select_h
@@ -1292,6 +1313,7 @@ MYTHTV_CONFIG_LIST='
     backend
     bindings_perl
     bindings_python
+    bindings_php
     crystalhd
     cygwin
     darwin
@@ -1307,6 +1329,7 @@ MYTHTV_CONFIG_LIST='
     joystick_menu
     libfftw3
     libmpeg2external
+    libxml2
     lirc
     mheg
     opengl_video
@@ -1354,6 +1377,7 @@ USING_LIST='
     appleremote
     bindings_perl
     bindings_python
+    bindings_php
     darwin_da
     mythtranscode
     opengl
@@ -1388,6 +1412,7 @@ PATHS_LIST='
     runprefix
     shlibdir
     x11_path
+    libxml2_path
 '
 
 CMDLINE_SET="
@@ -1915,6 +1940,7 @@ audio_jack="default"
 enable audio_oss
 enable bindings_perl
 enable bindings_python
+enable bindings_php
 enable directfb
 enable dvb
 enable ffmpeg_pthreads
@@ -1925,6 +1951,7 @@ enable hdpvr
 enable iptv
 enable ivtv
 enable lamemp3
+enable libxml2
 enable lirc
 enable mheg
 enable mythtranscode
@@ -1932,6 +1959,7 @@ enable opengl
 enable opengl_vsync
 enable opengl_video
 enable quartz_video
+enable symbol_visibility
 enable v4l
 enable x11
 enable xrandr
@@ -1943,6 +1971,7 @@ enable xvmcw
 # mythtv paths
 dvb_path_default="${sysroot}/usr/include"
 x11_path_default="${sysroot}/usr/X11R6/include"
+libxml2_path_default="${sysroot}/usr/include/libxml2"
 xvmc_lib=""
 
 # configurable options
@@ -1955,6 +1984,8 @@ enable avutil
 enable asm
 enable debug
 #enable doc
+enable ffmpeg
+enable ffplay
 enable fastdiv
 enable gpl
 enable mpegaudio_hp
@@ -2139,6 +2170,9 @@ for opt do
             if test x"${binding}" = x"python"; then
                 bindings_python="yes"
             fi
+            if test x"${binding}" = x"php"; then
+                bindings_php="yes"
+            fi
         done
     ;;
     --without-bindings=*)
@@ -2149,6 +2183,9 @@ for opt do
             fi
             if test x"${binding}" = x"python"; then
                 bindings_python="no"
+            fi
+            if test x"${binding}" = x"php"; then
+                bindings_php="no"
             fi
         done
     ;;
@@ -3040,6 +3077,8 @@ case $target_os in
         enabled ppc && add_asflags -force_cpusubtype_ALL
         # Workaround compile errors from missing u_int/uint def
         CPPFLAGS=`echo $CPPFLAGS | sed 's/-D_POSIX_C_SOURCE=200112//'`
+        # Workaround compile errors from missing ru_maxrss
+        add_cppflags -D_DARWIN_C_SOURCE
         enable  appleremote
         enable  backend
         enable  darwin
@@ -3091,6 +3130,7 @@ EOF
         enable  backend
         disable bindings_perl
         disable bindings_python
+        disable bindings_php
         disable dv1394
         disable dvb
         enable  memalign_hack
@@ -3252,10 +3292,10 @@ if ! is_qmake4 $qmake; then
     is_qmake4 qmake-qt4 && qmake=qmake-qt4 || die "qmake for Qt4.5 or newer not found.\nPlease specify the correct qmake with --qmake="
 fi
 
-if ! expr $($qmake -query QT_VERSION) : "4\.[5-9]\.[0-9]" >/dev/null; then 
-    die "Qt4.5 or newer is required to build MythTV." 
-fi 
-    
+if ! expr $($qmake -query QT_VERSION) : "4\.[5-9]\.[0-9]" >/dev/null; then
+    die "Qt4.5 or newer is required to build MythTV."
+fi
+
 enable_pic() {
     enable pic
     add_cppflags -DPIC
@@ -3554,11 +3594,13 @@ check_lib2 "windows.h psapi.h" GetProcessMemoryInfo -lpsapi
 check_func_headers windows.h GetProcessTimes
 check_func_headers windows.h VirtualAlloc
 
+check_header byteswap.h
 check_header conio.h
 check_header dlfcn.h
 check_header dxva2api.h
 check_header malloc.h
 check_header poll.h
+check_header sys/endian.h
 check_header sys/mman.h
 check_header sys/resource.h
 check_header sys/select.h
@@ -3586,7 +3628,7 @@ fi
 disabled  zlib || check_lib   zlib.h      zlibVersion -lz   || disable  zlib
 disabled bzlib || check_lib2 bzlib.h BZ2_bzlibVersion -lbz2 || disable bzlib
 
-# Attempt to use libudev for mediamonitor 
+# Attempt to use libudev for mediamonitor
 enabled libudev && check_lib2 libudev.h udev_new -ludev || disable libudev
 
 enabled ffmpeg_pthreads && enable pthreads
@@ -3978,6 +4020,15 @@ fi
 enabled libfftw3 && check_lib2 fftw3.h fftw_init_threads -lfftw3_threads -lfftw3f -lfftw3 ||
     disable libfftw3
 
+enabled libxml2 && check_cc -I"$libxml2_path" <<EOF && add_extralibs "-lxml2" || disable libxml2
+#include <libxml/xmlversion.h>
+int main(void) {
+    if (LIBXML_VERSION > 20600)
+        return 1;
+    return 0;
+}
+EOF
+
 enabled x11 && check_lib X11/Xlib.h XQueryExtension -lX11 || disable x11
 enabled xrandr && check_lib X11/extensions/Xrandr.h XRRSelectInput -lXrandr || disable xrandr
 enabled xv && check_lib X11/extensions/Xv.h XvPutStill -lXv || disable xv
@@ -4143,6 +4194,7 @@ fi
 
 # Check for python dependencies
 if enabled bindings_python; then
+    check_python         || disable_bindings_python "Python 2.6"
     check_py_lib MySQLdb || disable_bindings_python "MySQLdb"
     check_py_lib lxml    || disable_bindings_python "lxml"
 fi
@@ -4150,7 +4202,7 @@ fi
 # Check for perl dependencies
 # Modules distributed in Perl core
 if enabled bindings_perl; then
-    check_pl_lib "ExtUtils::MakeMaker" || 
+    check_pl_lib "ExtUtils::MakeMaker" ||
         disable_bindings_perl "ExtUtils::MakeMaker"
     check_pl_lib Config           || disable_bindings_perl Config
     check_pl_lib Exporter         || disable_bindings_perl Exporter
@@ -4161,11 +4213,14 @@ if enabled bindings_perl; then
     check_pl_lib DBI              || disable_bindings_perl DBI
     check_pl_lib "HTTP::Request"  || disable_bindings_perl "HTTP::Request"
     check_pl_lib "LWP::UserAgent" || disable_bindings_perl "LWP::UserAgent"
-    check_pl_lib "Net::UPnP::QueryResponse" || 
+    check_pl_lib "Net::UPnP::QueryResponse" ||
         disable_bindings_perl "Net::UPnP::QueryResponse"
-    check_pl_lib "Net::UPnP::ControlPoint"  || 
+    check_pl_lib "Net::UPnP::ControlPoint"  ||
         disable_bindings_perl "Net::UPnP::ControlPoint"
 fi
+
+# Check for php dependencies
+# are none at this time
 
 enabled_any $THREADS_LIST      && enable threads
 
@@ -4392,6 +4447,7 @@ if enabled frontend; then
     echo "Windows (DirectX)         yes"
   fi
   echo "libfftw3 support          ${libfftw3-no}"
+  echo "libxml2 support           ${libxml2-no} [$libxml2_path]"
   echo
   echo "# Video Output Support"
   echo "x11 support               ${x11-no}"
@@ -4431,6 +4487,7 @@ if test x"$PERL_CONFIG_OPTS" != x""; then
   echo "Perl config options       $PERL_CONFIG_OPTS"
 fi
 echo "bindings_python           ${bindings_python-no}"
+echo "bindings_php              ${bindings_php-no}"
 echo ""
 
 MYTH_CONFIG_H=libs/libmythdb/mythconfig.h
@@ -4701,6 +4758,13 @@ if enabled dvb; then
   append CONFIG_INCLUDEPATH "$dvb_path"
 fi
 
+if enabled libxml2; then
+  if [ -d $libxml2_path ] ; then
+    append CONFIG_INCLUDEPATH "$libxml2_path"
+    append CCONFIG "using_libxml2"
+  fi
+fi
+
 if enabled x11; then
   if [ -d $x11_path ] ; then
     append CONFIG_INCLUDEPATH "$x11_path"
@@ -4770,7 +4834,8 @@ SLIB_EXTRA_CMD=${SLIB_EXTRA_CMD}
 SLIB_INSTALL_EXTRA_CMD=${SLIB_INSTALL_EXTRA_CMD}
 SLIB_UNINSTALL_EXTRA_CMD=${SLIB_UNINSTALL_EXTRA_CMD}
 EOF
-cat >> external/FFmpeg/config.mak < $MYTH_CONFIG_MAK
+# Strip out the old dirs that we are about to put back in.
+sed -e '/^S?H?LIBDIR=.*$/d' -e '/^INCDIR=.*$/d' -e '/^BINDIR=.*$/d' -e '/^DATADIR=.*$/d' -e '/^MANDIR=.*$/d' $MYTH_CONFIG_MAK >> external/FFmpeg/config.mak
 cat >> external/FFmpeg/config.mak <<EOF
 LIBDIR=\$(INSTALL_ROOT)$libdir
 SHLIBDIR=\$(INSTALL_ROOT)$shlibdir
@@ -4778,6 +4843,7 @@ INCDIR=\$(INSTALL_ROOT)$incdir
 BINDIR=\$(INSTALL_ROOT)$bindir
 DATADIR=\$(INSTALL_ROOT)$datadir
 MANDIR=\$(INSTALL_ROOT)$mandir
+CFLAGS=${CFLAGS} -w
 endif # FFMPEG_CONFIG_MAK
 EOF
 

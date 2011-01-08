@@ -38,7 +38,7 @@
 #******************************************************************************
 
 # version of script - change after each update
-VERSION="0.1.20101006-1"
+VERSION="0.1.20101206-1"
 
 # keep all temporary files for debugging purposes
 # set this to True before a first run through when testing
@@ -400,7 +400,7 @@ def getThemeFile(theme,file):
 # Returns the path where we can find our fonts
 
 def getFontPathName(fontname):
-    return os.path.join(sharepath, fontname)
+    return os.path.join(sharepath, "fonts", fontname)
 
 #############################################################
 # Creates a file path where the temp files for a video file can be created
@@ -2677,11 +2677,15 @@ def deMultiplexMPEG2File(folder, mediafile, video, audio1, audio2):
                 command += "-a %d " % (audio1[AUDIO_ID])
             elif audio1[AUDIO_CODEC] == 'AC3':
                 command += "-c %d " % (audio1[AUDIO_ID])
+            elif audio1[AUDIO_CODEC] == 'EAC3':
+                command += "-c %d " % (audio1[AUDIO_ID])
 
         if audio2[AUDIO_ID] != -1: 
             if audio2[AUDIO_CODEC] == 'MP2':
                 command += "-a %d " % (audio2[AUDIO_ID])
             elif audio2[AUDIO_CODEC] == 'AC3':
+                command += "-c %d " % (audio2[AUDIO_ID])
+            elif audio2[AUDIO_CODEC] == 'EAC3':
                 command += "-c %d " % (audio2[AUDIO_ID])
 
     else:
@@ -2693,11 +2697,16 @@ def deMultiplexMPEG2File(folder, mediafile, video, audio1, audio2):
                 command += "-a %d " % (audio1[AUDIO_ID] & 255)
             elif audio1[AUDIO_CODEC] == 'AC3':
                 command += "-c %d " % (audio1[AUDIO_ID] & 255)
+            elif audio1[AUDIO_CODEC] == 'EAC3':
+                command += "-c %d " % (audio1[AUDIO_ID] & 255)
+
 
         if audio2[AUDIO_ID] != -1: 
             if audio2[AUDIO_CODEC] == 'MP2':
                 command += "-a %d " % (audio2[AUDIO_ID] & 255)
             elif audio2[AUDIO_CODEC] == 'AC3':
+                command += "-c %d " % (audio2[AUDIO_ID] & 255)
+            elif audio2[AUDIO_CODEC] == 'EAC3':
                 command += "-c %d " % (audio2[AUDIO_ID] & 255)
 
     mediafile = quoteFilename(mediafile)

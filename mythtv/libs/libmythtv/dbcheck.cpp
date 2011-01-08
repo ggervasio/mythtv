@@ -20,7 +20,7 @@ using namespace std;
    mythtv/bindings/perl/MythTV.pm
 */
 /// This is the DB schema version expected by the running MythTV instance.
-const QString currentDatabaseVersion = "1264";
+const QString currentDatabaseVersion = "1266";
 
 static bool UpdateDBVersionNumber(const QString &newnumber, QString &dbver);
 static bool performActualUpdate(
@@ -451,6 +451,9 @@ static bool performActualUpdate(
 bool UpgradeTVDatabaseSchema(const bool upgradeAllowed,
                              const bool upgradeIfNoUI)
 {
+#if IGNORE_SCHEMA_VER_MISMATCH
+    return true;
+#endif
     SchemaUpgradeWizard  * DBup;
 
 
@@ -561,7 +564,8 @@ static bool doUpgradeTVDatabaseSchema(void)
         const char *updates[] = {
 "CREATE TABLE IF NOT EXISTS dvb_signal_quality ("
 "    id INT UNSIGNED AUTO_INCREMENT NOT NULL PRIMARY KEY,"
-"    sampletime TIMESTAMP NOT NULL,"
+"    sampletime TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP "
+"                         ON UPDATE CURRENT_TIMESTAMP,"
 "    cardid INT UNSIGNED NOT NULL,"
 "    fe_snr INT UNSIGNED NOT NULL,"
 "    fe_ss  INT UNSIGNED NOT NULL,"
@@ -727,7 +731,8 @@ NULL
 "ALTER TABLE people ADD UNIQUE name (name(41));",
 "CREATE TABLE programgenres ( "
 "    chanid int unsigned NOT NULL, "
-"    starttime timestamp NOT NULL, "
+"    starttime timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP "
+"                        ON UPDATE CURRENT_TIMESTAMP, "
 "    relevance char(1) NOT NULL, "
 "    genre char(30), "
 "    PRIMARY KEY (chanid, starttime, relevance) "
@@ -743,7 +748,8 @@ NULL
         const char *updates[] = {
 "CREATE TABLE IF NOT EXISTS programgenres ( "
 "    chanid int unsigned NOT NULL, "
-"    starttime timestamp NOT NULL, "
+"    starttime timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP "
+"                        ON UPDATE CURRENT_TIMESTAMP, "
 "    relevance char(1) NOT NULL, "
 "    genre char(30), "
 "    PRIMARY KEY (chanid, starttime, relevance) "
@@ -946,7 +952,8 @@ NULL
         const char *updates[] = {
 "ALTER TABLE recorded CHANGE starttime starttime DATETIME NOT NULL;",
 "ALTER TABLE recorded CHANGE endtime endtime DATETIME NOT NULL;",
-"ALTER TABLE recorded ADD COLUMN lastmodified TIMESTAMP NOT NULL;",
+"ALTER TABLE recorded ADD COLUMN lastmodified TIMESTAMP NOT NULL "
+"                     DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP;",
 "ALTER TABLE recorded ADD COLUMN filesize BIGINT(20) DEFAULT 0 NOT NULL;",
 "ALTER TABLE credits CHANGE starttime starttime DATETIME NOT NULL;",
 "ALTER TABLE oldprogram CHANGE airdate airdate DATETIME NOT NULL;",
@@ -1033,7 +1040,8 @@ NULL
 "    cmds INTEGER NOT NULL DEFAULT 0,"
 "    flags INTEGER NOT NULL DEFAULT 0,"
 "    status INTEGER NOT NULL DEFAULT 0,"
-"    statustime TIMESTAMP NOT NULL,"
+"    statustime TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP "
+"                         ON UPDATE CURRENT_TIMESTAMP,"
 "    hostname varchar(64) NOT NULL DEFAULT '',"
 "    args BLOB NOT NULL DEFAULT '',"
 "    comment VARCHAR(128) NOT NULL DEFAULT '',"
@@ -1149,7 +1157,8 @@ NULL
 "  hp_code_rate varchar(10) default 'auto',"
 "  sistandard varchar(10) default 'dvb',"
 "  serviceversion smallint(6) default 33,"
-"  updatetimestamp timestamp(14) NOT NULL,"
+"  updatetimestamp timestamp(14) NOT NULL DEFAULT CURRENT_TIMESTAMP "
+"                                ON UPDATE CURRENT_TIMESTAMP,"
 "  PRIMARY KEY  (mplexid)"
 ");",
 // These should be included in an update after the 0.17 release.
@@ -2727,7 +2736,8 @@ NULL
 "   audionum tinyint(4) NOT NULL default -1,"
 "   subtitlenum tinyint(4) NOT NULL default -1,"
 "   framenum bigint(20) NOT NULL default 0,"
-"   timestamp timestamp NOT NULL, "
+"   timestamp timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP "
+"                                ON UPDATE CURRENT_TIMESTAMP, "
 "   PRIMARY KEY (serialid));",
 NULL
 };
@@ -5210,7 +5220,8 @@ NULL
 "  description TEXT NOT NULL,"
 "  commandline TEXT NOT NULL,"
 "  version DOUBLE NOT NULL,"
-"  updated TIMESTAMP NOT NULL,"
+"  updated TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP "
+"                             ON UPDATE CURRENT_TIMESTAMP,"
 "  search BOOL NOT NULL,"
 "  tree BOOL NOT NULL,"
 "  podcast BOOL NOT NULL,"
@@ -5230,7 +5241,8 @@ NULL
 "  thumbnail TEXT NOT NULL,"
 "  mediaURL TEXT NOT NULL,"
 "  author VARCHAR(255) NOT NULL,"
-"  date TIMESTAMP NOT NULL,"
+"  date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP "
+"                          ON UPDATE CURRENT_TIMESTAMP,"
 "  time INT NOT NULL,"
 "  rating VARCHAR(255) NOT NULL,"
 "  filesize BIGINT NOT NULL,"
@@ -5502,6 +5514,42 @@ NULL
             return false;
     }
 
+    if (dbver == "1264")
+    {
+        const char *updates[] = {
+"DELETE FROM displayprofiles WHERE profilegroupid IN "
+"  (SELECT profilegroupid FROM displayprofilegroups "
+"    WHERE name IN ('CPU++', 'CPU+', 'CPU--'))",
+"DELETE FROM displayprofilegroups WHERE name IN ('CPU++', 'CPU+', 'CPU--')",
+"DELETE FROM settings WHERE value = 'DefaultVideoPlaybackProfile' "
+"   AND data IN ('CPU++', 'CPU+', 'CPU--')",
+"UPDATE displayprofiles SET data = 'ffmpeg' WHERE data = 'libmpeg2'",
+"UPDATE displayprofiles SET data = 'ffmpeg' WHERE data = 'xvmc'",
+"UPDATE displayprofiles SET data = 'xv-blit' WHERE data = 'xvmc-blit'",
+"UPDATE displayprofiles SET data = 'softblend' WHERE data = 'ia44blend'",
+NULL
+};
+        if (!performActualUpdate(updates, "1265", dbver))
+            return false;
+    }
+
+    if (dbver == "1265")
+    {
+        const char *updates[] = {
+"ALTER TABLE dtv_multiplex MODIFY COLUMN updatetimestamp "
+"  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP;",
+"ALTER TABLE dvdbookmark MODIFY COLUMN `timestamp` "
+"  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP;",
+"ALTER TABLE jobqueue MODIFY COLUMN statustime "
+"  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP;",
+"ALTER TABLE recorded MODIFY COLUMN lastmodified "
+"  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP;",
+NULL
+};
+        if (!performActualUpdate(updates, "1266", dbver))
+            return false;
+    }
+
     return true;
 }
 
@@ -5521,10 +5569,8 @@ NULL
  * command to get the the initial database layout from an empty database:
  *
  * mysqldump --skip-comments --skip-opt --compact --skip-quote-names \
- *     --ignore-table=schemalock mythconverg | \
- *   sed '/^SET.*;$/d;s/^.*[^;]$/"&"/;s/^);$/");",/'
- *
- * don't forget to add auto_increment annotations
+ *     --create-options --ignore-table=mythconverg.schemalock mythconverg | \
+ *   sed '/^SET.*;$/d;/^\/\*!40101.*$/d;s/^.*[^;]$/"&"/;s/^);$/");",/'
  *
  * command to get the initial data:
  *
@@ -5809,7 +5855,8 @@ tmp.constData(),
 "  hp_code_rate varchar(10) default 'auto',"
 "  sistandard varchar(10) default 'dvb',"
 "  serviceversion smallint(6) default '33',"
-"  updatetimestamp timestamp NOT NULL default CURRENT_TIMESTAMP,"
+"  updatetimestamp timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP "
+"                            ON UPDATE CURRENT_TIMESTAMP,"
 "  PRIMARY KEY  (mplexid)"
 ");",
 "CREATE TABLE dtv_privatetypes ("
@@ -5825,7 +5872,8 @@ tmp.constData(),
 "  audionum tinyint(4) NOT NULL default '-1',"
 "  subtitlenum tinyint(4) NOT NULL default '-1',"
 "  framenum bigint(20) NOT NULL default '0',"
-"  `timestamp` timestamp NOT NULL default CURRENT_TIMESTAMP,"
+"  `timestamp` timestamp NOT NULL NOT NULL DEFAULT CURRENT_TIMESTAMP "
+"                            ON UPDATE CURRENT_TIMESTAMP,"
 "  PRIMARY KEY  (serialid)"
 ");",
 "CREATE TABLE eit_cache ("
@@ -5867,7 +5915,8 @@ tmp.constData(),
 "  cmds int(11) NOT NULL default '0',"
 "  flags int(11) NOT NULL default '0',"
 "  `status` int(11) NOT NULL default '0',"
-"  statustime timestamp NOT NULL default CURRENT_TIMESTAMP,"
+"  statustime timestamp NOT NULL NOT NULL DEFAULT CURRENT_TIMESTAMP "
+"                       ON UPDATE CURRENT_TIMESTAMP,"
 "  hostname varchar(64) NOT NULL default '',"
 "  args blob NOT NULL,"
 "  `comment` varchar(128) NOT NULL default '',"
@@ -6127,7 +6176,8 @@ tmp.constData(),
 "  recordid int(11) default NULL,"
 "  seriesid varchar(40) NOT NULL default '',"
 "  programid varchar(40) NOT NULL default '',"
-"  lastmodified timestamp NOT NULL default CURRENT_TIMESTAMP,"
+"  lastmodified timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP "
+"                         ON UPDATE CURRENT_TIMESTAMP,"
 "  filesize bigint(20) NOT NULL default '0',"
 "  stars float NOT NULL default '0',"
 "  previouslyshown tinyint(1) default '0',"

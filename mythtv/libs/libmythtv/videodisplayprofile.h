@@ -85,6 +85,7 @@ class MPUBLIC VideoDisplayProfile
 
     void SetInput(const QSize &size);
     void SetOutput(float framerate);
+    float GetOutput(void) { return last_rate; }
 
     void SetVideoRenderer(const QString &video_renderer);
     bool CheckVideoRendererGroup(const QString renderer);
@@ -146,7 +147,6 @@ class MPUBLIC VideoDisplayProfile
 
     static void        DeleteProfiles(const QString &hostname);
     static void        CreateProfiles(const QString &hostname);
-    static void        CreateOldProfiles(const QString &hostname);
     static void        CreateNewProfiles(const QString &hostname);
     static void        CreateVDPAUProfiles(const QString &hostname);
 

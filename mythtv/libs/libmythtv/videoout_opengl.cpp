@@ -30,8 +30,6 @@ void VideoOutputOpenGL::GetRenderOptions(render_opts &opts,
     (*opts.safe_renderers)["nuppel"].append("opengl");
     if (opts.decoders->contains("ffmpeg"))
         (*opts.safe_renderers)["ffmpeg"].append("opengl");
-    if (opts.decoders->contains("libmpeg2"))
-        (*opts.safe_renderers)["libmpeg2"].append("opengl");
     if (opts.decoders->contains("vda"))
         (*opts.safe_renderers)["vda"].append("opengl");
     if (opts.decoders->contains("crystalhd"))
@@ -45,7 +43,7 @@ VideoOutputOpenGL::VideoOutputOpenGL()
     gl_context(NULL), gl_videochain(NULL), gl_pipchain_active(NULL),
     gl_parent_win(0), gl_embed_win(0), gl_painter(NULL)
 {
-    bzero(&av_pause_frame, sizeof(av_pause_frame));
+    memset(&av_pause_frame, 0, sizeof(av_pause_frame));
     av_pause_frame.buf = NULL;
 
     if (gCoreContext->GetNumSetting("UseVideoModes", 0))

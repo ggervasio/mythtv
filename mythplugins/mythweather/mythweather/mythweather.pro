@@ -5,7 +5,7 @@ include ( ../../programs-libs.pro )
 QT += sql xml
 
 TEMPLATE = lib
-CONFIG += plugin thread debug
+CONFIG += plugin thread 
 TARGET = mythweather
 target.path = $${LIBDIR}/mythtv/plugins
 INSTALLS += target
@@ -26,5 +26,9 @@ HEADERS += weather.h weatherSource.h sourceManager.h weatherScreen.h dbcheck.h
 HEADERS += weatherSetup.h weatherUtils.h
 SOURCES += main.cpp weather.cpp weatherSource.cpp sourceManager.cpp weatherScreen.cpp
 SOURCES += dbcheck.cpp weatherSetup.cpp weatherUtils.cpp
+
+use_hidesyms {
+    QMAKE_CXXFLAGS += -fvisibility=hidden
+}
 
 include ( ../../libs-targetfix.pro )
