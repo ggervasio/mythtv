@@ -731,8 +731,7 @@ NULL
 "ALTER TABLE people ADD UNIQUE name (name(41));",
 "CREATE TABLE programgenres ( "
 "    chanid int unsigned NOT NULL, "
-"    starttime timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP "
-"                        ON UPDATE CURRENT_TIMESTAMP, "
+"    starttime timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP, "
 "    relevance char(1) NOT NULL, "
 "    genre char(30), "
 "    PRIMARY KEY (chanid, starttime, relevance) "
@@ -748,8 +747,7 @@ NULL
         const char *updates[] = {
 "CREATE TABLE IF NOT EXISTS programgenres ( "
 "    chanid int unsigned NOT NULL, "
-"    starttime timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP "
-"                        ON UPDATE CURRENT_TIMESTAMP, "
+"    starttime timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP, "
 "    relevance char(1) NOT NULL, "
 "    genre char(30), "
 "    PRIMARY KEY (chanid, starttime, relevance) "
@@ -5570,7 +5568,7 @@ NULL
  *
  * mysqldump --skip-comments --skip-opt --compact --skip-quote-names \
  *     --create-options --ignore-table=mythconverg.schemalock mythconverg | \
- *   sed '/^SET.*;$/d;/^\/\*!40101.*$/d;s/^.*[^;]$/"&"/;s/^);$/");",/'
+ *   sed '/^\(SET\|INS\).*;$/d;/^\/\*!40101.*$/d;s/^.*[^;]$/"&"/;s/^).*;$/"&",/'
  *
  * command to get the initial data:
  *

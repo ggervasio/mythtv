@@ -908,6 +908,14 @@ int AvFormatDecoder::OpenFile(RingBuffer *rbuffer, bool novideo,
             return -1;
         ringBuffer->DVD()->IgnoreStillOrWait(false);
     }
+
+    if (ringBuffer->IsBD())
+    {
+        if (!ringBuffer->BD()->StartFromBeginning())
+            return -1;
+        ringBuffer->BD()->IgnoreWaitStates(false);
+    }
+
     if (ret < 0)
     {
         VERBOSE(VB_IMPORTANT, LOC_ERR + "Could not find codec parameters. " +
@@ -1657,6 +1665,10 @@ int AvFormatDecoder::ScanStreams(bool novideo)
         ringBuffer->DVD()->AudioStreamsChanged(false);
         RemoveAudioStreams();
     }
+
+    // TODO this could probably be used by default
+    if (ringBuffer && ringBuffer->IsBD())
+        av_find_stream_info(ic);
 
     for (uint i = 0; i < ic->nb_streams; i++)
     {
@@ -4012,6 +4024,13 @@ bool AvFormatDecoder::GetFrame(DecodeType decodetype)
 
             if (pkt->pos > readAdjust)
                 pkt->pos -= readAdjust;
+        }
+
+        if (!ic)
+        {
+            VERBOSE(VB_IMPORTANT, LOC_ERR + "No context");
+            av_free_packet(pkt);
+            continue;
         }
 
         if (pkt->stream_index >= (int)ic->nb_streams)

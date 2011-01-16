@@ -7,6 +7,7 @@ class MythBDPlayer : public MythPlayer
 {
   public:
     MythBDPlayer(bool muted = false);
+    virtual bool    GoToMenu(QString str);
     virtual int     GetNumChapters(void);
     virtual int     GetCurrentChapter(void);
     virtual void    GetChapterTimes(QList<long long> &times);
@@ -25,6 +26,16 @@ class MythBDPlayer : public MythPlayer
     virtual bool SwitchAngle(int angle);
     virtual bool PrevAngle(void);
     virtual bool NextAngle(void);
+
+  protected:
+    // Playback
+    virtual bool VideoLoop(void);
+    virtual void PreProcessNormalFrame(void);
+
+  private:
+    void DisplayMenu(void);
+
+    bool m_inMenu;
 };
 
 #endif // MYTHBDPLAYER_H

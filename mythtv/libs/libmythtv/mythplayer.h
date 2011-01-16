@@ -76,22 +76,9 @@ enum
     kDisplayTextSubtitle        = 0x020,
     kDisplayDVDButton           = 0x040,
     kDisplayRawTextSubtitle     = 0x080,
-    kDisplayAllCaptions         = 0x0ff,
-    kDisplayTeletextMenu        = 0x100,
-};
-
-class PlayerTimer : public QObject
-{
-    Q_OBJECT
-  public:
-    PlayerTimer(MythPlayer *mp);
-    void PostNextEvent(void);
-    virtual bool event(QEvent *e);
-    static enum QEvent::Type kPlayerEventType;
-
-  private:
-    MythPlayer *m_mp;
-    uint32_t    m_queue_size;
+    kDisplayBDOverlay           = 0x0ff,
+    kDisplayAllCaptions         = 0x100,
+    kDisplayTeletextMenu        = 0x200,
 };
 
 class DecoderThread : public QThread
@@ -290,7 +277,7 @@ class MPUBLIC MythPlayer
 
     // DVD public stuff
     virtual void ChangeDVDTrack(bool ffw)       { (void) ffw;       }
-    virtual bool GoToDVDMenu(QString str)       { return false;     }
+    virtual bool GoToMenu(QString str)          { return false;     }
     virtual void GoToDVDProgram(bool direction) { (void) direction; }
 
     // Position Map Stuff
@@ -533,7 +520,6 @@ class MPUBLIC MythPlayer
     PlayerContext *player_ctx;
     DecoderThread *decoderThread;
     QThread       *playerThread;
-    PlayerTimer   *playerTimer;
     bool           no_hardware_decoders;
 
     // Window stuff

@@ -24,65 +24,14 @@ static void HandleOverlayCallback(
     void *data, const bd_overlay_s * const overlay)
 {
     BDRingBuffer *bdrb = (BDRingBuffer*) data;
-
-    if (!bdrb)
-        return;
-
-    if (!overlay || overlay->plane == 1)
-        bdrb->m_inMenu = false;
-
-    if (!overlay || !overlay->img)
-        return;
-
-    bdrb->m_inMenu = true;
-
-    const BD_PG_RLE_ELEM *rlep = overlay->img;
-
-    uint8_t *yuvimg = (uint8_t*)malloc(overlay->w * overlay->h);
-    unsigned pixels = overlay->w * overlay->h;
-
-    for (unsigned i = 0; i < pixels; i += rlep->len, rlep++)
-    {
-        memset(yuvimg + i, rlep->color, rlep->len);
-    }
-
-    QImage qoverlay(yuvimg, overlay->w, overlay->h, QImage::Format_Indexed8);
-
-    uint32_t *origpalette = (uint32_t *)(overlay->palette);
-    QVector<unsigned int> palette;
-    for (int i = 0; i < 256; i++)
-    {
-        int y  = (origpalette[i] >> 0) & 0xff;
-        int cr = (origpalette[i] >> 8) & 0xff;
-        int cb = (origpalette[i] >> 16) & 0xff;
-        int a  = (origpalette[i] >> 24) & 0xff;
-        int r  = int(y + 1.4022 * (cr - 128));
-        int b  = int(y + 1.7710 * (cb - 128));
-        int g  = int(1.7047 * y - (0.1952 * b) - (0.5647 * r));
-        if (r < 0) r = 0;
-        if (g < 0) g = 0;
-        if (b < 0) b = 0;
-        if (r > 0xff) r = 0xff;
-        if (g > 0xff) g = 0xff;
-        if (b > 0xff) b = 0xff;
-        palette.push_back((a << 24) | (r << 16) | (g << 8) | b);
-    }
-
-    qoverlay.setColorTable(palette);
-    qoverlay.save(QString("%1/bluray.menuimg.%2.%3.jpg").arg(QDir::home().path()).arg(overlay->w).arg(overlay->h));
-
-    VERBOSE(VB_PLAYBACK|VB_EXTRA, QString("In Menu Callback, ready to draw "
-                        "an overlay of %1x%2 at %3,%4 (%5 pixels).")
-                        .arg(overlay->w).arg(overlay->h).arg(overlay->x)
-                        .arg(overlay->y).arg(pixels));
-
-    if (overlay->plane == 1)
-        bdrb->m_inMenu = true;
+    if (bdrb)
+        bdrb->SubmitOverlay(overlay);
 }
 
 BDRingBuffer::BDRingBuffer(const QString &lfilename)
   : bdnav(NULL), m_is_hdmv_navigation(false),
-    m_numTitles(0), m_titleChanged(false)
+    m_numTitles(0), m_titleChanged(false), m_playerWait(false),
+    m_ignorePlayerWait(true), m_overlayCleared(false)
 {
     OpenFile(lfilename);
 }
@@ -101,6 +50,8 @@ void BDRingBuffer::close(void)
         bd_close(bdnav);
         bdnav = NULL;
     }
+
+    ClearOverlays();
 }
 
 long long BDRingBuffer::Seek(long long pos, int whence, bool has_lock)
@@ -316,34 +267,13 @@ bool BDRingBuffer::OpenFile(const QString &lfilename, uint retry_ms)
     m_still = 0;
     m_inMenu = false;
 
-    VERBOSE(VB_IMPORTANT, LOC + QString("Found %1 relevant titles.")
-            .arg(m_numTitles));
-
-    // Loop through the relevant titles and find the longest
-    uint64_t titleLength = 0;
-    uint64_t margin      = 90000 << 4; // approx 30s
-    BLURAY_TITLE_INFO *titleInfo = NULL;
-    for( unsigned i = 0; i < m_numTitles; ++i)
-    {
-        titleInfo = bd_get_title_info(bdnav, i);
-        if (titleLength == 0 ||
-            (titleInfo->duration > (titleLength + margin)))
-        {
-            m_mainTitle = titleInfo->idx;
-            titleLength = titleInfo->duration;
-        }
-    }
-
-    bd_free_title_info(titleInfo);
-
-    SwitchTitle(m_mainTitle);
-
 #if 0
     // First, attempt to initialize the disc in HDMV navigation mode.
     // If this fails, fall back to the traditional built-in title switching
     // mode.
     if (bd_play(bdnav))
     {
+        VERBOSE(VB_IMPORTANT, LOC + QString("Using HDMV navigation mode."));
         m_is_hdmv_navigation = true;
 
         // Initialize the HDMV event queue
@@ -352,7 +282,32 @@ bool BDRingBuffer::OpenFile(const QString &lfilename, uint retry_ms)
         // Register the Menu Overlay Callback
         bd_register_overlay_proc(bdnav, this, HandleOverlayCallback);
     }
+    else
 #endif
+    {
+        VERBOSE(VB_IMPORTANT, LOC + QString("Using title navigation mode - "
+                                            "Found %1 relevant titles.")
+                                            .arg(m_numTitles));
+
+        // Loop through the relevant titles and find the longest
+        uint64_t titleLength = 0;
+        uint64_t margin      = 90000 << 4; // approx 30s
+        BLURAY_TITLE_INFO *titleInfo = NULL;
+        for( unsigned i = 0; i < m_numTitles; ++i)
+        {
+            titleInfo = bd_get_title_info(bdnav, i);
+            if (titleLength == 0 ||
+                (titleInfo->duration > (titleLength + margin)))
+            {
+                m_mainTitle = titleInfo->idx;
+                titleLength = titleInfo->duration;
+            }
+        }
+
+        bd_free_title_info(titleInfo);
+
+        SwitchTitle(m_mainTitle);
+    }
 
     readblocksize   = BD_BLOCK_SIZE * 62;
     setswitchtonext = false;
@@ -520,9 +475,9 @@ uint64_t BDRingBuffer::GetTotalReadPosition(void)
 
 int BDRingBuffer::safe_read(void *data, uint sz)
 {
+    int result = 0;
     if (m_is_hdmv_navigation)
     {
-        int result = 0;
         while (result == 0)
         {
             BD_EVENT event;
@@ -536,11 +491,11 @@ int BDRingBuffer::safe_read(void *data, uint sz)
     }
     else
     {
-        bd_read(bdnav, (unsigned char *)data, sz);
+        result = bd_read(bdnav, (unsigned char *)data, sz);
     }
 
     m_currentTime = bd_tell(bdnav);
-    return sz;
+    return result;
 }
 
 double BDRingBuffer::GetFrameRate(void)
@@ -658,11 +613,11 @@ bool BDRingBuffer::GoToMenu(const QString str, int64_t pts)
             VERBOSE(VB_PLAYBACK, QString("BDRingBuf: Invoked Menu Successfully"));
             return true;
         }
-        else
-        {
-            m_inMenu = false;
-            return false;
-        }
+    }
+    else if (str.compare("popup") == 0)
+    {
+        PressButton(BD_VK_POPUP, pts);
+        return true;
     }
     else
         return false;
@@ -709,11 +664,12 @@ void BDRingBuffer::HandleBDEvent(BD_EVENT &ev)
         case BD_EVENT_TITLE:
             VERBOSE(VB_PLAYBACK|VB_EXTRA,
                     QString("BDRingBuf: EVENT_TITLE %1").arg(ev.param));
+            WaitForPlayer();
             break;
         case BD_EVENT_END_OF_TITLE:
             VERBOSE(VB_PLAYBACK|VB_EXTRA,
                     QString("BDRingBuf: EVENT_END_OF_TITLE"));
-            // TODO: Signal the player to flush buffers before reading further.
+            WaitForPlayer();
             break;
         case BD_EVENT_PLAYLIST:
             VERBOSE(VB_PLAYBACK|VB_EXTRA,
@@ -725,6 +681,7 @@ void BDRingBuffer::HandleBDEvent(BD_EVENT &ev)
         case BD_EVENT_PLAYITEM:
             VERBOSE(VB_PLAYBACK|VB_EXTRA,
                     QString("BDRingBuf: EVENT_PLAYITEM %1").arg(ev.param));
+            WaitForPlayer();
             m_currentPlayitem = ev.param;
             break;
         case BD_EVENT_CHAPTER:
@@ -745,6 +702,7 @@ void BDRingBuffer::HandleBDEvent(BD_EVENT &ev)
         case BD_EVENT_SEEK:
             VERBOSE(VB_PLAYBACK|VB_EXTRA,
                     QString("BDRingBuf: EVENT_SEEK"));
+            WaitForPlayer();
             break;
 
         /* stream selection */
@@ -803,3 +761,106 @@ void BDRingBuffer::HandleBDEvent(BD_EVENT &ev)
       }
 }
 
+void BDRingBuffer::WaitForPlayer(void)
+{
+    if (m_ignorePlayerWait)
+        return;
+
+    VERBOSE(VB_PLAYBACK, LOC + "Waiting for player's buffers to drain");
+    m_playerWait = true;
+    int count = 0;
+    while (m_playerWait && count++ < 200)
+        usleep(10000);
+    if (m_playerWait)
+    {
+        VERBOSE(VB_IMPORTANT, LOC_ERR + "Player wait state was not cleared");
+        m_playerWait = false;
+    }
+    //Seek(0, SEEK_SET, true);
+}
+
+bool BDRingBuffer::StartFromBeginning(void)
+{
+    if (bdnav && m_is_hdmv_navigation)
+    {
+        VERBOSE(VB_PLAYBACK|VB_EXTRA, LOC + "Starting from beginning...");
+        return true; //bd_play(bdnav);
+    }
+    return true;
+}
+
+void BDRingBuffer::ClearOverlays(void)
+{
+    QMutexLocker lock(&m_overlayLock);
+
+    while (!m_overlayImages.isEmpty())
+    {
+        BDOverlay *img = m_overlayImages.takeFirst();
+        delete img->m_data;
+        delete img->m_palette;
+        delete img;
+    }
+    OverlayCleared(false);
+}
+
+BDOverlay* BDRingBuffer::GetOverlay(void)
+{
+    QMutexLocker lock(&m_overlayLock);
+    if (!m_overlayImages.isEmpty())
+        return m_overlayImages.takeFirst();
+    return NULL;
+}
+
+void BDRingBuffer::SubmitOverlay(const bd_overlay_s * const overlay)
+{
+    QMutexLocker lock(&m_overlayLock);
+
+    if (!overlay || overlay->plane == 1)
+        m_inMenu = false;
+
+    if (!overlay || !overlay->img)
+    {
+        VERBOSE(VB_PLAYBACK, LOC + "Null overlay submitted.");
+        OverlayCleared(true);
+        return;
+    }
+
+    VERBOSE(VB_PLAYBACK, LOC + QString("New overlay image %1x%2 %3+%4")
+        .arg(overlay->w).arg(overlay->h)
+        .arg(overlay->x).arg(overlay->y));
+    m_inMenu = true;
+
+    const BD_PG_RLE_ELEM *rlep = overlay->img;
+    static const unsigned palettesize = 256 * 4;
+    unsigned width   = (overlay->w + 0x3) & (~0x3);
+    unsigned pixels  = width * overlay->h;
+    unsigned actual  = overlay->w * overlay->h;
+    uint8_t *data    = (uint8_t*)malloc(pixels);
+    uint8_t *palette = (uint8_t*)malloc(palettesize);
+    memset(data, 0, pixels);
+
+    int line = 0;
+    int this_line = 0;
+    for (unsigned i = 0; i < actual; i += rlep->len, rlep++)
+    {
+        if ((rlep->color == 0 && rlep->len == 0) || this_line >= overlay->w)
+        {
+            this_line = 0;
+            line++;
+            i = (line * width) + 1;
+        }
+        else
+        {
+            this_line += rlep->len;
+            memset(data + i, rlep->color, rlep->len);
+        }
+    }
+
+    memcpy(palette, overlay->palette, palettesize);
+
+    QRect pos(overlay->x, overlay->y, width, overlay->h);
+    m_overlayImages.append(new BDOverlay(data, palette, pos));
+
+    if (overlay->plane == 1)
+        m_inMenu = true;
+}

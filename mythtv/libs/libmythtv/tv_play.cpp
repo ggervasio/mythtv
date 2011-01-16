@@ -297,13 +297,28 @@ bool TV::StartTV(ProgramInfo *tvrec, uint flags)
 
         while (true)
         {
-            qApp->processEvents();
+            if (qApp->hasPendingEvents())
+                qApp->processEvents();
 
             TVState state = tv->GetState(0);
-            bool is_err   = kState_Error == state;
-            bool is_none  = kState_None  == state;
-            if (is_err || is_none)
+            if ((kState_Error == state) || (kState_None == state))
                 break;
+
+            if (kState_ChangingState == state)
+                continue;
+
+            const PlayerContext *mctx = tv->GetPlayerReadLock(0, __FILE__, __LINE__);
+            if (mctx)
+            {
+                mctx->LockDeletePlayer(__FILE__, __LINE__);
+                if (mctx->player && !mctx->player->IsErrored())
+                {
+                    mctx->player->EventLoop();
+                    mctx->player->VideoLoop();
+                }
+            }
+            mctx->UnlockDeletePlayer(__FILE__, __LINE__);
+            tv->ReturnPlayerLock(mctx);
         }
 
         VERBOSE(VB_PLAYBACK, LOC + "StartTV -- process events end");
@@ -662,6 +677,8 @@ void TV::InitKeys(void)
             "Monitor Signal Quality"), "Alt+F7");
     REG_KEY("TV Playback", "JUMPTODVDROOTMENU",
             QT_TRANSLATE_NOOP("MythControls", "Jump to the DVD Root Menu"), "");
+    REG_KEY("TV Playback", "JUMPTOPOPUPMENU",
+            QT_TRANSLATE_NOOP("MythControls", "Jump to the Popup Menu"), "");
     REG_KEY("TV Playback", "EXITSHOWNOPROMPTS",
             QT_TRANSLATE_NOOP("MythControls", "Exit Show without any prompts"),
             "");
@@ -2201,6 +2218,7 @@ void TV::HandleStateChange(PlayerContext *mctx, PlayerContext *ctx)
 
         // hide the GUI paint window
         GetMythMainWindow()->GetPaintWindow()->hide();
+        qApp->processEvents();
     }
 
     VERBOSE(VB_PLAYBACK, LOC +
@@ -3601,7 +3619,7 @@ void TV::ProcessKeypress(PlayerContext *actx, QKeyEvent *e)
     handled = handled || ToggleHandleAction(actx, actions, isDVD);
     handled = handled || PxPHandleAction(actx, actions);
     handled = handled || FFRewHandleAction(actx, actions);
-    handled = handled || ActivePostQHandleAction(actx, actions, isDVD);
+    handled = handled || ActivePostQHandleAction(actx, actions);
 
 #if DEBUG_ACTIONS
     for (uint i = 0; i < actions.size(); ++i)
@@ -3867,9 +3885,6 @@ bool TV::DiscMenuHandleAction(PlayerContext *ctx, const QStringList &actions)
     }
     else if (bdrb)
     {
-        if (!bdrb->IsInDiscMenuOrStillFrame())
-            return false;
-
         int64_t pts = 0;
         VideoOutput *output = ctx->player->getVideoOutput();
         if (output)
@@ -3881,6 +3896,15 @@ bool TV::DiscMenuHandleAction(PlayerContext *ctx, const QStringList &actions)
                 pts = (int64_t)(frame->timecode  * 90);
             }
         }
+
+        if (has_action("MENUTEXT", actions))
+        {
+            bdrb->PressButton(BD_VK_POPUP, pts);
+            return true;
+        }
+
+        if (!bdrb->IsInDiscMenuOrStillFrame())
+            return false;
 
         handled = true;
         if (has_action("UP", actions) ||
@@ -3902,10 +3926,6 @@ bool TV::DiscMenuHandleAction(PlayerContext *ctx, const QStringList &actions)
                  has_action("SEEKFFWD", actions))
         {
             bdrb->PressButton(BD_VK_RIGHT, pts);
-        }
-        else if (has_action("MENUTEXT", actions))
-        {
-            bdrb->PressButton(BD_VK_POPUP, pts);
         }
         else if (has_action("0", actions))
         {
@@ -4202,8 +4222,8 @@ bool TV::ActiveHandleAction(PlayerContext *ctx,
                     !GetMythMainWindow()->IsExitingToMain() &&
                     has_action("BACK", actions) &&
                     !ctx->buffer->DVD()->IsInMenu() &&
-                    (ctx->player->GoToDVDMenu("title") ||
-                     ctx->player->GoToDVDMenu("root"))
+                    (ctx->player->GoToMenu("title") ||
+                     ctx->player->GoToMenu("root"))
                     )
                 {
                     return handled;
@@ -4382,11 +4402,13 @@ bool TV::PxPHandleAction(PlayerContext *ctx, const QStringList &actions)
     return handled;
 }
 
-bool TV::ActivePostQHandleAction(PlayerContext *ctx,
-                                 const QStringList &actions, bool isDVD)
+bool TV::ActivePostQHandleAction(PlayerContext *ctx, const QStringList &actions)
 {
     bool handled = true;
-    bool islivetv = StateIsLiveTV(GetState(ctx));
+    TVState state = GetState(ctx);
+    bool islivetv = StateIsLiveTV(state);
+    bool isdvd  = state == kState_WatchingDVD;
+    bool isdisc = isdvd || state == kState_WatchingBD;
 
     if (has_action("SELECT", actions))
     {
@@ -4426,7 +4448,7 @@ bool TV::ActivePostQHandleAction(PlayerContext *ctx,
             else
                 ChangeChannel(ctx, CHANNEL_DIRECTION_UP);
         }
-        else if (isDVD)
+        else if (isdvd)
             DVDJumpBack(ctx);
         else if (GetNumChapters(ctx) > 0)
             DoJumpChapter(ctx, -1);
@@ -4442,7 +4464,7 @@ bool TV::ActivePostQHandleAction(PlayerContext *ctx,
             else
                 ChangeChannel(ctx, CHANNEL_DIRECTION_DOWN);
         }
-        else if (isDVD)
+        else if (isdvd)
             DVDJumpForward(ctx);
         else if (GetNumChapters(ctx) > 0)
             DoJumpChapter(ctx, 9999);
@@ -4459,11 +4481,18 @@ bool TV::ActivePostQHandleAction(PlayerContext *ctx,
         ctx->UnlockDeletePlayer(__FILE__, __LINE__);
         ShowOSDPromptDeleteRecording(ctx, tr("Delete this recording?"));
     }
-    else if (has_action("JUMPTODVDROOTMENU", actions) && isDVD)
+    else if (has_action("JUMPTODVDROOTMENU", actions) && isdisc)
     {
         ctx->LockDeletePlayer(__FILE__, __LINE__);
         if (ctx->player)
-            ctx->player->GoToDVDMenu("root");
+            ctx->player->GoToMenu("root");
+        ctx->UnlockDeletePlayer(__FILE__, __LINE__);
+    }
+    else if (has_action("JUMPTOPOPUPMENU", actions) && isdisc)
+    {
+        ctx->LockDeletePlayer(__FILE__, __LINE__);
+        if (ctx->player)
+            ctx->player->GoToMenu("popup");
         ctx->UnlockDeletePlayer(__FILE__, __LINE__);
     }
     else if (has_action("FINDER", actions))
@@ -9793,6 +9822,7 @@ void TV::OSDDialogEvent(int result, QString text, QString action)
     {
         if (action == "JUMPTODVDROOTMENU" ||
             action == "JUMPTODVDCHAPTERMENU" ||
+            action == "JUMPTOPOPUPMENU" ||
             action == "JUMPTODVDTITLEMENU")
         {
             QString menu = "root";
@@ -9800,9 +9830,11 @@ void TV::OSDDialogEvent(int result, QString text, QString action)
                 menu = "chapter";
             else if (action == "JUMPTODVDTITLEMENU")
                 menu = "title";
+            else if (action == "JUMPTOPOPUPMENU")
+                menu = "popup";
             actx->LockDeletePlayer(__FILE__, __LINE__);
             if (actx->player)
-                actx->player->GoToDVDMenu(menu);
+                actx->player->GoToMenu(menu);
             actx->UnlockDeletePlayer(__FILE__, __LINE__);
         }
         else if (action.left(13) == "JUMPTOCHAPTER")
@@ -10277,6 +10309,7 @@ void TV::FillOSDMenuNavigate(const PlayerContext *ctx, OSD *osd,
     int num_angles    = GetNumAngles(ctx);
     TVState state     = ctx->GetState();
     bool isdvd        = state == kState_WatchingDVD;
+    bool isbd         = state == kState_WatchingBD;
     bool islivetv     = StateIsLiveTV(state);
     bool isrecording  = state == kState_WatchingPreRecorded;
     bool previouschan = false;
@@ -10309,6 +10342,12 @@ void TV::FillOSDMenuNavigate(const PlayerContext *ctx, OSD *osd,
             osd->DialogAddButton(tr("Commercial Auto-Skip"),
                                  "DIALOG_MENU_COMMSKIP_0",
                                  true, selected == "COMMSKIP");
+        }
+        // FIXME need to check whether we are in HDMV navigation mode
+        if (isbd)
+        {
+            osd->DialogAddButton(tr("Top menu"), "JUMPTODVDROOTMENU");
+            osd->DialogAddButton(tr("Popup menu"), "JUMPTOPOPUPMENU");
         }
         if (isdvd)
         {
