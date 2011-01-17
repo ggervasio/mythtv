@@ -482,11 +482,13 @@ void ThreadPool::ThreadTerminating ( WorkerThread *pThread )
                                          m_lstAvailableThreads.end(), pThread);
     m_lstAvailableThreads.erase(it);
 
+#if 0
     it = find(m_lstThreads.begin(), m_lstThreads.end(), pThread);
     m_lstThreads.erase(it);
 
     nThreadCount = m_lstThreads.size();
     VERBOSE(VB_IMPORTANT|VB_EXTRA, QString("ThreadPool:%1: thread pool size %2") .arg(m_sName) .arg(nThreadCount));
+#endif
 
     pThread->deleteLater();
 
