@@ -28,6 +28,7 @@ using namespace std;
 #include "manualschedule.h"
 #include "playbackbox.h"
 #include "themechooser.h"
+#include "setupwizard_general.h"
 #include "customedit.h"
 #include "viewscheduled.h"
 #include "programrecpriority.h"
@@ -36,6 +37,7 @@ using namespace std;
 #include "audiooutput.h"
 #include "globalsettings.h"
 #include "audiogeneralsettings.h"
+#include "grabbersettings.h"
 #include "profilegroup.h"
 #include "playgroup.h"
 #include "networkcontrol.h"
@@ -70,6 +72,7 @@ using namespace std;
 #include "mythdirs.h"
 #include "mythdb.h"
 #include "backendconnectionmanager.h"
+#include "themechooser.h"
 
 static ExitPrompter   *exitPopup = NULL;
 static MythThemedMenu *menu;
@@ -579,6 +582,26 @@ static void TVMenuCallback(void *data, QString &selection)
             mainStack->AddScreen(tp);
         else
             delete tp;
+    }
+    else if (sel == "settings setupwizard")
+    {
+        MythScreenStack *mainStack = GetMythMainWindow()->GetMainStack();
+        GeneralSetupWizard *sw = new GeneralSetupWizard(mainStack, "setupwizard");
+
+        if (sw->Create())
+            mainStack->AddScreen(sw);
+        else
+            delete sw;
+    }
+    else if (sel == "settings grabbers")
+    {
+        MythScreenStack *mainStack = GetMythMainWindow()->GetMainStack();
+        GrabberSettings *gs = new GrabberSettings(mainStack, "grabbersettings");
+
+        if (gs->Create())
+            mainStack->AddScreen(gs);
+        else
+            delete gs;
     }
     else if (sel == "screensetupwizard")
     {
@@ -1487,6 +1510,10 @@ int main(int argc, char **argv)
     // Setup handler for USR2 signals to restart LIRC
     signal(SIGUSR2, &signal_USR2_handler);
 
+    ThemeUpdateChecker *themeUpdateChecker = NULL;
+    if (gCoreContext->GetNumSetting("ThemeUpdateNofications", 1))
+        themeUpdateChecker = new ThemeUpdateChecker();
+
     MythSystemEventHandler *sysEventHandler = new MythSystemEventHandler();
     GetMythMainWindow()->RegisterSystemEventHandler(sysEventHandler);
 
@@ -1498,6 +1525,9 @@ int main(int argc, char **argv)
     int ret = qApp->exec();
 
     PreviewGeneratorQueue::TeardownPreviewGeneratorQueue();
+
+    if (themeUpdateChecker)
+        delete themeUpdateChecker;
 
     delete sysEventHandler;
 

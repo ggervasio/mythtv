@@ -32,9 +32,6 @@ using namespace std;
 #include "mediamonitor-unix.h"
 #endif
 
-QEvent::Type MediaEvent::kEventType =
-    (QEvent::Type) QEvent::registerEventType();
-
 MediaMonitor *MediaMonitor::c_monitor = NULL;
 
 // MonitorThread
@@ -290,9 +287,6 @@ MediaMonitor::MediaMonitor(QObject* par, unsigned long interval,
     // but the user can elect not to actually do monitoring:
     m_StartThread = gCoreContext->GetNumSetting("MonitorDrives");
 
-    // or not send status changed events:
-    m_SendEvent = gCoreContext->GetNumSetting("MediaChangeEvents");
-
     // User can specify that some devices are not monitored
     QString ignore = gCoreContext->GetSetting("IgnoreDevices", "");
 
@@ -302,8 +296,7 @@ MediaMonitor::MediaMonitor(QObject* par, unsigned long interval,
         m_IgnoreList = QStringList();  // Force empty list
 
     if (m_StartThread)
-        VERBOSE(VB_MEDIA, "Creating MediaMonitor, SendEvents="
-                          + (m_SendEvent?QString("true"):QString("false")));
+        VERBOSE(VB_MEDIA, "Creating MediaMonitor");
     else
 #ifdef USING_DARWIN_DA
         VERBOSE(VB_MEDIA, "MediaMonitor is disabled. Eject will not work");
@@ -650,12 +643,13 @@ void MediaMonitor::JumpToMediaHandler(MythMediaDevice* pMedia)
     // if user didn't cancel, selected = handlers.at(choice);
     int selected = 0;
 
-
-    GetMythMainWindow()->JumpTo("Main Menu");
     handlers.at(selected).callback(pMedia);
 }
 
-// Signal handler.
+/**
+ * \brief Slot which is called when the device status changes and posts a
+ *        media event to the mainwindow
+ */
 void MediaMonitor::mediaStatusChanged(MediaStatus oldStatus,
                                       MythMediaDevice* pMedia)
 {
@@ -672,7 +666,7 @@ void MediaMonitor::mediaStatusChanged(MediaStatus oldStatus,
     // This gets called from outside the main thread so we need
     // to post an event back to the main thread.
     // We now send events for all non-error statuses, so plugins get ejects
-    if (m_SendEvent && stat != MEDIASTAT_ERROR && stat != MEDIASTAT_UNKNOWN)
+    if (stat != MEDIASTAT_ERROR && stat != MEDIASTAT_UNKNOWN)
     {
         // Should we ValidateAndLock() first?
         QEvent *e = new MediaEvent(stat, pMedia);
@@ -754,7 +748,7 @@ bool MediaMonitor::eventFilter(QObject *obj, QEvent *event)
             }
         }
 
-        return true;  // We ate the event
+        return false;  // Don't eat the event
     }
 
     // standard event processing
@@ -888,4 +882,28 @@ const QString MediaMonitor::listDevices(void)
     }
 
     return list.join(", ");
+}
+
+/**
+ * \brief Eject a disk, unmount a drive, open a tray
+ *
+ * If the Media Monitor is enabled, we use its fully-featured routine.
+ * Otherwise, we guess a drive and use a primitive OS-specific command
+ */
+void MediaMonitor::ejectOpticalDisc()
+{
+    MediaMonitor *mon = MediaMonitor::GetMediaMonitor();
+    if (mon)
+        mon->ChooseAndEjectMedia();
+    else
+    {
+        VERBOSE(VB_MEDIA, "CD/DVD Monitor isn't enabled.");
+#ifdef __linux__
+        VERBOSE(VB_MEDIA, "Trying Linux 'eject -T' command");
+        myth_system("eject -T");
+#elif CONFIG_DARWIN
+        VERBOSE(VB_MEDIA, "Trying 'disktool -e disk1");
+        myth_system("disktool -e disk1");
+#endif
+    }
 }

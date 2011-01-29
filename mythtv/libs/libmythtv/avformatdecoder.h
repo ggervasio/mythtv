@@ -38,6 +38,7 @@ struct SwsContext;
 
 extern "C" void HandleStreamChange(void*);
 extern "C" void HandleDVDStreamChange(void*);
+extern "C" void HandleBDStreamChange(void*);
 
 class AudioInfo
 {
@@ -87,6 +88,7 @@ class AvFormatDecoder : public DecoderBase
 {
     friend void HandleStreamChange(void*);
     friend void HandleDVDStreamChange(void*);
+    friend void HandleBDStreamChange(void*);
   public:
     static void GetDecoders(render_opts &opts);
     AvFormatDecoder(MythPlayer *parent, const ProgramInfo &pginfo,
@@ -96,9 +98,11 @@ class AvFormatDecoder : public DecoderBase
                     AVSpecialDecode av_special_decode = kAVSpecialDecode_None);
    ~AvFormatDecoder();
 
+    virtual void SetEof(bool eof);
+
     void CloseCodecs();
     void CloseContext();
-    void Reset(void);
+    virtual void Reset(void);
     void Reset(bool reset_video_data = true, bool seek_reset = true);
 
     /// Perform an av_probe_input_format on the passed data to see if we
@@ -147,6 +151,7 @@ class AvFormatDecoder : public DecoderBase
     virtual int SetTrack(uint type, int trackNo);
 
     int ScanStreams(bool novideo);
+    int FindStreamInfo(void);
 
     virtual int  GetNumChapters();
     virtual void GetChapterTimes(QList<long long> &times);
@@ -177,9 +182,8 @@ class AvFormatDecoder : public DecoderBase
     void ScanTeletextCaptions(int av_stream_index);
     void ScanRawTextCaptions(int av_stream_index);
     void ScanDSMCCStreams(void);
-    int AutoSelectAudioTrack(void);
+    int  AutoSelectAudioTrack(void);
 
-  private:
     friend int get_avf_buffer(struct AVCodecContext *c, AVFrame *pic);
     friend void release_avf_buffer(struct AVCodecContext *c, AVFrame *pic);
 
@@ -231,7 +235,11 @@ class AvFormatDecoder : public DecoderBase
     float normalized_fps(AVStream *stream, AVCodecContext *enc);
     void av_update_stream_timings_video(AVFormatContext *ic);
 
-  private:
+    virtual void StreamChangeCheck(void) { }
+    virtual void PostProcessTracks(void) { }
+    virtual int GetSubtitleLanguage(uint subtitle_index, uint stream_index);
+    virtual int GetAudioLanguage(uint audio_index, uint stream_index);
+
     PrivateDecoder *private_dec;
 
     bool is_db_ignored;

@@ -154,6 +154,14 @@ MythGenericTree *MythGenericTree::addNode(MythGenericTree *child)
     return child;
 }
 
+void MythGenericTree::DetachParent(void)
+{
+    if (!m_parent)
+        return;
+
+    m_parent->removeNode(this);
+}
+
 void MythGenericTree::removeNode(MythGenericTree *child)
 {
     if (m_selected_subnode == child)
@@ -162,6 +170,7 @@ void MythGenericTree::removeNode(MythGenericTree *child)
     m_ordered_subnodes->removeAll(child);
     m_flatenedSubnodes->removeAll(child);
     m_subnodes->removeAll(child);
+    child->setParent(NULL);
 
     if (child && child->IsVisible())
         DecVisibleCount();
@@ -175,32 +184,6 @@ void MythGenericTree::deleteNode(MythGenericTree *child)
     removeNode(child);
     delete child;
     child = NULL;
-}
-
-int MythGenericTree::calculateDepth(int start)
-{
-    int current_depth;
-    current_depth = start + 1;
-
-    QList<MythGenericTree*> *children = getAllChildren();
-    if (children && children->count() > 0)
-    {
-        int found_depth;
-        SortableMythGenericTreeList::Iterator it;
-        MythGenericTree *child = NULL;
-
-        for (it = children->begin(); it != children->end(); ++it)
-        {
-            child = *it;
-            if (!child)
-                continue;
-            found_depth = child->calculateDepth(start + 1);
-            if (found_depth > current_depth)
-                current_depth = found_depth;
-        }
-    }
-
-    return current_depth;
 }
 
 MythGenericTree* MythGenericTree::findLeaf()
@@ -330,6 +313,16 @@ int MythGenericTree::siblingCount(void) const
     if (m_parent)
         return m_parent->childCount();
     return 1;
+}
+
+/**
+ * \brief Establish how deep in the current tree this node lies
+ */
+int MythGenericTree::currentDepth(void)
+{
+    QList<MythGenericTree *> route = getRoute();
+
+    return (route.size() - 1);
 }
 
 QList<MythGenericTree*> *MythGenericTree::getAllChildren() const

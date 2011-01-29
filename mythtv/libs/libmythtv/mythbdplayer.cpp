@@ -1,10 +1,12 @@
 #include "bdringbuffer.h"
+#include "avformatdecoderbd.h"
 #include "mythbdplayer.h"
 
 #define LOC     QString("BDPlayer: ")
 #define LOC_ERR QString("BDPlayer error: ")
 
-MythBDPlayer::MythBDPlayer(bool muted) : MythPlayer(muted), m_inMenu(false)
+MythBDPlayer::MythBDPlayer(bool muted)
+  : MythPlayer(muted), m_stillFrameShowing(false)
 {
 }
 
@@ -31,30 +33,22 @@ void MythBDPlayer::DisplayMenu(void)
     if (!player_ctx->buffer->IsBD())
         return;
 
-    if (!player_ctx->buffer->BD()->IsInMenu())
-    {
-        if (m_inMenu)
-        {
-            m_inMenu = false;
-            player_ctx->buffer->BD()->ClearOverlays();
-            SetCaptionsEnabled(false, false);
-            osd->ClearSubtitles();
-        }
-        return;
-    }
-
-    if (player_ctx->buffer->BD()->OverlayCleared())
-    {
-        osd->ClearSubtitles();
-        player_ctx->buffer->BD()->OverlayCleared(false);
-    }
-
+    osdLock.lock();
     BDOverlay *overlay = NULL;
-    while (NULL != (overlay = player_ctx->buffer->BD()->GetOverlay()))
-    {
-        m_inMenu = true;
+    while (osd && (NULL != (overlay = player_ctx->buffer->BD()->GetOverlay())))
         osd->DisplayBDOverlay(overlay);
+    osdLock.unlock();
+}
+
+void MythBDPlayer::DisplayPauseFrame(void)
+{
+    if (player_ctx->buffer->IsBD() &&
+        player_ctx->buffer->BD()->IsInStillFrame())
+    {
+        SetScanType(kScan_Progressive);
     }
+    DisplayMenu();
+    MythPlayer::DisplayPauseFrame();
 }
 
 bool MythBDPlayer::VideoLoop(void)
@@ -73,7 +67,7 @@ bool MythBDPlayer::VideoLoop(void)
 
     if (drain)
     {
-        if (nbframes < 5 && videoOutput)
+        if (nbframes < 2 && videoOutput)
             videoOutput->UpdatePauseFrame();
 
         // if we go below the pre-buffering limit, the player will pause
@@ -86,42 +80,85 @@ bool MythBDPlayer::VideoLoop(void)
     if (player_ctx->buffer->BD()->BDWaitingForPlayer())
     {
         VERBOSE(VB_PLAYBACK, LOC + "Clearing Mythtv BD wait state");
-        ClearAfterSeek(true);
         player_ctx->buffer->BD()->SkipBDWaitingForPlayer();
         return !IsErrored();
+    }
+
+    if (player_ctx->buffer->BD()->IsInStillFrame())
+    {
+        if (nbframes > 1 && !m_stillFrameShowing)
+        {
+            videoOutput->UpdatePauseFrame();
+            DisplayNormalFrame(false);
+            return !IsErrored();
+        }
+
+        if (!m_stillFrameShowing)
+            needNewPauseFrame = true;
+
+        // we are in a still frame so pause video output
+        if (!videoPaused)
+        {
+            PauseVideo();
+            return !IsErrored();
+        }
+
+        // flag if we have no frame
+        if (nbframes == 0)
+        {
+            VERBOSE(VB_PLAYBACK, LOC +
+                    "Warning: In BD Still but no video frames in queue");
+            usleep(10000);
+            return !IsErrored();
+        }
+
+        if (!m_stillFrameShowing)
+            VERBOSE(VB_PLAYBACK, LOC + "Entering still frame.");
+        m_stillFrameShowing = true;
+    }
+    else
+    {
+        if (videoPaused && m_stillFrameShowing)
+        {
+            UnpauseVideo();
+            VERBOSE(VB_PLAYBACK, LOC + "Exiting still frame.");
+        }
+        m_stillFrameShowing = false;
     }
 
     return MythPlayer::VideoLoop();
 }
 
+void MythBDPlayer::EventStart(void)
+{
+    player_ctx->LockPlayingInfo(__FILE__, __LINE__);
+    if (player_ctx->playingInfo)
+    {
+        QString name;
+        QString serialid;
+        if (player_ctx->playingInfo->GetTitle().isEmpty() &&
+            player_ctx->buffer->BD()->GetNameAndSerialNum(name, serialid))
+        {
+            player_ctx->playingInfo->SetTitle(name);
+        }
+    }
+    player_ctx->UnlockPlayingInfo(__FILE__, __LINE__);
+
+    MythPlayer::EventStart();
+}
+
 int MythBDPlayer::GetNumChapters(void)
 {
-    int num = 0;
     if (player_ctx->buffer->BD() && player_ctx->buffer->BD()->IsOpen())
-        num = player_ctx->buffer->BD()->GetNumChapters();
-    if (num > 1)
-        return num;
-    return 0;
+        return player_ctx->buffer->BD()->GetNumChapters();
+    return -1;
 }
 
 int MythBDPlayer::GetCurrentChapter(void)
 {
-    uint total = GetNumChapters();
-    if (!total)
-        return 0;
-
-    for (int i = (total - 1); i > -1 ; i--)
-    {
-        uint64_t frame = player_ctx->buffer->BD()->GetChapterStartFrame(i);
-        if (framesPlayed >= frame)
-        {
-            VERBOSE(VB_PLAYBACK, LOC +
-                    QString("GetCurrentChapter(selected chapter %1 framenum %2)")
-                            .arg(i + 1).arg(frame));
-            return i + 1;
-        }
-    }
-    return 0;
+    if (player_ctx->buffer->BD() && player_ctx->buffer->BD()->IsOpen())
+        return player_ctx->buffer->BD()->GetCurrentChapter() + 1;
+    return -1;
 }
 
 int64_t MythBDPlayer::GetChapter(int chapter)
@@ -305,3 +342,15 @@ bool MythBDPlayer::PrevAngle(void)
     return SwitchAngle(prev);
 }
 
+void MythBDPlayer::CreateDecoder(char *testbuf, int testreadsize,
+                               bool allow_libmpeg2, bool no_accel)
+{
+    if (AvFormatDecoderBD::CanHandle(testbuf, player_ctx->buffer->GetFilename(),
+                                     testreadsize))
+    {
+        SetDecoder(new AvFormatDecoderBD(this, *player_ctx->playingInfo,
+                                         using_null_videoout,
+                                         allow_libmpeg2, no_accel,
+                                         player_ctx->GetSpecialDecode()));
+    }
+}

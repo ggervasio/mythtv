@@ -29,6 +29,10 @@ class MPUBLIC MythGenericTree
                          bool selectable_flag = false, bool visible = true);
     MythGenericTree *addNode(MythGenericTree *child);
 
+    /// Detach this node/branch from it's parent without deleting it, it can
+    /// then be reattached elsewhere or used on it's own
+    void DetachParent(void);
+
     void removeNode(MythGenericTree *child);
     void deleteNode(MythGenericTree *child);
 
@@ -77,11 +81,11 @@ class MPUBLIC MythGenericTree
     void SetData(QVariant data) { m_data = data; }
     const QVariant GetData(void) const { return m_data; }
 
-    int calculateDepth(int start=0);
-
     int childCount(void) const;
     uint visibleChildCount() const { return m_visibleCount; }
     int siblingCount(void) const;
+
+    int currentDepth(void);
 
     void setSelectable(bool flag) { m_selectable = flag; }
     bool isSelectable() const { return m_selectable; }

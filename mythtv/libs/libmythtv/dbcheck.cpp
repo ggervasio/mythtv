@@ -12,6 +12,7 @@ using namespace std;
 #include "mythdb.h"
 #include "mythverbose.h"
 #include "diseqcsettings.h" // for convert_diseqc_db()
+#include "videodbcheck.h"
 
 #define MINIMUM_DBMS_VERSION 5,0,15
 
@@ -20,7 +21,7 @@ using namespace std;
    mythtv/bindings/perl/MythTV.pm
 */
 /// This is the DB schema version expected by the running MythTV instance.
-const QString currentDatabaseVersion = "1266";
+const QString currentDatabaseVersion = "1269";
 
 static bool UpdateDBVersionNumber(const QString &newnumber, QString &dbver);
 static bool performActualUpdate(
@@ -5545,6 +5546,40 @@ NULL
 NULL
 };
         if (!performActualUpdate(updates, "1266", dbver))
+            return false;
+    }
+
+    if (dbver == "1266")
+    {
+        if (!doUpgradeVideoDatabaseSchema())
+            return false;
+
+        const char *updates[] = {
+"DELETE FROM settings WHERE value = 'mythvideo.DBSchemaVer'",
+NULL
+};
+        if (!performActualUpdate(updates, "1267", dbver))
+            return false;
+    }
+
+    if (dbver == "1267")
+    {
+        const char *updates[] = {
+"ALTER TABLE channel MODIFY xmltvid VARCHAR(255) NOT NULL DEFAULT '';",
+NULL
+};
+        if (!performActualUpdate(updates, "1268", dbver))
+            return false;
+    }
+
+    if (dbver == "1268")
+    {
+
+        const char *updates[] = {
+"DELETE FROM keybindings WHERE action='PREVSOURCE' AND keylist='Ctrl+Y';",
+NULL
+};
+        if (!performActualUpdate(updates, "1269", dbver))
             return false;
     }
 

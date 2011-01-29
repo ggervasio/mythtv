@@ -278,6 +278,7 @@ class MPUBLIC ProgramInfo
     QString MakeUniqueKey(void) const
         { return MakeUniqueKey(chanid, recstartts); }
     uint GetSecondsInRecording(void) const;
+    uint64_t GetLastFrameInPosMap(void) const;
     QString ChannelText(const QString&) const;
     QString GetPathname(void) const { return pathname; }
     QString GetBasename(void) const { return pathname.section('/', -1); }
@@ -533,8 +534,8 @@ class MPUBLIC ProgramInfo
                            bool forceCheckLocal = false) const;
 
     // Edit flagging map
-    void QueryCutList(frm_dir_map_t &) const;
-    void SaveCutList(frm_dir_map_t &) const;
+    bool QueryCutList(frm_dir_map_t &, bool loadAutosave=false) const;
+    void SaveCutList(frm_dir_map_t &, bool isAutoSave=false) const;
 
     // Commercial flagging map
     void QueryCommBreakList(frm_dir_map_t &) const;

@@ -135,8 +135,6 @@ MythPlayer::MythPlayer(bool muted)
       needNewPauseFrame(false),
       bufferPaused(false),  videoPaused(false),
       allpaused(false),     playing(false),
-
-      eof(false),
       m_double_framerate(false),    m_double_process(false),
       m_can_double(false),          m_deint_possible(true),
       livetv(false),
@@ -340,10 +338,10 @@ bool MythPlayer::Pause(void)
     }
     next_play_speed   = 0.0;
     next_normal_speed = false;
-    PauseDecoder();
     PauseVideo();
     audio.Pause(true);
     PauseBuffer();
+    PauseDecoder();
     allpaused = decoderPaused && videoPaused && bufferPaused;
     {
         QMutexLocker locker(&decoder_change_lock);
@@ -371,10 +369,10 @@ bool MythPlayer::Play(float speed, bool normal, bool unpauseaudio)
     }
 
     UnpauseBuffer();
+    UnpauseDecoder();
     if (unpauseaudio)
         audio.Pause(false);
     UnpauseVideo();
-    UnpauseDecoder();
     allpaused = false;
     next_play_speed   = speed;
     next_normal_speed = normal;
@@ -977,9 +975,6 @@ int MythPlayer::OpenFile(uint retries, bool allow_libmpeg2)
     CheckExtraAudioDecode();
     //noVideoTracks = !decoder->GetTrackCount(kTrackTypeVideo);
 
-
-    eof = false;
-
     // Set 'no_video_decode' to true for audio only decodeing
     bool no_video_decode = false;
 
@@ -1204,22 +1199,21 @@ void MythPlayer::WindowResized(const QSize &new_size)
 
 void MythPlayer::EnableTeletext(int page)
 {
+    QMutexLocker locker(&osdLock);
     if (!osd)
         return;
 
-    osdLock.lock();
     osd->EnableTeletext(true, page);
     prevTextDisplayMode = textDisplayMode;
     textDisplayMode = kDisplayTeletextMenu;
-    osdLock.unlock();
 }
 
 void MythPlayer::DisableTeletext(void)
 {
+    QMutexLocker locker(&osdLock);
     if (!osd)
         return;
 
-    osdLock.lock();
     osd->EnableTeletext(false, 0);
     textDisplayMode = kDisplayNone;
 
@@ -1227,17 +1221,15 @@ void MythPlayer::DisableTeletext(void)
        re-enabled them. */
     if (prevTextDisplayMode & kDisplayAllCaptions)
         EnableCaptions(prevTextDisplayMode, false);
-    osdLock.unlock();
 }
 
 void MythPlayer::ResetTeletext(void)
 {
+    QMutexLocker locker(&osdLock);
     if (!osd)
         return;
 
-    osdLock.lock();
     osd->TeletextReset();
-    osdLock.unlock();
 }
 
 /** \fn MythPlayer::SetTeletextPage(uint)
@@ -1262,9 +1254,9 @@ bool MythPlayer::HandleTeletextAction(const QString &action)
     bool handled = true;
 
     osdLock.lock();
-    if (action == "MENU" || action == "TOGGLETT" || action == "ESCAPE")
+    if (action == "MENU" || action == ACTION_TOGGLETT || action == "ESCAPE")
         DisableTeletext();
-    else
+    else if (osd)
         handled = osd->TeletextAction(action);
     osdLock.unlock();
 
@@ -1273,17 +1265,18 @@ bool MythPlayer::HandleTeletextAction(const QString &action)
 
 void MythPlayer::ResetCaptions(void)
 {
-    if (osd && ((textDisplayMode & kDisplayAVSubtitle)      ||
-                (textDisplayMode & kDisplayTextSubtitle)    ||
-                (textDisplayMode & kDisplayRawTextSubtitle) ||
-                (textDisplayMode & kDisplayDVDButton)       ||
-                (textDisplayMode & kDisplayBDOverlay)       ||
-                (textDisplayMode & kDisplayCC608)           ||
-                (textDisplayMode & kDisplayCC708)))
+    QMutexLocker locker(&osdLock);
+    if (!osd)
+        return;
+
+    if (((textDisplayMode & kDisplayAVSubtitle)      ||
+         (textDisplayMode & kDisplayTextSubtitle)    ||
+         (textDisplayMode & kDisplayRawTextSubtitle) ||
+         (textDisplayMode & kDisplayDVDButton)       ||
+         (textDisplayMode & kDisplayCC608)           ||
+         (textDisplayMode & kDisplayCC708)))
     {
-        osdLock.lock();
         osd->ClearSubtitles();
-        osdLock.unlock();
     }
 }
 
@@ -1292,10 +1285,9 @@ void MythPlayer::DisableCaptions(uint mode, bool osd_msg)
 {
     textDisplayMode &= ~mode;
     ResetCaptions();
-    if (!osd)
-        return;
 
     QMutexLocker locker(&osdLock);
+
     QString msg = "";
     if (kDisplayNUVTeletextCaptions & mode)
         msg += QObject::tr("TXT CAP");
@@ -1313,12 +1305,14 @@ void MythPlayer::DisableCaptions(uint mode, bool osd_msg)
     {
         int type = toTrackType(mode);
         msg += decoder->GetTrackDesc(type, GetTrack(type));
-        osd->EnableSubtitles(preserve);
+        if (osd)
+            osd->EnableSubtitles(preserve);
     }
     if (kDisplayTextSubtitle & mode)
     {
         msg += QObject::tr("Text subtitles");
-        osd->EnableSubtitles(preserve);
+        if (osd)
+            osd->EnableSubtitles(preserve);
     }
     if (!msg.isEmpty() && osd_msg)
     {
@@ -1733,27 +1727,8 @@ void MythPlayer::AVSync(VideoFrame *buffer, bool limit_delay)
     {
         // Reset A/V Sync
         lastsync = true;
-
         currentaudiotime = AVSyncGetAudiotime();
-        if (!using_null_videoout &&
-            videoOutput->hasHWAcceleration() &&
-           !videoOutput->IsSyncLocked())
-        {
-            // If we are using certain hardware decoders, so we've already done
-            // the decoding; display the frame, but don't wait for A/V Sync.
-            // Excludes HW decoder/render methods that are locked to
-            // the vertical sync (e.g. VDPAU)
-            osdLock.lock();
-            videoOutput->PrepareFrame(buffer, kScan_Intr2ndField, osd);
-            osdLock.unlock();
-            videoOutput->Show(kScan_Intr2ndField);
-            VERBOSE(VB_PLAYBACK, LOC + dbg + "skipping A/V wait.");
-        }
-        else
-        {
-            // If we are using software decoding, skip this frame altogether.
-            VERBOSE(VB_PLAYBACK, LOC + dbg + "dropping frame to catch up.");
-        }
+        VERBOSE(VB_PLAYBACK, LOC + dbg + "dropping frame to catch up.");
     }
     else if (!using_null_videoout)
     {
@@ -1952,23 +1927,21 @@ void MythPlayer::DisplayPauseFrame(void)
     videosync->Start();
 }
 
-void MythPlayer::SetBuffering(bool new_buffering, bool pause_audio)
+void MythPlayer::SetBuffering(bool new_buffering)
 {
     if (!buffering && new_buffering)
     {
         VERBOSE(VB_PLAYBACK, LOC + "Waiting for video buffers...");
         buffering = true;
-        audio.Pause(pause_audio);
         buffering_start = QTime::currentTime();
     }
     else if (buffering && !new_buffering)
     {
         buffering = false;
-        audio.Pause(false);
     }
 }
 
-bool MythPlayer::PrebufferEnoughFrames(bool pause_audio, int min_buffers)
+bool MythPlayer::PrebufferEnoughFrames(int min_buffers)
 {
     if (!videoOutput)
         return false;
@@ -1978,7 +1951,7 @@ bool MythPlayer::PrebufferEnoughFrames(bool pause_audio, int min_buffers)
                             videoOutput->EnoughPrebufferedFrames() :
                             videoOutput->EnoughDecodedFrames())))
     {
-        SetBuffering(true, pause_audio);
+        SetBuffering(true);
         usleep(frame_interval >> 3);
         int waited_for = buffering_start.msecsTo(QTime::currentTime());
         if ((waited_for & 100) == 100)
@@ -2052,11 +2025,11 @@ void MythPlayer::PreProcessNormalFrame(void)
 {
 #ifdef USING_MHEG
     // handle Interactive TV
-    if (GetInteractiveTV() && osd)
+    if (GetInteractiveTV())
     {
         osdLock.lock();
         itvLock.lock();
-        if (videoOutput->GetOSDPainter())
+        if (osd && videoOutput->GetOSDPainter())
         {
             InteractiveScreen *window =
                 (InteractiveScreen*)osd->GetWindow(OSD_WIN_INTERACT);
@@ -2291,13 +2264,13 @@ void MythPlayer::SwitchToProgram(void)
     {
         OpenDummy();
         ResetPlaying();
-        eof = false;
+        SetEof(false);
         delete pginfo;
         return;
     }
 
     player_ctx->buffer->OpenFile(
-        pginfo->GetPlaybackURL(), RingBuffer::kDefaultOpenTimeout);
+        pginfo->GetPlaybackURL(), RingBuffer::kLiveTVOpenTimeout);
 
     if (!player_ctx->buffer->IsOpen())
     {
@@ -2305,21 +2278,21 @@ void MythPlayer::SwitchToProgram(void)
                 QString("(card type: %1).")
                 .arg(player_ctx->tvchain->GetCardType(newid)));
         VERBOSE(VB_IMPORTANT, QString("\n") + player_ctx->tvchain->toString());
-        eof = true;
+        SetEof(true);
         SetErrored(QObject::tr("Error opening switch program buffer"));
         delete pginfo;
         return;
     }
 
-    if (eof)
+    if (GetEof())
     {
         discontinuity = true;
         ResetCaptions();
     }
 
     VERBOSE(VB_PLAYBACK, LOC + QString("SwitchToProgram(void) "
-            "discont: %1 newtype: %2 newid: %3 eof: %4")
-            .arg(discontinuity).arg(newtype).arg(newid).arg(eof));
+            "discont: %1 newtype: %2 newid: %3 decoderEof: %4")
+            .arg(discontinuity).arg(newtype).arg(newid).arg(GetEof()));
 
     if (discontinuity || newtype)
     {
@@ -2349,9 +2322,11 @@ void MythPlayer::SwitchToProgram(void)
     if (IsErrored())
     {
         VERBOSE(VB_IMPORTANT, LOC_ERR + "SwitchToProgram failed.");
-        eof = true;
+        SetEof(true);
         return;
     }
+
+    SetEof(false);
 
     // the bitrate is reset by player_ctx->buffer->OpenFile()...
     if (decoder)
@@ -2364,7 +2339,6 @@ void MythPlayer::SwitchToProgram(void)
         forcePositionMapSync = true;
     }
 
-    eof = false;
     Play();
     VERBOSE(VB_PLAYBACK, LOC + "SwitchToProgram - end");
 }
@@ -2379,9 +2353,8 @@ void MythPlayer::FileChangedCallback(void)
         player_ctx->buffer->Reset(false, true);
     else
         player_ctx->buffer->Reset(false, true, true);
+    SetEof(false);
     Play();
-
-    eof = false;
 
     player_ctx->SetPlayerChangingBuffers(false);
 
@@ -2419,7 +2392,7 @@ void MythPlayer::JumpToProgram(void)
     {
         OpenDummy();
         ResetPlaying();
-        eof = false;
+        SetEof(false);
         delete pginfo;
         return;
     }
@@ -2427,7 +2400,7 @@ void MythPlayer::JumpToProgram(void)
     SendMythSystemPlayEvent("PLAY_CHANGED", pginfo);
 
     player_ctx->buffer->OpenFile(
-        pginfo->GetPlaybackURL(), RingBuffer::kDefaultOpenTimeout);
+        pginfo->GetPlaybackURL(), RingBuffer::kLiveTVOpenTimeout);
 
     if (!player_ctx->buffer->IsOpen())
     {
@@ -2435,8 +2408,7 @@ void MythPlayer::JumpToProgram(void)
                 QString("(card type: %1).")
                 .arg(player_ctx->tvchain->GetCardType(newid)));
         VERBOSE(VB_IMPORTANT, QString("\n") + player_ctx->tvchain->toString());
-
-        eof = true;
+        SetEof(true);
         SetErrored(QObject::tr("Error opening jump program file buffer"));
         delete pginfo;
         return;
@@ -2460,6 +2432,8 @@ void MythPlayer::JumpToProgram(void)
         return;
     }
 
+    SetEof(false);
+
     // the bitrate is reset by player_ctx->buffer->OpenFile()...
     player_ctx->buffer->UpdateRawBitrate(decoder->GetRawBitrate());
     player_ctx->buffer->IgnoreLiveEOF(false);
@@ -2480,7 +2454,6 @@ void MythPlayer::JumpToProgram(void)
     if (nextpos > 10)
         DoFastForward(nextpos, true, false);
 
-    eof = false;
     player_ctx->SetPlayerChangingBuffers(false);
     VERBOSE(VB_PLAYBACK, LOC + "JumpToProgram - end");
 }
@@ -2603,7 +2576,7 @@ void MythPlayer::EventLoop(void)
         player_ctx->tvchain->JumpToNext(true, 1);
         JumpToProgram();
     }
-    else if ((!allpaused || eof) && player_ctx->tvchain &&
+    else if ((!allpaused || GetEof()) && player_ctx->tvchain &&
              (decoder && !decoder->GetWaitForChange()))
     {
         // Switch to the next program in livetv
@@ -2654,7 +2627,7 @@ void MythPlayer::EventLoop(void)
     }
 
     // Handle end of file
-    if (eof)
+    if (GetEof())
     {
         if (player_ctx->tvchain)
         {
@@ -2687,7 +2660,7 @@ void MythPlayer::EventLoop(void)
         if (fftime > 0)
         {
             DoFastForward(fftime);
-            if (eof)
+            if (GetEof())
                return;
         }
     }
@@ -2749,7 +2722,7 @@ void MythPlayer::EventLoop(void)
                   && !player_ctx->IsPIP() &&
                   player_ctx->GetState() == kState_WatchingPreRecorded))
             {
-                eof = true;
+                SetEof(true);
             }
         }
         else
@@ -2852,6 +2825,22 @@ void MythPlayer::DecoderPauseCheck(void)
         UnpauseDecoder();
 }
 
+bool MythPlayer::GetEof(void)
+{
+    decoder_change_lock.lock();
+    bool eof = decoder ? decoder->GetEof() : true;
+    decoder_change_lock.unlock();
+    return eof;
+}
+
+void MythPlayer::SetEof(bool eof)
+{
+    decoder_change_lock.lock();
+    if (decoder)
+        decoder->SetEof(eof);
+    decoder_change_lock.unlock();
+}
+
 void MythPlayer::DecoderLoop(bool pause)
 {
     if (pause)
@@ -2891,7 +2880,8 @@ void MythPlayer::DecoderLoop(bool pause)
             decoder_change_lock.unlock();
         }
 
-        bool obey_eof = eof && !(eof && player_ctx->tvchain && !allpaused);
+        bool obey_eof = GetEof() &&
+                        !(GetEof() && player_ctx->tvchain && !allpaused);
         if (isDummy || ((decoderPaused || ffrew_skip == 0 || obey_eof) &&
             !decodeOneFrame))
         {
@@ -3493,10 +3483,11 @@ void MythPlayer::WaitForSeek(uint64_t frame, bool override_seeks,
             need_clear = true;
         }
     }
-    if (need_clear && osd)
+    if (need_clear)
     {
         osdLock.lock();
-        osd->HideWindow("osd_message");
+        if (osd)
+            osd->HideWindow("osd_message");
         osdLock.unlock();
     }
     decoder->setExactSeeks(after);
@@ -3540,6 +3531,7 @@ void MythPlayer::ClearAfterSeek(bool clearvideobuffers)
 void MythPlayer::SetPlayerInfo(TV *tv, QWidget *widget,
                                bool frame_exact_seek, PlayerContext *ctx)
 {
+    deleteMap.SetPlayerContext(ctx);
     m_tv = tv;
     parentWidget = widget;
     exactseeks   = frame_exact_seek;
@@ -3558,16 +3550,27 @@ bool MythPlayer::EnableEdit(void)
         return false;
     }
 
-    if (!osd || deleteMap.IsFileEditing(player_ctx))
+    if (deleteMap.IsFileEditing(player_ctx))
         return false;
 
-    osdLock.lock();
+    QMutexLocker locker(&osdLock);
+    if (!osd)
+        return false;
+
     speedBeforeEdit = play_speed;
     pausedBeforeEdit = Pause();
     deleteMap.SetEditing(true);
     osd->DialogQuit();
     ResetCaptions();
     osd->HideAll();
+
+    bool loadedAutoSave = deleteMap.LoadAutoSaveMap(totalFrames, player_ctx);
+    if (loadedAutoSave)
+    {
+        SetOSDMessage(QObject::tr("Using previously auto-saved cuts"),
+                      kOSDTimeout_Short);
+    }
+
     deleteMap.UpdateSeekAmount(0, video_frame_rate);
     deleteMap.UpdateOSD(framesPlayed, totalFrames, video_frame_rate,
                         player_ctx, osd);
@@ -3577,18 +3580,21 @@ bool MythPlayer::EnableEdit(void)
         player_ctx->playingInfo->SaveEditing(true);
     player_ctx->UnlockPlayingInfo(__FILE__, __LINE__);
     editUpdateTimer.start();
-    osdLock.unlock();
+
     return deleteMap.IsEditing();
 }
 
 void MythPlayer::DisableEdit(bool save)
 {
-    osdLock.lock();
+    QMutexLocker locker(&osdLock);
+    if (!osd)
+        return;
+
     deleteMap.SetEditing(false, osd);
-    if (save)
-        deleteMap.SaveMap(totalFrames, player_ctx);
-    else
+    if (!save)
         deleteMap.LoadMap(totalFrames, player_ctx);
+    // Unconditionally save to remove temporary marks from the DB.
+    deleteMap.SaveMap(totalFrames, player_ctx);
     deleteMap.TrackerReset(framesPlayed, totalFrames);
     deleteMap.SetFileEditing(player_ctx, false);
     player_ctx->LockPlayingInfo(__FILE__, __LINE__);
@@ -3599,7 +3605,6 @@ void MythPlayer::DisableEdit(bool save)
         Play(speedBeforeEdit);
     else
         SetOSDStatus(QObject::tr("Paused"), kOSDTimeout_None);
-    osdLock.unlock();
 }
 
 bool MythPlayer::HandleProgramEditorActions(QStringList &actions,
@@ -3612,7 +3617,7 @@ bool MythPlayer::HandleProgramEditorActions(QStringList &actions,
     {
         QString action = actions[i];
         handled = true;
-        if (action == "LEFT")
+        if (action == ACTION_LEFT)
         {
             if (deleteMap.GetSeekAmount() > 0)
             {
@@ -3621,7 +3626,7 @@ bool MythPlayer::HandleProgramEditorActions(QStringList &actions,
             else
                 HandleArbSeek(false);
         }
-        else if (action == "RIGHT")
+        else if (action == ACTION_RIGHT)
         {
             if (deleteMap.GetSeekAmount() > 0)
             {
@@ -3630,7 +3635,7 @@ bool MythPlayer::HandleProgramEditorActions(QStringList &actions,
             else
                 HandleArbSeek(true);
         }
-        else if (action == "LOADCOMMSKIP")
+        else if (action == ACTION_LOADCOMMSKIP)
         {
             if (commBreakMap.HasMap())
             {
@@ -3639,14 +3644,14 @@ bool MythPlayer::HandleProgramEditorActions(QStringList &actions,
                 deleteMap.LoadCommBreakMap(totalFrames, map);
             }
         }
-        else if (action == "PREVCUT")
+        else if (action == ACTION_PREVCUT)
         {
             int old_seekamount = deleteMap.GetSeekAmount();
             deleteMap.SetSeekAmount(-2);
             HandleArbSeek(false);
             deleteMap.SetSeekAmount(old_seekamount);
         }
-        else if (action == "NEXTCUT")
+        else if (action == ACTION_NEXTCUT)
         {
             int old_seekamount = deleteMap.GetSeekAmount();
             deleteMap.SetSeekAmount(-2);
@@ -3654,7 +3659,7 @@ bool MythPlayer::HandleProgramEditorActions(QStringList &actions,
             deleteMap.SetSeekAmount(old_seekamount);
         }
 #define FFREW_MULTICOUNT 10
-        else if (action == "BIGJUMPREW")
+        else if (action == ACTION_BIGJUMPREW)
         {
             if (deleteMap.GetSeekAmount() > 0)
                 DoRewind(deleteMap.GetSeekAmount() * FFREW_MULTICOUNT,
@@ -3665,7 +3670,7 @@ bool MythPlayer::HandleProgramEditorActions(QStringList &actions,
                 DoRewind(fps * FFREW_MULTICOUNT / 2, true, true);
             }
         }
-        else if (action == "BIGJUMPFWD")
+        else if (action == ACTION_BIGJUMPFWD)
         {
             if (deleteMap.GetSeekAmount() > 0)
                 DoFastForward(deleteMap.GetSeekAmount() * FFREW_MULTICOUNT,
@@ -3676,22 +3681,22 @@ bool MythPlayer::HandleProgramEditorActions(QStringList &actions,
                 DoFastForward(fps * FFREW_MULTICOUNT / 2, true, true);
             }
         }
-        else if (action == "SELECT")
+        else if (action == ACTION_SELECT)
         {
             deleteMap.NewCut(frame, totalFrames);
+            SetOSDMessage(QObject::tr("New cut added."), kOSDTimeout_Short);
             refresh = true;
         }
         else if (action == "DELETE")
         {
-            if (IsInDelete(frame))
-            {
-                deleteMap.Delete(frame, totalFrames);
-                refresh = true;
-            }
+            deleteMap.Delete(frame, totalFrames,
+                             QObject::tr("Delete"));
+            refresh = true;
         }
         else if (action == "REVERT")
         {
-            deleteMap.LoadMap(totalFrames, player_ctx);
+            deleteMap.LoadMap(totalFrames, player_ctx,
+                              QObject::tr("Undo Changes"));
             refresh = true;
         }
         else if (action == "REVERTEXIT")
@@ -3699,7 +3704,7 @@ bool MythPlayer::HandleProgramEditorActions(QStringList &actions,
             DisableEdit(false);
             refresh = false;
         }
-        else if (action == "SAVEMAP")
+        else if (action == ACTION_SAVEMAP)
         {
             deleteMap.SaveMap(totalFrames, player_ctx);
             refresh = true;
@@ -3710,15 +3715,37 @@ bool MythPlayer::HandleProgramEditorActions(QStringList &actions,
             refresh = false;
         }
         else
+        {
+            QString undoMessage = deleteMap.GetUndoMessage();
+            QString redoMessage = deleteMap.GetRedoMessage();
             handled = deleteMap.HandleAction(action, frame, framesPlayed,
                                              totalFrames, video_frame_rate);
+            if (handled && (action == "CUTTOBEGINNING" ||
+                action == "CUTTOEND" || action == "NEWCUT"))
+            {
+                SetOSDMessage(QObject::tr("New cut added."), kOSDTimeout_Short);
+            }
+            else if (handled && action == "UNDO")
+            {
+                SetOSDMessage(QObject::tr("Undo") + " - " + undoMessage,
+                              kOSDTimeout_Short);
+            }
+            else if (handled && action == "REDO")
+            {
+                SetOSDMessage(QObject::tr("Redo") + " - " + redoMessage,
+                              kOSDTimeout_Short);
+            }
+        }
     }
 
     if (handled && refresh)
     {
         osdLock.lock();
-        deleteMap.UpdateOSD(framesPlayed, totalFrames, video_frame_rate,
-                            player_ctx, osd);
+        if (osd)
+        {
+            deleteMap.UpdateOSD(framesPlayed, totalFrames, video_frame_rate,
+                                player_ctx, osd);
+        }
         osdLock.unlock();
     }
 
@@ -4207,7 +4234,7 @@ bool MythPlayer::TranscodeGetNextFrame(
     if (!decoder->GetFrame(kDecodeAV))
         return false;
 
-    if (eof)
+    if (GetEof())
         return false;
 
     if (honorCutList && !deleteMap.IsEmpty())
@@ -4232,7 +4259,7 @@ bool MythPlayer::TranscodeGetNextFrame(
             did_ff = 1;
         }
     }
-    if (eof)
+    if (GetEof())
       return false;
     is_key = decoder->isLastFrameKey();
     return true;
@@ -4465,11 +4492,12 @@ int64_t MythPlayer::GetChapter(int chapter)
 InteractiveTV *MythPlayer::GetInteractiveTV(void)
 {
 #ifdef USING_MHEG
-    if (!interactiveTV && osd && itvEnabled)
+    if (!interactiveTV && itvEnabled)
     {
         QMutexLocker locker1(&osdLock);
         QMutexLocker locker2(&itvLock);
-        interactiveTV = new InteractiveTV(this);
+        if (osd)
+            interactiveTV = new InteractiveTV(this);
     }
 #endif // USING_MHEG
     return interactiveTV;
@@ -4622,28 +4650,26 @@ void MythPlayer::ToggleStudioLevels(void)
 
 void MythPlayer::SetOSDMessage(const QString &msg, OSDTimeout timeout)
 {
+    QMutexLocker locker(&osdLock);
     if (!osd)
         return;
 
-    osdLock.lock();
     QHash<QString,QString> info;
     info.insert("message_text", msg);
     osd->SetText("osd_message", info, timeout);
-    osdLock.unlock();
 }
 
 void MythPlayer::SetOSDStatus(const QString &title, OSDTimeout timeout)
 {
+    QMutexLocker locker(&osdLock);
     if (!osd)
         return;
 
-    osdLock.lock();
     osdInfo info;
     calcSliderPos(info);
     info.text.insert("title", title);
     osd->SetText("osd_status", info.text, timeout);
     osd->SetValues("osd_status", info.values, timeout);
-    osdLock.unlock();
 }
 
 static unsigned dbg_ident(const MythPlayer *player)
