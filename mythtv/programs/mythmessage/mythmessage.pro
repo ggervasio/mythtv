@@ -5,7 +5,7 @@ QT += network
 
 TEMPLATE = app
 CONFIG += thread
-TARGET = mythtvosd
+TARGET = mythmessage
 target.path = $${PREFIX}/bin
 INSTALLS = target
 
