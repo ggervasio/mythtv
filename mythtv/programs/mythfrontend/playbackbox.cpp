@@ -4609,7 +4609,7 @@ void PlaybackBox::saveRecMetadata(const QString &newTitle,
     QString groupname = m_groupList->GetItemCurrent()->GetData().toString();
 
     if (groupname == pginfo->GetTitle().toLower() &&
-        newTitle != groupname)
+        newTitle != pginfo->GetTitle())
     {
         m_recordingList->RemoveItem(item);
     }
@@ -4623,8 +4623,6 @@ void PlaybackBox::saveRecMetadata(const QString &newTitle,
         item->SetText(tempSubTitle, "titlesubtitle");
         item->SetText(newTitle, "title");
         item->SetText(newSubtitle, "subtitle");
-
-        UpdateUIListItem(item, true); // Why?
     }
 
     RecordingInfo ri(*pginfo);
