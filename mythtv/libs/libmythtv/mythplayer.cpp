@@ -1002,6 +1002,7 @@ int MythPlayer::OpenFile(uint retries, bool allow_libmpeg2)
 
     // Determine the initial bookmark and update it for the cutlist
     bookmarkseek = GetBookmark();
+    deleteMap.TrackerReset(bookmarkseek, totalFrames);
     deleteMap.TrackerWantsToJump(bookmarkseek, totalFrames, bookmarkseek);
 
     if (player_ctx->playingInfo->QueryAutoExpire() == kLiveTVAutoExpire)
@@ -2181,7 +2182,7 @@ bool MythPlayer::FastForward(float seconds)
     if (!videoOutput)
         return false;
 
-    if (fftime >= 0)
+    if (fftime <= 0)
         fftime = (long long)(seconds * video_frame_rate);
     return fftime > CalcMaxFFTime(fftime, false);
 }
@@ -2191,7 +2192,7 @@ bool MythPlayer::Rewind(float seconds)
     if (!videoOutput)
         return false;
 
-    if (rewindtime >= 0)
+    if (rewindtime <= 0)
         rewindtime = (long long)(seconds * video_frame_rate);
     return (uint64_t)rewindtime >= framesPlayed;
 }
@@ -2255,6 +2256,7 @@ void MythPlayer::SwitchToProgram(void)
         discontinuity, newtype, newid);
     if (!pginfo)
         return;
+    newtype = true; // force reloading of context and stream properties
 
     bool newIsDummy = player_ctx->tvchain->GetCardType(newid) == "DUMMY";
 
@@ -2380,6 +2382,7 @@ void MythPlayer::JumpToProgram(void)
         discontinuity, newtype, newid);
     if (!pginfo)
         return;
+    newtype = true; // force reloading of context and stream properties
 
     bool newIsDummy = player_ctx->tvchain->GetCardType(newid) == "DUMMY";
     SetPlayingInfo(*pginfo);
@@ -3455,8 +3458,11 @@ void MythPlayer::WaitForSeek(uint64_t frame, bool override_seeks,
                            (allpaused && !deleteMap.IsEditing()) ? true: after;
     decoder->setExactSeeks(before);
 
+    bool islivetvcur = (livetv && player_ctx->tvchain &&
+                        !player_ctx->tvchain->HasNext());
+
     uint64_t max = totalFrames;
-    if ((livetv || (watchingrecording && player_ctx->recorder &&
+    if ((islivetvcur || (watchingrecording && player_ctx->recorder &&
                    player_ctx->recorder->IsValidRecorder())))
     {
         max = (uint64_t)player_ctx->recorder->GetFramesWritten();
