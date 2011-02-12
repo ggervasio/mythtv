@@ -198,6 +198,9 @@ class DecoderBase
     virtual bool SetAudioByComponentTag(int) { return false; }
     virtual bool SetVideoByComponentTag(int) { return false; }
 
+    void SaveTotalDuration(void);
+    void ResetTotalDuration(void) { totalDuration = 0; }
+
   protected:
     virtual int  AutoSelectTrack(uint type);
     inline  void AutoSelectTracks(void);
@@ -233,6 +236,7 @@ class DecoderBase
 
     long long framesPlayed;
     long long framesRead;
+    int64_t totalDuration;
     long long lastKey;
     int keyframedist;
     long long indexOffset;

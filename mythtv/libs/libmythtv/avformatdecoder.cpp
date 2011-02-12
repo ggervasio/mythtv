@@ -743,6 +743,7 @@ void AvFormatDecoder::Reset(bool reset_video_data, bool seek_reset)
         ResetPosMap();
         framesPlayed = 0;
         framesRead = 0;
+        totalDuration = 0;
         seen_gop = false;
         seq_count = 0;
     }
@@ -994,8 +995,21 @@ int AvFormatDecoder::OpenFile(RingBuffer *rbuffer, bool novideo,
         }
     }
 
-    // If watching pre-recorded television or video use ffmpeg duration
-    int64_t dur = ic->duration / (int64_t)AV_TIME_BASE;
+    // If watching pre-recorded television or video use the marked duration
+    // from the db if it exists, else ffmpeg duration
+    int64_t dur = 0;
+
+    if (m_playbackinfo)
+    {
+        dur = m_playbackinfo->QueryTotalDuration();
+        dur /= 1000000;
+    }
+   
+    if (dur == 0)
+    {
+        dur = ic->duration / (int64_t)AV_TIME_BASE;
+    }
+
     if (dur > 0 && !livetv && !watchingrecording)
     {
         m_parent->SetDuration((int)dur);
@@ -2742,6 +2756,8 @@ bool AvFormatDecoder::PreProcessVideoPacket(AVStream *curstream, AVPacket *pkt)
 
     if (on_frame)
         framesRead++;
+
+    totalDuration += av_q2d(curstream->time_base) * pkt->duration * 1000000; // usec
 
     justAfterChange = false;
 

@@ -347,7 +347,6 @@ using_frontend {
         SOURCES += util-opengl.cpp
         QT += opengl
     }
-    using_opengl_vsync:DEFINES += USING_OPENGL_VSYNC
 
     using_opengl_video:DEFINES += USING_OPENGL_VIDEO
     using_opengl_video:HEADERS += openglvideo.h   videoout_opengl.h
@@ -574,14 +573,12 @@ use_hidesyms {
 }
 
 mingw {
-    DEFINES -= USING_OPENGL_VSYNC
     DEFINES += USING_MINGW
 
     HEADERS += videoout_d3d.h
     SOURCES -= NuppelVideoRecorder.cpp
     SOURCES += videoout_d3d.cpp
 
-    LIBS += -lpthread
     LIBS += -lws2_32
 }
 
