@@ -296,7 +296,7 @@ bool TV::StartTV(ProgramInfo *tvrec, uint flags)
         tv->setUnderNetworkControl(initByNetworkCommand);
 
         // Process Events
-        VERBOSE(VB_PLAYBACK, LOC + "StartTV -- process events begin");
+        VERBOSE(VB_GENERAL, LOC + "Entering main playback loop.");
 
         while (true)
         {
@@ -323,7 +323,7 @@ bool TV::StartTV(ProgramInfo *tvrec, uint flags)
             tv->ReturnPlayerLock(mctx);
         }
 
-        VERBOSE(VB_PLAYBACK, LOC + "StartTV -- process events end");
+        VERBOSE(VB_GENERAL, LOC + "Exiting main playback loop.");
 
         if (tv->getJumpToProgram())
         {
@@ -875,7 +875,7 @@ TV::TV(void)
       pseudoChangeChanTimerId(0),   speedChangeTimerId(0),
       errorRecoveryTimerId(0),      exitPlayerTimerId(0)
 {
-    VERBOSE(VB_PLAYBACK, LOC + "ctor -- begin");
+    VERBOSE(VB_GENERAL, LOC + "Creating TV object");
     ctorTime.start();
 
     setObjectName("TV");
@@ -894,7 +894,7 @@ TV::TV(void)
 
     InitFromDB();
 
-    VERBOSE(VB_PLAYBACK, LOC + "ctor -- end");
+    VERBOSE(VB_PLAYBACK, LOC + "Finished creating TV object");
 }
 
 void TV::InitFromDB(void)
@@ -1093,7 +1093,10 @@ bool TV::Init(bool createWindow)
         myWindow = new TvPlayWindow(mainStack, "Playback");
 
         if (myWindow->Create())
+        {
             mainStack->AddScreen(myWindow, false);
+            VERBOSE(VB_GENERAL, LOC + "Created TvPlayWindow.");
+        }
         else
         {
             delete myWindow;
@@ -1101,9 +1104,8 @@ bool TV::Init(bool createWindow)
         }
 
         MythMainWindow *mainWindow = GetMythMainWindow();
-        //QPalette p = mainWindow->palette();
-        //p.setColor(mainWindow->backgroundRole(), Qt::black);
-        //mainWindow->setPalette(p);
+        if (mainWindow->GetPaintWindow())
+            mainWindow->GetPaintWindow()->update();
         mainWindow->installEventFilter(this);
         qApp->processEvents();
     }
@@ -1842,14 +1844,14 @@ void TV::HandleStateChange(PlayerContext *mctx, PlayerContext *ctx)
                 chanid = 0;
         }
 
-        VERBOSE(VB_IMPORTANT, "Spawning LiveTV Recorder -- begin");
+        VERBOSE(VB_IMPORTANT, LOC + "Spawning LiveTV Recorder -- begin");
 
         if (chanid && !channum.isEmpty())
             ctx->recorder->SpawnLiveTV(ctx->tvchain->GetID(), false, channum);
         else
             ctx->recorder->SpawnLiveTV(ctx->tvchain->GetID(), false, "");
 
-        VERBOSE(VB_IMPORTANT, "Spawning LiveTV Recorder -- end");
+        VERBOSE(VB_IMPORTANT, LOC + "Spawning LiveTV Recorder -- end");
 
         if (!ctx->ReloadTVChain())
         {
@@ -1868,8 +1870,7 @@ void TV::HandleStateChange(PlayerContext *mctx, PlayerContext *ctx)
 
             bool opennow = (ctx->tvchain->GetCardType(-1) != "DUMMY");
 
-            VERBOSE(VB_IMPORTANT, QString("We have a playbackURL(%1) & "
-                                          "cardtype(%2)")
+            VERBOSE(VB_IMPORTANT, LOC + QString("playbackURL(%1) cardtype(%2)")
                     .arg(playbackURL).arg(ctx->tvchain->GetCardType(-1)));
 
             ctx->SetRingBuffer(
@@ -1880,14 +1881,6 @@ void TV::HandleStateChange(PlayerContext *mctx, PlayerContext *ctx)
             ctx->buffer->SetLiveMode(ctx->tvchain);
         }
 
-        VERBOSE(VB_IMPORTANT, "We have a RingBuffer");
-
-        if (GetMythMainWindow() && !weDisabledGUI)
-        {
-            weDisabledGUI = true;
-            GetMythMainWindow()->PushDrawDisabled();
-            DrawUnusedRects();
-        }
 
         if (ctx->playingInfo && StartRecorder(ctx,-1))
         {
@@ -1904,7 +1897,6 @@ void TV::HandleStateChange(PlayerContext *mctx, PlayerContext *ctx)
         }
         else if (!ctx->IsPIP())
         {
-            GetMythUI()->DisableScreensaver();
             if (!lastLockSeenTime.isValid() ||
                 (lastLockSeenTime < timerOffTime))
             {
@@ -1952,15 +1944,6 @@ void TV::HandleStateChange(PlayerContext *mctx, PlayerContext *ctx)
 
         if (ctx->buffer && ctx->buffer->IsOpen())
         {
-            GetMythUI()->DisableScreensaver();
-
-            if (GetMythMainWindow() && !weDisabledGUI)
-            {
-                weDisabledGUI = true;
-                GetMythMainWindow()->PushDrawDisabled();
-                DrawUnusedRects();
-            }
-
             if (desiredNextState == kState_WatchingRecording)
             {
                 ctx->LockPlayingInfo(__FILE__, __LINE__);
@@ -2112,6 +2095,8 @@ void TV::HandleStateChange(PlayerContext *mctx, PlayerContext *ctx)
              TRANSITION(kState_None, kState_WatchingRecording) ||
              TRANSITION(kState_None, kState_WatchingLiveTV))
     {
+        if (!ctx->IsPIP())
+            GetMythUI()->DisableScreensaver();
         MythMainWindow *mainWindow = GetMythMainWindow();
         mainWindow->setBaseSize(player_bounds.size());
         mainWindow->setMinimumSize(
@@ -2120,10 +2105,18 @@ void TV::HandleStateChange(PlayerContext *mctx, PlayerContext *ctx)
             (db_use_fixed_size) ? player_bounds.size() :
             QSize(QWIDGETSIZE_MAX, QWIDGETSIZE_MAX));
         mainWindow->setGeometry(player_bounds);
-
-        // hide the GUI paint window
         GetMythMainWindow()->GetPaintWindow()->hide();
-        qApp->processEvents();
+        if (!weDisabledGUI)
+        {
+            weDisabledGUI = true;
+            GetMythMainWindow()->PushDrawDisabled();
+        }
+        DrawUnusedRects();
+        // we no longer need the contents of myWindow
+        if (myWindow)
+            myWindow->DeleteAllChildren();
+
+        VERBOSE(VB_GENERAL, LOC + "Main UI disabled.");
     }
 
     VERBOSE(VB_PLAYBACK, LOC +
@@ -4768,7 +4761,10 @@ bool TV::StartPlayer(PlayerContext *mctx, PlayerContext *ctx,
     }
 
     if (ok)
+    {
+        VERBOSE(VB_GENERAL, LOC + QString("Created player."));
         SetSpeedChangeTimer(25, __LINE__);
+    }
 
     VERBOSE(VB_PLAYBACK, LOC + QString("StartPlayer(%1, %2, %3) -- end %4")
             .arg(find_player_index(ctx)).arg(StateToString(desiredState))
@@ -7519,7 +7515,7 @@ void TV::DoEditSchedule(int editType)
     vector<bool> do_pause;
     do_pause.insert(do_pause.begin(), true, player.size());
     do_pause[find_player_index(actx)] = pause_active;
-    VERBOSE(VB_IMPORTANT, QString("pause_active: %1").arg(pause_active));
+    VERBOSE(VB_PLAYBACK, LOC + QString("Pausing player: %1").arg(pause_active));
 
     saved_pause = DoSetPauseState(actx, do_pause);
 
