@@ -2774,29 +2774,58 @@ void NuppelVideoRecorder::doVbiThread(void)
 
     if (VBIMode::NTSC_CC == vbimode)
     {
-        // V4L v1 VBI ioctls
-        struct vbi_format vfmt;
-        memset(&vfmt, 0, sizeof(vbi_format));
-        if (ioctl(vbifd, VIDIOCGVBIFMT, &vfmt) < 0)
+        uint sz;
+
+        // V4L v2 VBI ioctls
+        struct v4l2_format fmt;
+        memset(&fmt, 0, sizeof(v4l2_format));
+        fmt.type = V4L2_BUF_TYPE_VBI_CAPTURE;
+        if (ioctl(vbifd, VIDIOC_G_FMT, &fmt) >= 0)
+        {
+            VERBOSE(VB_RECORD, LOC + "v4l2_vbi_format  rate: "<<fmt.fmt.vbi.sampling_rate
+                    <<"\n\t\t\tsamples_per_line: "<<fmt.fmt.vbi.samples_per_line
+                    <<"\n\t\t\t          starts: "
+                    <<fmt.fmt.vbi.start[0]<<", "<<fmt.fmt.vbi.start[1]
+                    <<"\n\t\t\t          counts: "
+                    <<fmt.fmt.vbi.count[0]<<", "<<fmt.fmt.vbi.count[1]
+                    <<"\n\t\t\t           flags: "
+                    <<QString("0x%1").arg(fmt.fmt.vbi.flags));
+            sz = fmt.fmt.vbi.samples_per_line * (fmt.fmt.vbi.count[0] + fmt.fmt.vbi.count[1]);
+            ntsc_cc->samples_per_line = fmt.fmt.vbi.samples_per_line;
+            ntsc_cc->start_line       = fmt.fmt.vbi.start[0];
+            ntsc_cc->line_count       = fmt.fmt.vbi.count[0];
+            ntsc_cc->scale0           = (fmt.fmt.vbi.sampling_rate + 503488 / 2) / 503488;
+        }
+        else
         {
             VERBOSE(VB_IMPORTANT, LOC_ERR +
-                    "Failed to query vbi capabilities (v4l1)");
-            cc_close(ntsc_cc);
-            return;
+                    "Failed to query vbi capabilities (v4l2)");
+
+            // V4L v1 VBI ioctls
+            struct vbi_format vfmt;
+            memset(&vfmt, 0, sizeof(vbi_format));
+            if (ioctl(vbifd, VIDIOCGVBIFMT, &vfmt) < 0)
+            {
+                VERBOSE(VB_IMPORTANT, LOC_ERR +
+                        "Failed to query vbi capabilities (v4l1)");
+                cc_close(ntsc_cc);
+                return;
+            }
+            VERBOSE(VB_RECORD, LOC + "vbi_format  rate: "<<vfmt.sampling_rate
+                    <<"\n\t\t\tsamples_per_line: "<<vfmt.samples_per_line
+                    <<"\n\t\t\t          starts: "
+                    <<vfmt.start[0]<<", "<<vfmt.start[1]
+                    <<"\n\t\t\t          counts: "
+                    <<vfmt.count[0]<<", "<<vfmt.count[1]
+                    <<"\n\t\t\t           flags: "
+                    <<QString("0x%1").arg(vfmt.flags));
+            sz = vfmt.samples_per_line * (vfmt.count[0] + vfmt.count[1]);
+            ntsc_cc->samples_per_line = vfmt.samples_per_line;
+            ntsc_cc->start_line       = vfmt.start[0];
+            ntsc_cc->line_count       = vfmt.count[0];
+            ntsc_cc->scale0           = (vfmt.sampling_rate + 503488 / 2) / 503488;
         }
-        VERBOSE(VB_RECORD, LOC + "vbi_format  rate: "<<vfmt.sampling_rate
-                <<"\n\t\t\tsamples_per_line: "<<vfmt.samples_per_line
-                <<"\n\t\t\t          starts: "
-                <<vfmt.start[0]<<", "<<vfmt.start[1]
-                <<"\n\t\t\t          counts: "
-                <<vfmt.count[0]<<", "<<vfmt.count[1]
-                <<"\n\t\t\t           flags: "
-                <<QString("0x%1").arg(vfmt.flags));
-        uint sz = vfmt.samples_per_line * (vfmt.count[0] + vfmt.count[1]);
-        ntsc_cc->samples_per_line = vfmt.samples_per_line;
-        ntsc_cc->start_line       = vfmt.start[0];
-        ntsc_cc->line_count       = vfmt.count[0];
-        ntsc_cc->scale0           = (vfmt.sampling_rate + 503488 / 2) / 503488;
+
         ntsc_cc->scale1           = (ntsc_cc->scale0 * 2 + 3) / 5; /* 40% */
         ptr_end = ntsc_cc->buffer + sz;
         if (sz > CC_VBIBUFSIZE)
