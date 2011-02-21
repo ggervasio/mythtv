@@ -4,7 +4,6 @@
 #include <cmath>
 #include <unistd.h>
 #include <stdint.h>
-#include <pthread.h>
 
 #include <algorithm>
 using namespace std;
@@ -16,6 +15,7 @@ using namespace std;
 #include <QDir>
 #include <QKeyEvent>
 #include <QEvent>
+#include <QThread>
 
 #include "mythdb.h"
 #include "tv_play.h"
@@ -1186,15 +1186,14 @@ TV::~TV(void)
 
     if (ddMapLoaderRunning)
     {
-        pthread_join(ddMapLoader, NULL);
+        ddMapLoader.wait();
         ddMapLoaderRunning = false;
 
         if (ddMapSourceId)
         {
-            int *src = new int;
-            *src = ddMapSourceId;
-            pthread_create(&ddMapLoader, NULL, load_dd_map_post_thunk, src);
-            pthread_detach(ddMapLoader);
+            ddMapLoader.SetParent(NULL);
+            ddMapLoader.SetSourceId(ddMapSourceId);
+            ddMapLoader.start();
         }
     }
 
@@ -8923,28 +8922,12 @@ static void insert_map(InfoMap &infoMap, const InfoMap &newMap)
         infoMap.insert(it.key(), *it);
 }
 
-class load_dd_map
+void TVDDMapThread::run(void)
 {
-  public:
-    load_dd_map(TV *t, uint s) : tv(t), sourceid(s) {}
-    TV   *tv;
-    uint  sourceid;
-};
-
-void *TV::load_dd_map_thunk(void *param)
-{
-    load_dd_map *x = (load_dd_map*) param;
-    x->tv->RunLoadDDMap(x->sourceid);
-    delete x;
-    return NULL;
-}
-
-void *TV::load_dd_map_post_thunk(void *param)
-{
-    uint *sourceid = (uint*) param;
-    SourceUtil::UpdateChannelsFromListings(*sourceid);
-    delete sourceid;
-    return NULL;
+    if (m_parent)
+        m_parent->RunLoadDDMap(m_sourceid);
+    else
+        SourceUtil::UpdateChannelsFromListings(m_sourceid);
 }
 
 /** \fn TV::StartChannelEditMode(PlayerContext*)
@@ -8963,7 +8946,7 @@ void TV::StartChannelEditMode(PlayerContext *ctx)
     QMutexLocker locker(&chanEditMapLock);
     if (ddMapLoaderRunning)
     {
-        pthread_join(ddMapLoader, NULL);
+        ddMapLoader.wait();
         ddMapLoaderRunning = false;
     }
 
@@ -8989,12 +8972,10 @@ void TV::StartChannelEditMode(PlayerContext *ctx)
 
     if (sourceid && (sourceid != ddMapSourceId))
     {
-        ddMapLoaderRunning = true;
-        if (!pthread_create(&ddMapLoader, NULL, load_dd_map_thunk,
-                            new load_dd_map(this, sourceid)))
-        {
-            ddMapLoaderRunning = false;
-        }
+        ddMapLoader.SetParent(this);
+        ddMapLoader.SetSourceId(sourceid);
+        ddMapLoader.start();
+        ddMapLoaderRunning = ddMapLoader.isRunning();
     }
 }
 
@@ -9879,7 +9860,6 @@ void TV::FillOSDMenuVideo(const PlayerContext *ctx, OSD *osd,
             cur_mode = " " + cur_mode;
             scan_type = kScan_Detect;
         }
-        ctx->UnlockDeletePlayer(__FILE__, __LINE__);
 
         osd->DialogAddButton(tr("Detect") + cur_mode, "SELECTSCAN_0", false,
                              scan_type == kScan_Detect);
