@@ -11,6 +11,20 @@
 #include "mythverbose.h"
 #include "mythlocale.h"
 
+#define MYTH_APPNAME_MYTHBACKEND "mythbackend"
+#define MYTH_APPNAME_MYTHJOBQUEUE "mythjobqueue"
+#define MYTH_APPNAME_MYTHFRONTEND "mythfrontend"
+#define MYTH_APPNAME_MYTHTV_SETUP "mythtv-setup"
+#define MYTH_APPNAME_MYTHFILLDATABASE "mythfilldatabase"
+#define MYTH_APPNAME_MYTHCOMMFLAG "mythcommflag"
+#define MYTH_APPNAME_MYTHPREVIEWGEN "mythpreviewgen"
+#define MYTH_APPNAME_MYTHTRANSCODE "mythtranscode"
+#define MYTH_APPNAME_MYTHWELCOME "mythwelcome"
+#define MYTH_APPNAME_MYTHSHUTDOWN "mythshutdown"
+#define MYTH_APPNAME_MYTHMESSAGE "mythmessage"
+#define MYTH_APPNAME_MYTHLCDSERVER "mythlcdserver"
+#define MYTH_APPNAME_MYTHAVTEST "mythavtest"
+
 class MDBManager;
 class MythCoreContextPrivate;
 class MythSocket;
@@ -26,28 +40,6 @@ enum LogPriorities
     LP_NOTICE    = 5,
     LP_INFO      = 6,
     LP_DEBUG     = 7
-};
-
-/** \class MythPrivRequest
- *  \brief Container for requests that require privledge escalation.
- *
- *   Currently this is used for just one thing, increasing the
- *   priority of the video output thread to a real-time priority.
- *   These requests are made by calling gCoreContext->addPrivRequest().
- *
- *  \sa NuppelVideoPlayer::StartPlaying(void)
- *  \sa MythCoreContext:addPrivRequest(MythPrivRequest::Type, void*)
- */
-class MBASE_PUBLIC MythPrivRequest
-{
-  public:
-    typedef enum { MythRealtime, MythExit, PrivEnd } Type;
-    MythPrivRequest(Type t, void *data) : m_type(t), m_data(data) {}
-    Type getType() const { return m_type; }
-    void *getData() const { return m_data; }
-  private:
-    Type m_type;
-    void *m_data;
 };
 
 /** \class MythCoreContext
@@ -67,9 +59,6 @@ class MBASE_PUBLIC MythCoreContext : public MythObservable, public MythSocketCBs
     virtual ~MythCoreContext();
 
     bool Init(void);
-
-    void    SetAppName(QString appName);
-    QString GetAppName(void);
 
     void SetLocalHostname(const QString &hostname);
     void SetServerSocket(MythSocket *serverSock);
@@ -153,10 +142,6 @@ class MBASE_PUBLIC MythCoreContext : public MythObservable, public MythSocketCBs
     void ClearSettingsCache(const QString &myKey = QString(""));
     void ActivateSettingsCache(bool activate = true);
     void OverrideSettingForSession(const QString &key, const QString &value);
-
-    void addPrivRequest(MythPrivRequest::Type t, void *data);
-    void waitPrivRequest() const;
-    MythPrivRequest popPrivRequest();
 
     void dispatch(const MythEvent &event);
     void dispatchNow(const MythEvent &event) MDEPRECATED;

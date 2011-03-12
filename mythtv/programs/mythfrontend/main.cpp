@@ -3,7 +3,6 @@
 #include <fcntl.h>
 #include <signal.h>
 #include <cerrno>
-#include <pthread.h>
 
 #include <iostream>
 using namespace std;
@@ -44,6 +43,7 @@ using namespace std;
 #include "dvdringbuffer.h"
 #include "scheduledrecording.h"
 #include "mythsystemevent.h"
+#include "hardwareprofile.h"
 
 #include "compat.h"  // For SIG* on MinGW
 #include "exitcodes.h"
@@ -926,6 +926,24 @@ static void getScreenShot(void)
     (void) GetMythMainWindow()->screenShot();
 }
 
+static void setDebugShowBorders(void)
+{
+    MythPainter *p = GetMythPainter();
+    p->SetDebugMode(!p->ShowBorders(), p->ShowTypeNames());
+
+    if (GetMythMainWindow()->GetMainStack()->GetTopScreen())
+        GetMythMainWindow()->GetMainStack()->GetTopScreen()->SetRedraw();
+}
+
+static void setDebugShowNames(void)
+{
+    MythPainter *p = GetMythPainter();
+    p->SetDebugMode(p->ShowBorders(), !p->ShowTypeNames());
+
+    if (GetMythMainWindow()->GetMainStack()->GetTopScreen())
+        GetMythMainWindow()->GetMainStack()->GetTopScreen()->SetRedraw();
+}
+
 static void InitJumpPoints(void)
 {
      REG_JUMP(QT_TRANSLATE_NOOP("MythControls", "Reload Theme"),
@@ -961,6 +979,11 @@ static void InitJumpPoints(void)
      REG_JUMPEX(QT_TRANSLATE_NOOP("MythControls", "ScreenShot"),
          "", "", getScreenShot, false);
 
+     REG_JUMPEX(QT_TRANSLATE_NOOP("MythControls", "Toggle Show Widget Borders"),
+         "", "", setDebugShowBorders, false);
+     REG_JUMPEX(QT_TRANSLATE_NOOP("MythControls", "Toggle Show Widget Names"),
+         "", "", setDebugShowNames, false);
+
     TV::InitKeys();
 
     TV::SetFuncPtr("playbackbox", (void *)PlaybackBox::RunPlaybackBox);
@@ -991,65 +1014,6 @@ static int internal_media_init()
     REG_MEDIAPLAYER("Internal", QT_TRANSLATE_NOOP("MythControls",
         "MythTV's native media player."), internal_play_media);
     return 0;
-}
-
-static void *run_priv_thread(void *data)
-{
-    VERBOSE(VB_PLAYBACK, QString("user: %1 effective user: %2 run_priv_thread")
-                            .arg(getuid()).arg(geteuid()));
-
-    (void)data;
-    while (true)
-    {
-        gCoreContext->waitPrivRequest();
-
-        for (MythPrivRequest req = gCoreContext->popPrivRequest();
-             true; req = gCoreContext->popPrivRequest())
-        {
-            bool done = false;
-            switch (req.getType())
-            {
-            case MythPrivRequest::MythRealtime:
-                if (gCoreContext->GetNumSetting("RealtimePriority", 1))
-                {
-                    pthread_t *target_thread = (pthread_t *)(req.getData());
-                    // Raise the given thread to realtime priority
-                    struct sched_param sp = {1};
-                    if (target_thread)
-                    {
-                        int status = pthread_setschedparam(
-                            *target_thread, SCHED_FIFO, &sp);
-                        if (status)
-                        {
-                            // perror("pthread_setschedparam");
-                            VERBOSE(VB_GENERAL, "Realtime priority would"
-                                                " require SUID as root.");
-                        }
-                        else
-                            VERBOSE(VB_GENERAL, "Using realtime priority.");
-                    }
-                    else
-                    {
-                        VERBOSE(VB_IMPORTANT, "Unexpected NULL thread ptr for"
-                                              " MythPrivRequest::MythRealtime");
-                    }
-                }
-                else
-                    VERBOSE(VB_GENERAL, "The realtime priority"
-                                        " setting is not enabled.");
-                break;
-            case MythPrivRequest::MythExit:
-                pthread_exit(NULL);
-                break;
-            case MythPrivRequest::PrivEnd:
-                done = true; // queue is empty
-                break;
-            }
-            if (done)
-                break; // from processing the current queue
-        }
-    }
-    return NULL; // will never happen
 }
 
 static void CleanupMyOldInUsePrograms(void)
@@ -1177,6 +1141,8 @@ int main(int argc, char **argv)
 #endif
     QApplication a(argc, argv);
 
+    QCoreApplication::setApplicationName(MYTH_APPNAME_MYTHFRONTEND);
+
     QString pluginname;
 
     QFileInfo finfo(a.argv()[0]);
@@ -1184,7 +1150,7 @@ int main(int argc, char **argv)
     QString binname = finfo.baseName();
 
     VERBOSE(VB_IMPORTANT, QString("%1 version: %2 [%3] www.mythtv.org")
-                            .arg(binname)
+                            .arg(MYTH_APPNAME_MYTHFRONTEND)
                             .arg(MYTH_SOURCE_PATH)
                             .arg(MYTH_SOURCE_VERSION));
 
@@ -1245,7 +1211,7 @@ int main(int argc, char **argv)
         else
         {
             VERBOSE(VB_IMPORTANT, QString("%1 version: %2 [%3] www.mythtv.org")
-                                    .arg(binname)
+                                    .arg(MYTH_APPNAME_MYTHFRONTEND)
                                     .arg(MYTH_SOURCE_PATH)
                                     .arg(MYTH_SOURCE_VERSION));
 
@@ -1301,8 +1267,6 @@ int main(int argc, char **argv)
         if (!InitializeMythSchema())
             return GENERIC_EXIT_DB_ERROR;
     }
-
-    gCoreContext->SetAppName(binname);
 
     for(int argpos = 1; argpos < a.argc(); ++argpos)
     {
@@ -1392,21 +1356,6 @@ int main(int argc, char **argv)
         return GENERIC_EXIT_OK;
     }
 
-    // Create privileged thread, then drop privs
-    pthread_t priv_thread;
-    bool priv_thread_created = true;
-
-    VERBOSE(VB_PLAYBACK, QString("user: %1 effective user: %2 before "
-                            "privileged thread").arg(getuid()).arg(geteuid()));
-    int status = pthread_create(&priv_thread, NULL, run_priv_thread, NULL);
-    VERBOSE(VB_PLAYBACK, QString("user: %1 effective user: %2 after "
-                            "privileged thread").arg(getuid()).arg(geteuid()));
-    if (status)
-    {
-        VERBOSE(VB_IMPORTANT, QString("Warning: ") +
-                "Failed to create priveledged thread." + ENO);
-        priv_thread_created = false;
-    }
     setuid(getuid());
 
     VERBOSE(VB_IMPORTANT,
@@ -1502,6 +1451,15 @@ int main(int argc, char **argv)
                     .arg(networkPort));
     }
 
+#ifdef __linux__
+#ifdef CONFIG_BINDINGS_PYTHON
+    HardwareProfile *profile = new HardwareProfile();
+    if (profile && profile->NeedsUpdate())
+        profile->SubmitProfile();
+    delete profile;
+#endif
+#endif
+
     if (!RunMenu(themedir, themename) && !resetTheme(themedir, themename))
     {
         return GENERIC_EXIT_NO_THEME;
@@ -1537,12 +1495,6 @@ int main(int argc, char **argv)
 
     if (mon)
         mon->deleteLater();
-
-    if (priv_thread_created)
-    {
-        gCoreContext->addPrivRequest(MythPrivRequest::MythExit, NULL);
-        pthread_join(priv_thread, NULL);
-    }
 
     delete networkControl;
 

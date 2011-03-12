@@ -20,6 +20,18 @@ struct SortData;
 
 typedef QHash<QString,QString> MetadataMap;
 
+#ifdef _MSC_VER
+// --------------------------------------------------------------------------
+// -=>NOTE: MSVC requires any referenced class to have an definition.  
+//          VideoList only exists in the MythVideo plugin :(
+//
+//          This is a temp HACK and should be removed once
+//          mythvideo is finished being merged into mythtv proper.
+// --------------------------------------------------------------------------
+class VideoList {};
+
+#endif
+
 class META_PUBLIC VideoMetadata
 {
   public:
@@ -31,7 +43,7 @@ class META_PUBLIC VideoMetadata
     typedef std::vector<cast_entry> cast_list;
 
   public:
-    class SortKey
+    class META_PUBLIC SortKey
     {
       public:
         SortKey();

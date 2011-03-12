@@ -1487,7 +1487,7 @@ void MainServer::HandleAnnounce(QStringList &slist, QStringList commands,
             for (it = checkfiles.begin(); it != checkfiles.end(); ++it)
             {
                 if (dir.exists(*it) &&
-                    QFileInfo(dir, *it).size() >= RingBuffer::kReadTestSize)
+                    QFileInfo(dir, *it).size() >= kReadTestSize)
                 {
                     retlist<<*it;
                 }
@@ -1540,7 +1540,8 @@ void MainServer::SendResponse(MythSocket *socket, QStringList &commands)
 /**
  * \addtogroup myth_network_protocol
  * \par        QUERY_RECORDINGS \e type
- * The \e type parameter can be either "Play", "Recording" or "Delete".
+ * The \e type parameter can be either "Recording", "Unsorted", "Ascending",
+ * or "Descending".
  * Returns programinfo (title, subtitle, description, category, chanid,
  * channum, callsign, channel.name, fileURL, \e et \e cetera)
  */
@@ -1557,10 +1558,18 @@ void MainServer::HandleQueryRecordings(QString type, PlaybackSock *pbs)
     QMap<QString,bool> isJobRunning =
         ProgramInfo::QueryJobsRunning(JOB_COMMFLAG);
 
+    int sort = 0;
+    // Allow "Play" and "Delete" for backwards compatibility with protocol
+    // version 56 and below.
+    if ((type == "Ascending") || (type == "Play"))
+        sort = 1;
+    else if ((type == "Descending") || (type == "Delete"))
+        sort = -1;
+
     ProgramList destination;
     LoadFromRecorded(
         destination, (type == "Recording"),
-        inUseMap, isJobRunning, recMap);
+        inUseMap, isJobRunning, recMap, sort);
 
     QMap<QString,ProgramInfo*>::iterator mit = recMap.begin();
     for (; mit != recMap.end(); mit = recMap.erase(mit))
@@ -1747,16 +1756,16 @@ void MainServer::HandleFillProgramInfo(QStringList &slist, PlaybackSock *pbs)
     SendResponse(pbssock, strlist);
 }
 
-void *MainServer::SpawnDeleteThread(void *param)
+void DeleteThread::run(void)
 {
-    DeleteStruct *ds = (DeleteStruct *)param;
+    if (!m_parent)
+        return;
 
-    MainServer *ms = ds->ms;
-    ms->DoDeleteThread(ds);
+    MainServer *ms = m_parent->ms;
+    ms->DoDeleteThread(m_parent);
 
-    delete ds;
-
-    return NULL;
+    delete m_parent;
+    this->deleteLater();
 }
 
 void MainServer::DoDeleteThread(const DeleteStruct *ds)
@@ -2269,6 +2278,11 @@ void MainServer::DoHandleStopRecording(
     if (pbs)
         pbssock = pbs->getSocket();
 
+    if (recinfo.GetRecordingStatus() == rsRecording)
+        recinfo.SetRecordingStatus(rsRecorded);
+    else if (recinfo.GetRecordingStatus() != rsRecorded)
+        recinfo.SetRecordingStatus(rsFailed);
+
     if (ismaster && recinfo.GetHostname() != gCoreContext->GetHostName())
     {
         PlaybackSock *slave = GetSlaveByHostname(recinfo.GetHostname());
@@ -2280,7 +2294,6 @@ void MainServer::DoHandleStopRecording(
             if (num > 0)
             {
                 (*encoderList)[num]->StopRecording();
-                recinfo.SetRecordingStatus(rsRecorded);
                 if (m_sched)
                     m_sched->UpdateRecStatus(&recinfo);
             }
@@ -2299,7 +2312,6 @@ void MainServer::DoHandleStopRecording(
             // recording has stopped and the status should be updated.
             // Continue so that the master can try to update the endtime
             // of the file is in a shared directory.
-            recinfo.SetRecordingStatus(rsRecorded);
             if (m_sched)
                 m_sched->UpdateRecStatus(&recinfo);
         }
@@ -2327,7 +2339,6 @@ void MainServer::DoHandleStopRecording(
 
             if (ismaster)
             {
-                recinfo.SetRecordingStatus(rsRecorded);
                 if (m_sched)
                     m_sched->UpdateRecStatus(&recinfo);
             }
@@ -2410,7 +2421,8 @@ void MainServer::DoHandleDeleteRecording(
     {
         recinfo.ApplyRecordRecGroupChange("Deleted");
         recinfo.SaveAutoExpire(kDeletedAutoExpire, true);
-        if (recinfo.GetRecordingStatus() == rsRecording)
+        if (recinfo.GetRecordingStatus() == rsRecording ||
+            recinfo.GetRecordingStatus() == rsTuning)
             DoHandleStopRecording(recinfo, NULL);
         if (forgetHistory)
             recinfo.ForgetHistory();
@@ -2418,6 +2430,11 @@ void MainServer::DoHandleDeleteRecording(
         SendResponse(pbssock, outputlist);
         return;
     }
+
+    if (recinfo.GetRecordingStatus() == rsRecording)
+        recinfo.SetRecordingStatus(rsRecorded);
+    else if (recinfo.GetRecordingStatus() != rsRecorded)
+        recinfo.SetRecordingStatus(rsFailed);
 
     // If this recording was made by a another recorder, and that
     // recorder is available, tell it to do the deletion.
@@ -2432,7 +2449,6 @@ void MainServer::DoHandleDeleteRecording(
             if (num > 0)
             {
                 (*encoderList)[num]->StopRecording();
-                recinfo.SetRecordingStatus(rsRecorded);
                 if (m_sched)
                     m_sched->UpdateRecStatus(&recinfo);
             }
@@ -2473,7 +2489,6 @@ void MainServer::DoHandleDeleteRecording(
 
             if (ismaster)
             {
-                recinfo.SetRecordingStatus(rsRecorded);
                 if (m_sched)
                     m_sched->UpdateRecStatus(&recinfo);
             }
@@ -2510,12 +2525,9 @@ void MainServer::DoHandleDeleteRecording(
 
         recinfo.SaveDeletePendingFlag(true);
 
-        pthread_t deleteThread;
-        pthread_attr_t attr;
-        pthread_attr_init(&attr);
-        pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
-        pthread_create(&deleteThread, &attr, SpawnDeleteThread, ds);
-        pthread_attr_destroy(&attr);
+        DeleteThread *deleteThread = new DeleteThread;
+        deleteThread->SetParent(ds);
+        deleteThread->start();
     }
     else
     {
@@ -2571,7 +2583,7 @@ void MainServer::HandleUndeleteRecording(QStringList &slist, PlaybackSock *pbs)
 void MainServer::DoHandleUndeleteRecording(
     RecordingInfo &recinfo, PlaybackSock *pbs)
 {
-    bool ret = -1;
+    int ret = -1;
     bool undelete_possible =
             gCoreContext->GetNumSetting("AutoExpireInsteadOfDelete", 0);
     MythSocket *pbssock = NULL;
@@ -4472,16 +4484,16 @@ void MainServer::GetFilesystemInfos(vector <FileSystemInfo> &fsInfos)
     }
 }
 
-void *MainServer::SpawnTruncateThread(void *param)
+void TruncateThread::run(void)
 {
-    DeleteStruct *ds = (DeleteStruct *)param;
+    if (!m_parent)
+        return;
 
-    MainServer *ms = ds->ms;
-    ms->DoTruncateThread(ds);
+    MainServer *ms = m_parent->ms;
+    ms->DoTruncateThread(m_parent);
 
-    delete ds;
-
-    return NULL;
+    delete m_parent;
+    this->deleteLater();
 }
 
 void MainServer::DoTruncateThread(const DeleteStruct *ds)
@@ -4573,12 +4585,9 @@ bool MainServer::HandleDeleteFile(QString filename, QString storagegroup,
         ds->fd = fd;
         ds->size = size;
 
-        pthread_t truncateThread;
-        pthread_attr_t attr;
-        pthread_attr_init(&attr);
-        pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
-        pthread_create(&truncateThread, &attr, SpawnTruncateThread, ds);
-        pthread_attr_destroy(&attr);
+        TruncateThread *truncateThread = new TruncateThread;
+        truncateThread->SetParent(ds);
+        truncateThread->run();
     }
 
     return true;
