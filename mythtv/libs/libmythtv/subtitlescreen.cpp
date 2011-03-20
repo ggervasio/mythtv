@@ -1051,7 +1051,7 @@ void SubtitleScreen::Display708Strings(const CC708Window &win, int num,
                                                   QString("cc708text%1x%2").arg(row).arg(i));
                 m_708imageCache[num].append(text);
                 if (text)
-                    text->SetJustification(Qt::AlignCenter);
+                    text->SetJustification(Qt::AlignLeft);
                 m_refreshArea = true;
             }
 
