@@ -423,6 +423,7 @@ class MTV_PUBLIC MythPlayer
 
     // Audio/Subtitle/EIA-608/EIA-708 stream selection
     QStringList GetTracks(uint type);
+    uint GetTrackCount(uint type);
     virtual int SetTrack(uint type, int trackNo);
     int  GetTrack(uint type);
     int  ChangeTrack(uint type, int dir);
@@ -613,9 +614,6 @@ class MTV_PUBLIC MythPlayer
     bool     m_scan_initialized;
     /// Video (input) Number of frames between key frames (often inaccurate)
     uint     keyframedist;
-    /// Stream has no video tracks
-    bool     noVideoTracks;
-    bool     allowAudioOnly;
 
     // Buffering
     bool     buffering;

@@ -286,10 +286,12 @@ class AvFormatDecoder : public DecoderBase
     uint32_t  start_code_state;
 
     long long lastvpts;
-    long long  lastapts;
+    long long lastapts;
     long long lastccptsu;
     long long lastvbiptsu;
     long long firstvbiptsu;
+    long long firstvpts;
+    bool      firstvptsinuse;
 
     int64_t faulty_pts;
     int64_t faulty_dts;

@@ -258,6 +258,7 @@ AvFormatDecoder::AvFormatDecoder(MythPlayer *parent,
       lastvpts(0),                  lastapts(0),
       lastccptsu(0),
       lastvbiptsu(0),               firstvbiptsu(0),
+      firstvpts(0),                 firstvptsinuse(false),
       faulty_pts(0),                faulty_dts(0),
       last_pts_for_fault_detection(0),
       last_dts_for_fault_detection(0),
@@ -733,6 +734,12 @@ void AvFormatDecoder::SeekReset(long long newKey, uint skipFrames,
         GetFrame(kDecodeVideo);
         if (decoded_video_frame)
             m_parent->DiscardVideoFrame(decoded_video_frame);
+    }
+
+    if (doflush)
+    {
+        firstvpts = 0;
+        firstvptsinuse = true;
     }
 }
 
@@ -2088,6 +2095,7 @@ int AvFormatDecoder::ScanStreams(bool novideo)
     // video params are set properly
     if (selectedTrack[kTrackTypeVideo].av_stream_index == -1)
     {
+        VERBOSE(VB_PLAYBACK, LOC + QString("No video track found/selected."));
         QString tvformat = gCoreContext->GetSetting("TVFormat").toLower();
         if (tvformat == "ntsc" || tvformat == "ntsc-jp" ||
             tvformat == "pal-m" || tvformat == "atsc")
@@ -2633,8 +2641,9 @@ void AvFormatDecoder::MpegPreProcessPkt(AVStream *stream, AVPacket *pkt)
 
                 gopset = false;
                 prevgoppos = 0;
-                lastapts = lastvpts = lastccptsu = 0;
+                firstvpts = lastapts = lastvpts = lastccptsu = 0;
                 lastvbiptsu = firstvbiptsu = 0;
+                firstvptsinuse = true;
                 faulty_pts = faulty_dts = 0;
                 last_pts_for_fault_detection = 0;
                 last_dts_for_fault_detection = 0;
@@ -2741,7 +2750,8 @@ bool AvFormatDecoder::H264PreProcessPkt(AVStream *stream, AVPacket *pkt)
 
             gopset = false;
             prevgoppos = 0;
-            lastapts = lastvpts = lastccptsu = 0;
+            firstvpts = lastapts = lastvpts = lastccptsu = 0;
+            firstvptsinuse = true;
             faulty_pts = faulty_dts = 0;
             last_pts_for_fault_detection = 0;
             last_dts_for_fault_detection = 0;
@@ -3012,6 +3022,8 @@ bool AvFormatDecoder::ProcessVideoFrame(AVStream *stream, AVFrame *mpa_pic)
     framesPlayed++;
 
     lastvpts = temppts;
+    if (!firstvpts && firstvptsinuse)
+        firstvpts = temppts;
 
     return true;
 }
@@ -3818,6 +3830,16 @@ bool AvFormatDecoder::ProcessAudioPacket(AVStream *curstream, AVPacket *pkt,
                 skipaudio = false;
         }
 
+        // skip any audio frames preceding first video frame
+        if (firstvptsinuse && firstvpts && (lastapts < firstvpts))
+        {
+            VERBOSE(VB_PLAYBACK+VB_TIMESTAMP,
+                LOC + QString("discarding early audio timecode %1 %2 %3")
+                .arg(pkt->pts).arg(pkt->dts).arg(lastapts));
+            break;
+        }
+        firstvptsinuse = false;
+
         avcodeclock->lock();
         data_size = 0;
 
@@ -4176,27 +4198,30 @@ bool AvFormatDecoder::GetFrame(DecodeType decodetype)
 
 bool AvFormatDecoder::HasVideo(const AVFormatContext *ic)
 {
-    if (!ic || !ic->cur_pmt_sect)
-        return true;
-
-    const PESPacket pes = PESPacket::ViewData(ic->cur_pmt_sect);
-    const PSIPTable psip(pes);
-    const ProgramMapTable pmt(psip);
-
-    bool has_video = false;
-    for (uint i = 0; i < pmt.StreamCount(); i++)
+    if (ic && ic->cur_pmt_sect)
     {
-        // MythTV remaps OpenCable Video to normal video during recording
-        // so "dvb" is the safest choice for system info type, since this
-        // will ignore other uses of the same stream id in DVB countries.
-        has_video |= pmt.IsVideo(i, "dvb");
+        const PESPacket pes = PESPacket::ViewData(ic->cur_pmt_sect);
+        const PSIPTable psip(pes);
+        const ProgramMapTable pmt(psip);
 
-        // MHEG may explicitly select a private stream as video
-        has_video |= ((i == (uint)selectedTrack[kTrackTypeVideo].av_stream_index) &&
-                      (pmt.StreamType(i) == StreamID::PrivData));
+        for (uint i = 0; i < pmt.StreamCount(); i++)
+        {
+            // MythTV remaps OpenCable Video to normal video during recording
+            // so "dvb" is the safest choice for system info type, since this
+            // will ignore other uses of the same stream id in DVB countries.
+            if (pmt.IsVideo(i, "dvb"))
+                return true;
+
+            // MHEG may explicitly select a private stream as video
+            if ((i == (uint)selectedTrack[kTrackTypeVideo].av_stream_index) &&
+                (pmt.StreamType(i) == StreamID::PrivData))
+            {
+                return true;
+            }
+        }
     }
 
-    return has_video;
+    return GetTrackCount(kTrackTypeVideo);
 }
 
 bool AvFormatDecoder::GenerateDummyVideoFrame(void)
@@ -4419,7 +4444,8 @@ bool AvFormatDecoder::SetupAudioStream(void)
 
     if (!ctx)
     {
-        VERBOSE(VB_PLAYBACK, LOC + "No codec context. Returning false");
+        if (GetTrackCount(kTrackTypeAudio))
+            VERBOSE(VB_PLAYBACK, LOC + "No codec context. Returning false");
         return false;
     }
 
@@ -4435,8 +4461,6 @@ bool AvFormatDecoder::SetupAudioStream(void)
             QString("\n\t\t\tfrom %1 to %2")
             .arg(old_in.toString()).arg(audioOut.toString()));
 
-    if (audioOut.sample_rate > 0)
-        m_audio->SetEffDsp(audioOut.sample_rate * 100);
     m_audio->SetAudioParams(audioOut.format, orig_channels,
                             ctx->request_channels,
                             audioOut.codec_id, audioOut.sample_rate,

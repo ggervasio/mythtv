@@ -159,7 +159,7 @@ MythPlayer::MythPlayer(bool muted)
       forced_video_aspect(-1),
       m_scan(kScan_Interlaced),     m_scan_locked(false),
       m_scan_tracker(0),            m_scan_initialized(false),
-      keyframedist(30),             noVideoTracks(false),
+      keyframedist(30),
       // Prebuffering
       buffering(false),
       // General Caption/Teletext/Subtitle support
@@ -222,7 +222,6 @@ MythPlayer::MythPlayer(bool muted)
     decode_extra_audio = gCoreContext->GetNumSetting("DecodeExtraAudio", 0);
     itvEnabled         = gCoreContext->GetNumSetting("EnableMHEG", 0);
     db_prefer708       = gCoreContext->GetNumSetting("Prefer708Captions", 1);
-    allowAudioOnly     = gCoreContext->GetNumSetting("AudioOnlyPlayback", false);
     clearSavedPosition = gCoreContext->GetNumSetting("ClearSavedPosition", 1);
     endExitPrompt      = gCoreContext->GetNumSetting("EndOfRecordingExitPrompt");
     pip_default_loc    = (PIPLocation)gCoreContext->GetNumSetting("PIPLocation", kPIPTopLeft);
@@ -974,7 +973,6 @@ int MythPlayer::OpenFile(uint retries, bool allow_libmpeg2)
     decoder->setWatchingRecording(watchingrecording);
     decoder->setTranscoding(transcoding);
     CheckExtraAudioDecode();
-    noVideoTracks = allowAudioOnly && !decoder->GetTrackCount(kTrackTypeVideo);
 
     // Set 'no_video_decode' to true for audio only decodeing
     bool no_video_decode = false;
@@ -1422,6 +1420,13 @@ QStringList MythPlayer::GetTracks(uint type)
     if (decoder)
         return decoder->GetTracks(type);
     return QStringList();
+}
+
+uint MythPlayer::GetTrackCount(uint type)
+{
+    if (decoder)
+        return decoder->GetTrackCount(type);
+    return 0;
 }
 
 int MythPlayer::SetTrack(uint type, int trackNo)
@@ -2142,7 +2147,7 @@ void MythPlayer::VideoStart(void)
 
 bool MythPlayer::VideoLoop(void)
 {
-    if (videoPaused || isDummy || noVideoTracks)
+    if (videoPaused || isDummy)
     {
         usleep(frame_interval);
         DisplayPauseFrame();
@@ -2448,12 +2453,13 @@ bool MythPlayer::StartPlaying(void)
 
     bool seek = bookmarkseek > 30;
     EventStart();
-    DecoderStart(seek);
+    DecoderStart(true);
     if (seek)
         InitialSeek();
     VideoStart();
 
     playerThread->setPriority(QThread::TimeCriticalPriority);
+    UnpauseDecoder();
     return !IsErrored();
 }
 
@@ -2466,7 +2472,6 @@ void MythPlayer::InitialSeek(void)
         if (clearSavedPosition && !player_ctx->IsPIP())
             ClearBookmark(false);
     }
-    UnpauseDecoder();
 }
 
 
@@ -2562,8 +2567,7 @@ void MythPlayer::EventLoop(void)
     }
 
     // Disable rewind if we are too close to the beginning of the buffer
-    if (CalcRWTime(-ffrew_skip) > 0 &&
-       (!noVideoTracks && (framesPlayed <= keyframedist)))
+    if (CalcRWTime(-ffrew_skip) > 0 && (framesPlayed <= keyframedist))
     {
         VERBOSE(VB_PLAYBACK, LOC + "Near start, stopping rewind.");
         float stretch = (ffrew_skip > 0) ? 1.0f : audio.GetStretchFactor();
@@ -2825,11 +2829,6 @@ void MythPlayer::DecoderLoop(bool pause)
     {
         DecoderPauseCheck();
 
-        if (!decoder_change_lock.tryLock(1))
-            continue;
-        noVideoTracks = allowAudioOnly && !decoder->GetTrackCount(kTrackTypeVideo);
-        decoder_change_lock.unlock();
-
         if (forcePositionMapSync)
         {
             if (!decoder_change_lock.tryLock(1))
@@ -2870,8 +2869,7 @@ void MythPlayer::DecoderLoop(bool pause)
 
         DecodeType dt = (audio.HasAudioOut() && normal_speed) ?
             kDecodeAV : kDecodeVideo;
-        if (noVideoTracks && audio.HasAudioOut())
-            dt = kDecodeAudio;
+
         DecoderGetFrame(dt);
         decodeOneFrame = false;
     }
@@ -4330,7 +4328,7 @@ void MythPlayer::calcSliderPos(osdInfo &info, bool paddedFields)
 
     int playbackLen = totalDuration;
 
-    if (totalDuration == 0 || noVideoTracks || decoder->GetCodecDecoderName() == "nuppel")
+    if (totalDuration == 0 || decoder->GetCodecDecoderName() == "nuppel")
         playbackLen = totalLength;
 
     if (livetv && player_ctx->tvchain)
