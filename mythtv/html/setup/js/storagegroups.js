@@ -8,13 +8,11 @@ function appendTabRow(tabID, id, group, host, dir) {
     if ((rowNum/2) % 1 == 0)
         altText = "class='alt' ";
     var rowID = "sgtable-" + tabID + "-" + rowNum;
-    $("#sgtable-" + tabID + " tr:last").after("<tr " + altText + "id='" + rowID + "'><td class='invisible'>" + id +"</td><td>" + host + "</td><td>" + dir + "</td><td><input type='button' onClick=\"javascript:removeStorageGroupTableRow(" + tabID + ", '" + rowID + "')\" value='Delete'/></tr>");
+    $("#sgtable-" + tabID + " tr:last").after("<tr " + altText + "id='" + rowID + "'><td class='invisible'>" + id +"</td><td>" + host + "</td><td>" + dir + "</td><td><input type='button' onClick=\"javascript:showConfirm('Are you sure you want to remove this group?', removeStorageGroupTableRow, ['" + tabID + "','" + rowID + "'])\" value='Delete'/></tr>");
 }
 
-function initStorageGroups() {
+function initStorageGroups(selectedGroup) {
     var selectedHost = $("#sgShowHost").val();
-
-    $("#storagegrouptabs").tabs({ cache: true });
 
     while (sgTabCount > 0) {
         $("#storagegrouptabs").tabs("remove", 0);
@@ -44,11 +42,14 @@ function initStorageGroups() {
                 sgTabIDs[value.GroupName] = sgTabID;
                 sgTabNames[sgTabID] = value.GroupName;
                 $("#storagegrouptabs").tabs("add", "#sgtabs-" + sgTabID, value.GroupName, sgTabID);
-                $("#sgtabs-" + sgTabID).html("<div id='sgtabs-" + sgTabID + "-add'><input type=button value='Add Directory' onClick='javascript:addDir(" + sgTabID + ")'></div><div id='sgtabs-" + sgTabID + "-edit' style='display: none'><b>Adding new Storage Group Directory</b><br><table border=0 cellpadding=2 cellspacing=2><tr><th align=right>Host:</th><td>" + hostsSelect("sgtabs-" + sgTabID + "-edit-hostname") + "</td></tr><tr><th align=right>New Directory:</th><td><input id='sgtabs-" + sgTabID + "-edit-dirname' size=40><input type=button onClick='javascript:browseForNewDir(" + sgTabID + ", \"sgtabs-" + sgTabID + "-edit-dirname\")' value='Browse'><input type=hidden id='sgtabs-" + sgTabID + "-edit-groupname' value='" + value.GroupName + "'></td></tr><tr><td colspan=2><input type=button value='Save' onClick='javascript:saveDir(" + sgTabID + ")'> <input type=button value='Cancel' onClick='javascript:cancelDir(" + sgTabID + ")'></td></tr></table><hr></div><table id='sgtable-" + sgTabID + "' border=1 cellpadding=4 cellspacing=0 width='100%'><th class='invisible'>DirID</th><th>Host Name</th><th>Directory Path</th><th>Actions</th></tr></table><br><input type=button value='Delete Storage Group' onClick='javascript:deleteStorageGroup(" + sgTabID + ")'>");
+                $("#sgtabs-" + sgTabID).html("<div id='sgtabs-" + sgTabID + "-add'><input type=button value='Add Directory' onClick='javascript:addDir(" + sgTabID + ")'></div><div id='sgtabs-" + sgTabID + "-edit' style='display: none'><table><tr><th align=right>Host:</th><td>" + hostsSelect("sgtabs-" + sgTabID + "-edit-hostname") + "</td></tr><tr><th align=right>New Directory:</th><td><input id='sgtabs-" + sgTabID + "-edit-dirname' size=40><input type=button onClick='javascript:browseForNewDir( \"sgtabs-" + sgTabID + "-edit-dirname\")' value='Browse'><input type=hidden id='sgtabs-" + sgTabID + "-edit-groupname' value='" + value.GroupName + "'></td></tr></table><hr></div><table id='sgtable-" + sgTabID + "' width='100%'><th class='invisible'>DirID</th><th>Host Name</th><th>Directory Path</th><th>Actions</th></tr></table>");
             }
 
             appendTabRow(sgTabID, value.Id, value.GroupNme, value.HostName, value.DirName);
         });
+
+        if (selectedGroup)
+            $("#storagegrouptabs").tabs("select", sgTabIDs[selectedGroup]);
 
         var sortedKeys = new Array();
         for (var i in sgHosts) {
@@ -56,7 +57,7 @@ function initStorageGroups() {
         }
         sortedKeys.sort();
 
-        var sgHostSelect = "Host: <select id='sgShowHost' "
+        var sgHostSelect = "Host filter: <select id='sgShowHost' "
             + "onChange='javascript:initStorageGroups()'><option value='ALL'>"
             + "Display ALL Hosts</option>;";
         for (var i in sortedKeys) {
@@ -70,11 +71,49 @@ function initStorageGroups() {
 
         sgHostSelect += "</select>";
         $("#sgHostSelect").html(sgHostSelect);
+        setUIAttributes();
     });
 }
 
+function addNewStorageGroupTab() {
+    $("#sgAddNewGroupLink").hide();
+    $("#storagegrouptabs").tabs("add", "/setup/storagegroups-add-new.html",
+        "New Group", sgTabCount);
+    setUIAttributes();
+    $("#storagegrouptabs").tabs("select", sgTabCount);
+}
+
+function addNewStorageGroup() {
+    var group  = $("#sgNewName").val();
+    var host   = $("#sgNewHost").val();
+    var dir    = $("#sgNewDir").val();
+
+    if (addStorageGroupDir(group, dir, host)) {
+        $("#storagegrouptabs").tabs("remove", sgTabCount);
+        $("#sgAddNewGroupLink").show();
+        setStatusMessage("Storage Group Directory save Succeeded.");
+        initStorageGroups(group);
+    } else {
+        setErrorMessage("Storage Group Directory save Failed!");
+    }
+}
+
+function cancelNewStorageGroup() {
+    $("#storagegrouptabs").tabs("remove", sgTabCount);
+    $("#sgAddNewGroupLink").show();
+}
+
 function addDir(tabID) {
-    $("#sgtabs-" + tabID + "-add").css("display", "none");
+    $("#sgtabs-" + tabID + "-edit").dialog({
+    modal: true,
+    width: 600,
+    height: 300,
+    'title': 'Add New Directory',
+    closeOnEscape: false,
+    buttons: {
+       'Save': function() { saveDir(tabID) },
+       'Cancel': function() { $(this).dialog('close'); }
+    }});
     $("#sgtabs-" + tabID + "-edit").css("display", "");
 }
 
@@ -87,22 +126,18 @@ function saveDir(tabID) {
         appendTabRow(tabID, 0, group, host, dir);
         $("#sgtabs-" + tabID + "-add").css("display", "");
         $("#sgtabs-" + tabID + "-edit").css("display", "none");
-        setHeaderStatusMessage("Storage Group Directory save Succeeded.");
+        setStatusMessage("Storage Group Directory save Succeeded.");
         $("#sgtabs-" + tabID + "-edit-dirname").val("");
+        $("#sgtabs-" + tabID + "-edit").dialog('close');
+        setUIAttributes();
     } else {
-        setHeaderErrorMessage("Storage Group Directory save Failed!");
+        setErrorMessage("Storage Group Directory save Failed!");
     }
 }
 
 function cancelDir(tabID) {
     $("#sgtabs-" + tabID + "-add").css("display", "");
     $("#sgtabs-" + tabID + "-edit").css("display", "none");
-}
-
-function deleteStorageGroup( tabID ) {
-    alert("Are you sure?  Deleting Storage Groups is not hooked up yet anyway "
-        + ", but you can delete all directories in a Storage Group "
-        + "individually.");
 }
 
 function removeStorageGroupTableRow( tabID, rowID ) {
@@ -112,10 +147,13 @@ function removeStorageGroupTableRow( tabID, rowID ) {
     var dir = $("#" + rowID).find("td").eq(2).html();
 
     if (removeStorageGroupDir(group, dir, host)) {
-        setHeaderStatusMessage("Remove Storage Group Directory Succeeded.");
+        setStatusMessage("Remove Storage Group Directory Succeeded.");
         $("#" + rowID).remove();
+        if ($('#sgtable-' + tabID + ' tr').length == 1) {
+            initStorageGroups(); /* could optimize this and not reload */
+        }
     } else {
-        setHeaderErrorMessage("Remove Storage Group Directory Failed!");
+        setErrorMessage("Remove Storage Group Directory Failed!");
     }
 }
 
@@ -124,7 +162,7 @@ function newDirSelected(file) {
     $("#" + sgNewDirInputID).val(file);
 }
 
-function browseForNewDir( tabID, inputID ) {
+function browseForNewDir( inputID ) {
     var dirs = new Array;
     sgNewDirInputID = inputID;
     openFileBrowser("Storage Directory", dirs, newDirSelected);
@@ -132,5 +170,6 @@ function browseForNewDir( tabID, inputID ) {
 
 //////////////////////////////////////////////////////////////////////////////
 
+setupNonAnimatedTabs("storagegrouptabs", false);
 initStorageGroups();
 
