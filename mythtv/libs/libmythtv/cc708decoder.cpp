@@ -265,7 +265,9 @@ static void parse_cc_service_stream(CC708Reader* cc, uint service_num)
     }
 
     // get rid of remaining bytes...
+#if 0
     assert(((int)blk_size - i) >= 0);
+#endif
     if ((blk_size - i) > 0)
     {
         memmove(cc->buf[service_num], cc->buf[service_num] + i,
