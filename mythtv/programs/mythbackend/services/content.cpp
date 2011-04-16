@@ -63,7 +63,7 @@ QFileInfo Content::GetFile( const QString &sStorageGroup, const QString &sFileNa
     // ------------------------------------------------------------------
 
     StorageGroup storage( sGroup );
-    QString sFullFileName = storage.FindRecordingFile( sFileName );
+    QString sFullFileName = storage.FindFile( sFileName );
 
     if (sFullFileName.isEmpty())
     {
@@ -101,42 +101,9 @@ QStringList Content::GetFileList( const QString &sStorageGroup )
         throw sMsg;
     }
 
-    QStringList      sStorageGroupDirs;
-    QString          hostname    = gCoreContext->GetHostName();
-    QStringList      oStringList;
+    StorageGroup sgroup(sStorageGroup);
 
-    if (StorageGroup::FindDirs(sStorageGroup, hostname, &sStorageGroupDirs))
-    {
-        QStringList::iterator it = sStorageGroupDirs.begin();
-
-        for ( ; it != sStorageGroupDirs.end(); ++it)
-        {
-            QDir dir(*it);
-
-            dir.setFilter(QDir::Files);
-            dir.setSorting(QDir::Name | QDir::IgnoreCase);
-
-            QFileInfoList fileList = dir.entryInfoList();
-            QFileInfoList::iterator fit = fileList.begin();
-
-            for ( ; fit != fileList.end(); ++fit )
-            {
-                /*                                
-                if (bShowLinks)
-                {
-                    stream
-                        << "<a href='/Myth/GetFile?StorageGroup="
-                        << sStorageGroup << "&FileName=" << (*fit).fileName()
-                        << "'>" << (*fit).fileName() << "</a><br>\n";
-                }
-                else
-                */
-                oStringList.append( (*fit).fileName() );
-            }
-        }
-    }
-
-    return oStringList;
+    return sgroup.GetFileList("", true);
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -564,7 +531,7 @@ QString Content::GetHash( const QString &sStorageGroup, const QString &sFileName
 
     StorageGroup sgroup(storageGroup, gCoreContext->GetHostName());
 
-    QString fullname = sgroup.FindRecordingFile(sFileName);
+    QString fullname = sgroup.FindFile(sFileName);
     QString hash = FileHash(fullname);
 
     if (hash == "NULL")

@@ -1965,7 +1965,7 @@ void MainServer::DeleteRecordedFiles(const DeleteStruct *ds)
                     .arg(logInfo).arg(query.value(0).toString()));
 
             StorageGroup sgroup(storagegroup);
-            QString localFile = sgroup.FindRecordingFile(basename);
+            QString localFile = sgroup.FindFile(basename);
             QString url = QString("myth://%1@%2:%3/%4").arg(storagegroup)
                 .arg(gCoreContext->GetSettingOnHost("BackendServerIP", hostname))
                 .arg(gCoreContext->GetSettingOnHost("BackendServerPort", hostname))
@@ -2897,7 +2897,7 @@ void MainServer::HandleQueryFileHash(QStringList &slist, PlaybackSock *pbs)
 
     StorageGroup sgroup(storageGroup, gCoreContext->GetHostName());
 
-    QString fullname = sgroup.FindRecordingFile(filename);
+    QString fullname = sgroup.FindFile(filename);
     QString hash = FileHash(fullname);
 
     retlist << hash;
@@ -2934,7 +2934,7 @@ void MainServer::HandleQueryFileExists(QStringList &slist, PlaybackSock *pbs)
 
     StorageGroup sgroup(storageGroup, gCoreContext->GetHostName());
 
-    QString fullname = sgroup.FindRecordingFile(filename);
+    QString fullname = sgroup.FindFile(filename);
 
     if (!fullname.isEmpty())
     {
@@ -4540,7 +4540,7 @@ bool MainServer::HandleDeleteFile(QString filename, QString storagegroup,
         return false;
     }
 
-    QString fullfile = sgroup.FindRecordingFile(filename);
+    QString fullfile = sgroup.FindFile(filename);
 
     if (fullfile.isEmpty()) {
         VERBOSE(VB_IMPORTANT, QString("Unable to find %1 in HandleDeleteFile()")
@@ -5880,7 +5880,7 @@ QString MainServer::LocalFilePath(const QUrl &url, const QString &wantgroup)
                 lpath = QFileInfo(lpath).fileName();
             }
 
-            QString tmpFile = sgroup.FindRecordingFile(lpath);
+            QString tmpFile = sgroup.FindFile(lpath);
             if (!tmpFile.isEmpty())
             {
                 lpath = tmpFile;

@@ -18,17 +18,17 @@
          setting_type="host" label="Port"
          help_text= "Unless you've got good reason to, don't change this."
          data_type="integer_range"
-         range_min="0" range_max="0xffff" />
+         range_min="0" range_max="65535" />
       <setting
          value="BackendStatusPort" default_data="6544"
          setting_type="host" label="Status Port"
          help_text="Port which the server will listen to for HTTP requests."
          data_type="integer_range"
-         range_min="0" range_max="0xffff" />
+         range_min="0" range_max="65535" />
       <setting
          value="SecurityPin" default_data=""
-         setting_type="host" label="Security Pin (Required)"
-         help_text="Pin code required for a frontend to connect
+         setting_type="host" label="Security PIN (Required)"
+         help_text="PIN code required for a frontend to connect
                     to the backend. Blank prevents all connections,
                     0000 allows any client to connect."
          data_type="string" />
@@ -47,7 +47,7 @@
          setting_type="global" label="Port"
          help_text="Unless you've got good reason to, don't change this."
          data_type="integer_range"
-         range_min="0" range_max="0xffff" />
+         range_min="0" range_max="65535" />
     </group>
     <group human_label="Locale Settings" unique_label="locale_settings">
       <setting

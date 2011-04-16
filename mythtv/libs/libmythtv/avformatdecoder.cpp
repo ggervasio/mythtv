@@ -3011,7 +3011,7 @@ bool AvFormatDecoder::ProcessVideoFrame(AVStream *stream, AVFrame *mpa_pic)
     picframe->frameNumber      = framesPlayed;
 
     m_parent->ReleaseNextVideoFrame(picframe, temppts);
-    if (private_dec && mpa_pic->data[3])
+    if (private_dec)
         context->release_buffer(context, mpa_pic);
 
     decoded_video_frame = picframe;
