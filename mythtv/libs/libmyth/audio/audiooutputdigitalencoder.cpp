@@ -95,6 +95,7 @@ bool AudioOutputDigitalEncoder::Init(
     av_context->bit_rate    = bitrate;
     av_context->sample_rate = samplerate;
     av_context->channels    = channels;
+    av_context->sample_fmt  = SAMPLE_FMT_FLT;
 
     // open it */
     ret = avcodec_open(av_context, codec);
