@@ -84,7 +84,7 @@ bool AudioOutputDigitalEncoder::Init(
     avcodec_init();
     avcodec_register_all();
     // always AC3 as there is no DTS encoder at the moment 2005/1/9
-    codec = avcodec_find_encoder(CODEC_ID_AC3);
+    codec = avcodec_find_encoder_by_name("ac3_fixed");
     if (!codec)
     {
         VERBOSE(VB_IMPORTANT, LOC_ERR + "Could not find codec");
@@ -95,7 +95,7 @@ bool AudioOutputDigitalEncoder::Init(
     av_context->bit_rate    = bitrate;
     av_context->sample_rate = samplerate;
     av_context->channels    = channels;
-    av_context->sample_fmt  = SAMPLE_FMT_FLT;
+    av_context->sample_fmt  = SAMPLE_FMT_S16;
 
     // open it */
     ret = avcodec_open(av_context, codec);
