@@ -70,8 +70,13 @@ void FirewireRecorder::StartRecording(void)
 
     while (_request_recording)
     {
-        if (!PauseAndWait())
-            usleep(50 * 1000);
+        if (PauseAndWait())
+            continue;
+
+        if (!_request_recording)
+            break;
+
+        usleep(50 * 1000);
     }
 
     StopStreaming();
@@ -83,8 +88,8 @@ void FirewireRecorder::StartRecording(void)
 void FirewireRecorder::AddData(const unsigned char *data, uint len)
 {
     uint bufsz = buffer.size();
-    if ((SYNC_BYTE == data[0]) && (TSPacket::SIZE == len) &&
-        (TSPacket::SIZE > bufsz))
+    if ((SYNC_BYTE == data[0]) && (TSPacket::kSize == len) &&
+        (TSPacket::kSize > bufsz))
     {
         if (bufsz)
             buffer.clear();
@@ -106,15 +111,15 @@ void FirewireRecorder::AddData(const unsigned char *data, uint len)
     if (sync_at < 0)
         return;
 
-    if (bufsz < 30 * TSPacket::SIZE)
+    if (bufsz < 30 * TSPacket::kSize)
         return; // build up a little buffer
 
-    while (sync_at + TSPacket::SIZE < bufsz)
+    while (sync_at + TSPacket::kSize < bufsz)
     {
         ProcessTSPacket(*(reinterpret_cast<const TSPacket*>(
                               &buffer[0] + sync_at)));
 
-        sync_at += TSPacket::SIZE;
+        sync_at += TSPacket::kSize;
     }
 
     buffer.erase(buffer.begin(), buffer.begin() + sync_at);
@@ -169,10 +174,11 @@ void FirewireRecorder::SetOptionsFromProfile(RecordingProfile *profile,
 // documented in recorderbase.cpp
 bool FirewireRecorder::PauseAndWait(int timeout)
 {
+    QMutexLocker locker(&pauseLock);
     if (request_pause)
     {
         VERBOSE(VB_RECORD, LOC + "PauseAndWait("<<timeout<<") -- pause");
-        if (!paused)
+        if (!IsPaused(true))
         {
             StopStreaming();
             paused = true;
@@ -180,17 +186,18 @@ bool FirewireRecorder::PauseAndWait(int timeout)
             if (tvrec)
                 tvrec->RecorderPaused();
         }
-        QMutex unpause_lock;
-        unpause_lock.lock();
-        unpauseWait.wait(&unpause_lock, timeout);
+        unpauseWait.wait(&pauseLock, timeout);
     }
-    if (!request_pause && paused)
+
+    if (!request_pause && IsPaused(true))
     {
+        paused = false;
         VERBOSE(VB_RECORD, LOC + "PauseAndWait("<<timeout<<") -- unpause");
         StartStreaming();
-        paused = false;
+        unpauseWait.wakeAll();
     }
-    return paused;
+
+    return IsPaused(true);
 }
 
 void FirewireRecorder::SetStreamData(void)

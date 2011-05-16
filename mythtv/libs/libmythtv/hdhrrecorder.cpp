@@ -349,14 +349,11 @@ void HDHRRecorder::StopRecording(void)
 
 bool HDHRRecorder::PauseAndWait(int timeout)
 {
+    QMutexLocker locker(&pauseLock);
     if (request_pause)
     {
-        QMutex waitlock;
-        if (!paused)
+        if (!IsPaused(true))
         {
-            assert(_stream_handler);
-            assert(_stream_data);
-
             _stream_handler->RemoveListener(_stream_data);
 
             paused = true;
@@ -364,21 +361,18 @@ bool HDHRRecorder::PauseAndWait(int timeout)
             if (tvrec)
                 tvrec->RecorderPaused();
         }
-        waitlock.lock();
-        unpauseWait.wait(&waitlock, timeout);
+
+        unpauseWait.wait(&pauseLock, timeout);
     }
 
-    if (!request_pause && paused)
+    if (!request_pause && IsPaused(true))
     {
         paused = false;
-
-        assert(_stream_handler);
-        assert(_stream_data);
-
         _stream_handler->AddListener(_stream_data);
+        unpauseWait.wakeAll();
     }
 
-    return paused;
+    return IsPaused(true);
 }
 
 bool HDHRRecorder::ProcessVideoTSPacket(const TSPacket &tspacket)
@@ -469,8 +463,8 @@ void HDHRRecorder::BufferedWrite(const TSPacket &tspacket)
     if (_buffer_packets)
     {
         int idx = _payload_buffer.size();
-        _payload_buffer.resize(idx + TSPacket::SIZE);
-        memcpy(&_payload_buffer[idx], tspacket.data(), TSPacket::SIZE);
+        _payload_buffer.resize(idx + TSPacket::kSize);
+        memcpy(&_payload_buffer[idx], tspacket.data(), TSPacket::kSize);
         return;
     }
 
@@ -484,5 +478,5 @@ void HDHRRecorder::BufferedWrite(const TSPacket &tspacket)
     }
 
     if (ringBuffer)
-        ringBuffer->Write(tspacket.data(), TSPacket::SIZE);
+        ringBuffer->Write(tspacket.data(), TSPacket::kSize);
 }

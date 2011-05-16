@@ -10,6 +10,9 @@
 #include <vector>
 using namespace std;
 
+// POSIX
+#include <pthread.h>
+
 // Qt
 #include <QReadWriteLock>
 #include <QWaitCondition>
@@ -159,28 +162,14 @@ class AskProgramInfo
     ProgramInfo *info;
 };
 
-class TV;
-
-class TVDDMapThread : public QThread
-{
-    Q_OBJECT
-  public:
-    TVDDMapThread() : m_parent(NULL), m_sourceid(0) {}
-    void run(void);
-    void SetParent(TV *parent)      { m_parent = parent; }
-    void SetSourceId(uint sourceid) { m_sourceid = sourceid; }
-  private:
-    TV   *m_parent;
-    uint  m_sourceid;
-};
-
 class MTV_PUBLIC TV : public QObject
 {
     friend class PlaybackBox;
     friend class GuideGrid;
+    friend class ProgFinder;
+    friend class ViewScheduled;
     friend class TvPlayWindow;
     friend class TVBrowseHelper;
-    friend class TVDDMapThread;
 
     Q_OBJECT
   public:
@@ -212,8 +201,8 @@ class MTV_PUBLIC TV : public QObject
     bool StartLiveTVInGuide(void) { return db_start_in_guide; }
 
     // Embedding commands for the guidegrid to use in LiveTV
-    bool StartEmbedding(PlayerContext*, WId wid, const QRect&);
-    void StopEmbedding(PlayerContext*);
+    bool StartEmbedding(const QRect&);
+    void StopEmbedding(void);
     bool IsTunable(const PlayerContext*, uint chanid, bool use_cache = false);
     void ClearTunableCache(void);
     void ChangeChannel(const PlayerContext*, const DBChanList &options);
@@ -311,6 +300,7 @@ class MTV_PUBLIC TV : public QObject
     static EMBEDRETURNVOIDSCHEDIT RunScheduleEditorPtr;
 
   private:
+    void PlaybackLoop(void);
     bool ContextIsPaused(PlayerContext *ctx, const char *file, int location);
     void SetActive(PlayerContext *lctx, int index, bool osd_msg);
 
@@ -426,6 +416,8 @@ class MTV_PUBLIC TV : public QObject
         ARBSEEK_END
     };
     void DoArbSeek(PlayerContext*, ArbSeekWhence whence);
+    void DoJumpFFWD(PlayerContext *ctx);
+    void DoJumpRWND(PlayerContext *ctx);
     void NormalSpeed(PlayerContext*);
     void ChangeSpeed(PlayerContext*, int direction);
     void ToggleTimeStretch(PlayerContext*);
@@ -714,10 +706,10 @@ class MTV_PUBLIC TV : public QObject
     mutable QMutex chanEditMapLock; ///< Lock for chanEditMap and ddMap
     InfoMap   chanEditMap;          ///< Channel Editing initial map
 
-    DDKeyMap      ddMap;                 ///< DataDirect channel map
-    uint          ddMapSourceId;         ///< DataDirect channel map sourceid
-    bool          ddMapLoaderRunning;    ///< DataDirect thread running
-    QPointer<TVDDMapThread> ddMapLoader; ///< DataDirect map loader thread
+    DDKeyMap  ddMap;                ///< DataDirect channel map
+    uint      ddMapSourceId;        ///< DataDirect channel map sourceid
+    bool      ddMapLoaderRunning;   ///< Is DataDirect loader thread running
+    pthread_t ddMapLoader;          ///< DataDirect map loader thread
 
     /// Vector or sleep timer sleep times in seconds,
     /// with the appropriate UI message.

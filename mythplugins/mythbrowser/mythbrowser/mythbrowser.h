@@ -26,6 +26,7 @@ class MythBrowser : public MythScreenType
     bool keyPressEvent(QKeyEvent *);
 
     void setDefaultSaveDirectory(const QString saveDir) { m_defaultSaveDir = saveDir; }
+    MythImage* getDefaultFavIcon(void) { return m_defaultFavIcon; }
 
   public slots:
     void slotOpenURL(const QString &url);
@@ -51,8 +52,6 @@ class MythBrowser : public MythScreenType
     void slotStatusBarMessage(const QString &text);
     void slotTabSelected(MythUIButtonListItem *item);
     void slotTabLosingFocus(void);
-    void slotIconChanged(void);
-    void slotExitingMenu(void);
 
   private:
     MythUIWebBrowser* activeBrowser(void);
@@ -75,6 +74,8 @@ class MythBrowser : public MythScreenType
     Bookmark  m_editBookmark;
 
     MythDialogBox *m_menuPopup;
+
+    MythImage     *m_defaultFavIcon;
 
     friend class WebPage;
 };
