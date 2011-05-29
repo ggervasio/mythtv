@@ -57,7 +57,8 @@ class GeneralDBOptions
         cardtype("V4L"),
         audiosamplerate(-1),  skip_btaudio(false),
         signal_timeout(1000), channel_timeout(3000),
-        wait_for_seqstart(false) {}
+        wait_for_seqstart(false),
+        textfd(-1) {}
   
     QString videodev;
     QString vbidev;
@@ -69,6 +70,9 @@ class GeneralDBOptions
     uint    signal_timeout;
     uint    channel_timeout;
     bool    wait_for_seqstart;
+#ifdef CC_DUMP
+    int     textfd;
+#endif
 };
 
 class DVBDBOptions
@@ -329,9 +333,6 @@ class MTV_PUBLIC TVRec : public SignalMonitorListener
     ChannelBase      *channel;
     SignalMonitor    *signalMonitor;
     EITScanner       *scanner;
-#ifdef CC_DUMP
-    int           textfd;
-#endif
 
     // Various threads
     /// Event processing thread, runs RunTV().

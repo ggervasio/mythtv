@@ -83,9 +83,6 @@ TVRec::TVRec(int capturecardnum)
        // Various components TVRec coordinates
     : recorder(NULL), channel(NULL), signalMonitor(NULL),
       scanner(NULL),
-#ifdef CC_DUMP
-      textfd(-1),
-#endif
       // Various threads
       eventThread(new TVRecEventThread(this)),
       recorderThread(NULL),
@@ -173,10 +170,6 @@ bool TVRec::Init(void)
     overRecordSecCat  = gCoreContext->GetNumSetting("CategoryOverTime") * 60;
     overRecordCategory= gCoreContext->GetSetting("OverTimeCategory");
 
-#ifdef CC_DUMP
-    textfd = -1;
-#endif
-
     eventThread->start();
 
     WaitForEventThreadSleep();
@@ -214,10 +207,10 @@ void TVRec::TeardownAll(void)
     }
 
 #ifdef CC_DUMP
-    if (textfd > 0)
+    if (genOpt.textfd > 0)
     {
-        close(textfd);
-        textfd = -1;
+        close(genOpt.textfd);
+        genOpt.textfd = -1;
     }
 #endif
 
@@ -1067,10 +1060,10 @@ void TVRec::TeardownRecorder(bool killFile)
     }
 
 #ifdef CC_DUMP
-    if (textfd > 0)
+    if (genOpt.textfd > 0)
     {
-        close(textfd);
-        textfd = -1;
+        close(genOpt.textfd);
+        genOpt.textfd = -1;
     }
 #endif
 
@@ -3387,8 +3380,8 @@ void TVRec::HandleTuning(void)
 
         ClearFlags(kFlagWaitingForRecPause);
 #ifdef CC_DUMP
-        if (textfd > 0)
-            lseek(textfd, SEEK_SET, 12);
+        if (genOpt.textfd > 0)
+            lseek(genOpt.textfd, SEEK_SET, 12);
 #endif
         VERBOSE(VB_RECORD, LOC + "Recorder paused, calling TuningFrequency");
         TuningFrequency(lastTuningRequest);
@@ -3470,8 +3463,8 @@ void TVRec::TuningShutdowns(const TuningRequest &request)
     if (scanner && !request.IsOnSameMultiplex())
         scanner->StopPassiveScan();
 #ifdef CC_DUMP
-    if (textfd > 0)
-        lseek(textfd, SEEK_SET, 12);
+    if (genOpt.textfd > 0)
+        lseek(genOpt.textfd, SEEK_SET, 12);
 #endif
 
     if (HasFlags(kFlagSignalMonitorRunning))
@@ -3954,16 +3947,19 @@ void TVRec::TuningNewRecorder(MPEGStreamData *streamData)
         }
 #ifdef CC_DUMP
         QString textfname = QString("%1.txd").arg(rec->GetPathname());
-        textfd = open(textfname.toAscii(), 
-                      O_WRONLY|O_TRUNC|O_CREAT|O_LARGEFILE, 
-                      0644);
-        if (textfd <= 0)
+        genOpt.textfd = open(textfname.toAscii(), 
+                             O_WRONLY|O_TRUNC|O_CREAT|O_LARGEFILE, 
+                             0644);
+        if (genOpt.textfd <= 0)
         {
             cerr << "ERROR opening text dump file.\n";
             perror(textfname.toAscii());
         }
-        static const char finfo[12] = "MythTVCC-02";
-        write(textfd, finfo, 12);
+        else
+        {
+            static const char finfo[12] = "MythTVCC-02";
+            write(genOpt.textfd, finfo, 12);
+        }
 #endif
     }
 

@@ -538,6 +538,9 @@ RecorderBase *RecorderBase::CreateRecorder(
 #ifdef USING_V4L2
         // V4L/MJPEG/GO7007 from here on
         recorder = new NuppelVideoRecorder(tvrec, channel);
+#ifdef CC_DUMP
+        recorder->SetTextDump(genOpt.textfd);
+#endif
         recorder->SetOption("skipbtaudio", genOpt.skip_btaudio);
 #endif // USING_V4L2
     }
