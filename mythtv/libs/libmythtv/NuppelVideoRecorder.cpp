@@ -359,10 +359,10 @@ void NuppelVideoRecorder::SetOptionsFromProfile(RecordingProfile *profile,
                                                 const QString &vbidev)
 {
     SetOption("videodevice", videodev);
-    SetOption("vbidevice", vbidev);
+    V4LRecorder::SetOption("vbidevice", vbidev);
     SetOption("tvformat", gCoreContext->GetSetting("TVFormat"));
-    SetOption("vbiformat", gCoreContext->GetSetting("VbiFormat"));
-    SetOption("audiodevice", audiodev);
+    V4LRecorder::SetOption("vbiformat", gCoreContext->GetSetting("VbiFormat"));
+    V4LRecorder::SetOption("audiodevice", audiodev);
 
     QString setting = QString::null;
     const Setting *tmp = profile->byName("videocodec");
@@ -2633,7 +2633,7 @@ void NuppelVideoRecorder::FormatTT(struct VBIData *vbidata)
 void NuppelVideoRecorder::FormatTT(struct VBIData*) {}
 #endif // USING_V4L2
 
-void NuppelVideoRecorder::FormatCC(struct cc *cc)
+void NuppelVideoRecorder::FormatCC(int code1, int code2)
 {
     struct timeval tnow;
     gettimeofday (&tnow, &tzone);
@@ -2646,12 +2646,12 @@ void NuppelVideoRecorder::FormatCC(struct cc *cc)
 #ifdef CC_DUMP
     if (textfd > 0) {
         write(textfd, &tc, 4);
-        write(textfd, &cc->code1, 2);  // FIXME: ENDIAN
-        write(textfd, &cc->code2, 2);  // FIXME: ENDIAN
+        write(textfd, &code1, 2);  // FIXME: ENDIAN
+        write(textfd, &code2, 2);  // FIXME: ENDIAN
     }
 #endif
 
-    ccd->FormatCC(tc, cc->code1, cc->code2);
+    ccd->FormatCC(tc, code1, code2);
 }
 
 void NuppelVideoRecorder::AddTextData(unsigned char *buf, int len,

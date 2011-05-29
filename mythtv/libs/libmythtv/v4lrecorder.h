@@ -40,7 +40,7 @@ class MPUBLIC V4LRecorder : public DTVRecorder
     void RunVBIDevice(void);
 
     virtual void FormatTT(struct VBIData *vbidata) {}
-    virtual void FormatCC(uint code1, uint code2) {}
+    virtual void FormatCC(int code1, int code2) {}
 
   protected:
     QString          audiodevice;

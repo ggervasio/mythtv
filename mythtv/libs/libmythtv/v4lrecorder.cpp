@@ -207,6 +207,13 @@ int V4LRecorder::OpenVBIDevice(void)
         vbi608 = new VBI608Extractor();
     }
 
+    {
+        QMutexLocker locker(&pauseLock);
+        request_recording = true;
+        recording = true;
+        recordingWait.wakeAll();
+    }
+
     vbi_fd = fd;
 
     return fd;
@@ -268,8 +275,10 @@ void V4LRecorder::RunVBIDevice(void)
 
         if (nr <= 0)
         {
+#if 0
             if (nr==0)
                 VERBOSE(VB_IMPORTANT, LOC_ERR + "vbi select timed out");
+#endif
             continue; // either failed or timed out..
         }
         if (VBIMode::PAL_TT == vbimode)
@@ -311,6 +320,10 @@ void V4LRecorder::RunVBIDevice(void)
             }
         }
     }
+
+    QMutexLocker locker(&pauseLock);
+    recording = false;
+    recordingWait.wakeAll();
 
     if (buf)
         delete [] buf;
