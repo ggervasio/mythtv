@@ -3844,7 +3844,7 @@ void PlaybackBox::customEvent(QEvent *event)
                                             keyevent);
             }
         }
-        else if (message.left(17) == "UPDATE_FILE_SIZE")
+        else if (message.left(16) == "UPDATE_FILE_SIZE")
         {
             QStringList tokens = message.simplified().split(" ");
             bool ok = false;
@@ -3854,7 +3854,7 @@ void PlaybackBox::customEvent(QEvent *event)
             if (tokens.size() >= 4)
             {
                 chanid     = tokens[1].toUInt();
-                recstartts = QDateTime::fromString(tokens[2]);
+                recstartts = QDateTime::fromString(tokens[2], Qt::ISODate);
                 filesize   = tokens[3].toLongLong(&ok);
             }
             if (chanid && recstartts.isValid() && ok)
@@ -3867,6 +3867,10 @@ void PlaybackBox::customEvent(QEvent *event)
         {
             UpdateUILists();
             m_helper.ForceFreeSpaceUpdate();
+        }
+        else if (message == "UPDATE_USAGE_UI")
+        {
+            UpdateUsageUI();
         }
         else if (message == "RECONNECT_SUCCESS")
         {

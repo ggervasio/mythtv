@@ -26,7 +26,6 @@
 
 #include "mythcorecontext.h"
 #include "mythversion.h"
-#include "decodeencode.h"
 #include "mythdbcon.h"
 #include "compat.h"
 #include "mythconfig.h"
@@ -305,7 +304,7 @@ void HttpStatus::FillStatusXML( QDomDocument *pDoc )
             frontends.appendChild(fe);
             QUrl url(i.value()->m_sLocation);
             fe.setAttribute("name", url.host());
-            fe.setAttribute("url",  i.value()->m_sLocation);
+            fe.setAttribute("url",  url.toString(QUrl::RemovePath));
         }
         fes->Unlock();
         fes->Release();
@@ -454,8 +453,8 @@ void HttpStatus::FillStatusXML( QDomDocument *pDoc )
         fsID       = *(sit++);
         sit++; // ignore dirID
         sit++; // ignore blocksize
-        iTotal     = decodeLongLong(strlist, sit);
-        iUsed      = decodeLongLong(strlist, sit);
+        iTotal     = (*(sit++)).toLongLong();
+        iUsed      = (*(sit++)).toLongLong();;
         iAvail     = iTotal - iUsed;
 
         if (fsID == "-2")
