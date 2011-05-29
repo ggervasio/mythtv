@@ -1893,7 +1893,7 @@ void MainServer::DoDeleteThread(DeleteStruct *ds)
         return;
     }
 
-    delete_file_immediately(ds->filename + ".txd", followLinks, true);
+    delete_file_immediately(ds->m_filename + ".txd", followLinks, true);
 
     /* Delete all preview thumbnails. */
 
