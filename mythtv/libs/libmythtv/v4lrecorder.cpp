@@ -224,8 +224,6 @@ int V4LRecorder::OpenVBIDevice(void)
     {
         QMutexLocker locker(&pauseLock);
         request_recording = true;
-        recording = true;
-        recordingWait.wakeAll();
     }
 
     vbi_fd = fd;
@@ -361,10 +359,6 @@ void V4LRecorder::RunVBIDevice(void)
             }
         }
     }
-
-    QMutexLocker locker(&pauseLock);
-    recording = false;
-    recordingWait.wakeAll();
 
 #if 1
     if (ntsc_cc)
