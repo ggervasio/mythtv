@@ -13,6 +13,9 @@
 #include <unistd.h>         // for IO_NONBLOCK
 #include <fcntl.h>          // for IO_NONBLOCK
 
+#if 1
+#include "vbitext/cc.h"
+#endif
 #include "vbi608extractor.h"
 #include "mythcontext.h"    // for VERBOSE
 #include "v4lrecorder.h"
@@ -98,6 +101,9 @@ int V4LRecorder::OpenVBIDevice(void)
     struct VBIData *vbi_cb = NULL;
     struct vbi     *pal_tt = NULL;
     uint width = 0, start_line = 0, line_count = 0;
+#if 1
+    uint rate = 0;
+#endif
 
     QByteArray vbidev = vbidevice.toAscii();
     if (VBIMode::PAL_TT == vbimode)
@@ -175,6 +181,9 @@ int V4LRecorder::OpenVBIDevice(void)
         width      = fmt.fmt.vbi.samples_per_line;
         start_line = fmt.fmt.vbi.start[0];
         line_count = fmt.fmt.vbi.count[0];
+#if 1
+        rate       = fmt.fmt.vbi.sampling_rate;
+#endif
         if (line_count != fmt.fmt.vbi.count[1])
         {
             VERBOSE(VB_IMPORTANT, LOC_ERR +
@@ -204,6 +213,9 @@ int V4LRecorder::OpenVBIDevice(void)
         ntsc_vbi_width      = width;
         ntsc_vbi_start_line = start_line;
         ntsc_vbi_line_count = line_count;
+#if 1
+        ntsc_vbi_rate       = rate;
+#endif
         vbi608 = new VBI608Extractor();
     }
 
@@ -244,10 +256,30 @@ void V4LRecorder::RunVBIDevice(void)
         return;
 
     unsigned char *buf = NULL, *ptr = NULL, *ptr_end = NULL;
+#if 1
+    struct cc *ntsc_cc = NULL;
+    if (VBIMode::NTSC_CC == vbimode)
+    {
+        ntsc_cc = new struct cc;
+        memset(ntsc_cc, 0, sizeof(struct cc));
+        ntsc_cc->fd = vbi_fd;
+        ntsc_cc->code1 = -1;
+        ntsc_cc->code2 = -1;
+        ntsc_cc->samples_per_line = ntsc_vbi_width;
+        ntsc_cc->start_line       = ntsc_vbi_start_line;
+        ntsc_cc->line_count       = ntsc_vbi_line_count;
+        ntsc_cc->scale0           = (ntsc_vbi_rate + 503488 / 2) / 503488;
+        ntsc_cc->scale1           = (ntsc_cc->scale0 * 2 + 3) / 5; /* 40% */
+    }
+#endif
     if (ntsc_vbi_width)
     {
         uint sz   = ntsc_vbi_width * ntsc_vbi_line_count * 2;
+#if 1
+        buf = ptr = (unsigned char *) ntsc_cc->buffer;
+#else
         buf = ptr = new unsigned char[sz];
+#endif
         ptr_end   = buf + sz;
     }
 
@@ -302,6 +334,17 @@ void V4LRecorder::RunVBIDevice(void)
                            * ntsc_vbi_width);
                 bool cc1 = vbi608->ExtractCC12(line21_field1, ntsc_vbi_width);
                 bool cc2 = vbi608->ExtractCC34(line21_field2, ntsc_vbi_width);
+#if 1
+                cc_decode(ntsc_cc);
+                int code1 = vbi608->GetCode1();
+                int code2 = vbi608->GetCode2();
+                if ((code1 != ntsc_cc->code1) || (code2 != ntsc_cc->code2))
+                    VERBOSE(VB_IMPORTANT, QString("ext. old = %1/%2, new = (%3/%4) %5/%6")
+                                           	 .arg(ntsc_cc->code1, 4, 16).arg(ntsc_cc->code2, 4, 16)
+                                           	 .arg(cc1).arg(cc2)
+                                           	 .arg(code1, 4, 16).arg(code2, 4, 16));
+                FormatCC(ntsc_cc->code1, ntsc_cc->code2);
+#else
                 if (cc1 || cc2)
                 {
                     int code1 = vbi608->GetCode1();
@@ -310,6 +353,7 @@ void V4LRecorder::RunVBIDevice(void)
                     code2 = (0xFFFF==code2) ? -1 : code2;
                     FormatCC(code1, code2);
                 }
+#endif
                 ptr = buf;
             }
             else if (ret < 0)
@@ -319,8 +363,15 @@ void V4LRecorder::RunVBIDevice(void)
         }
     }
 
+#if 1
+    if (ntsc_cc)
+        delete ntsc_cc;
+#else
     if (buf)
         delete [] buf;
+#endif
+
+    CloseVBIDevice();
 }
 
 /* vim: set expandtab tabstop=4 shiftwidth=4: */

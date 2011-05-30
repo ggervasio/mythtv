@@ -51,6 +51,9 @@ class MPUBLIC V4LRecorder : public DTVRecorder
     uint             ntsc_vbi_width;
     uint             ntsc_vbi_start_line;
     uint             ntsc_vbi_line_count;
+#if 1
+    uint             ntsc_vbi_rate;
+#endif
     VBI608Extractor *vbi608;
     VBIThread       *vbi_thread;
     QList<struct txtbuffertype*> textbuffer;
