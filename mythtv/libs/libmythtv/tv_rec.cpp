@@ -4486,8 +4486,8 @@ RecordingInfo *TVRec::SwitchRecordingRingBuffer(const RecordingInfo &rcinfo)
     ri->MarkAsInUse(true, kRecorderInUseID);
     StartedRecording(ri);
 
-    bool write = genOpt.cardtype != "IMPORT";
-    RingBuffer *rb = RingBuffer::Create(ri->GetPathname(), write);
+    bool wr = genOpt.cardtype != "IMPORT";
+    RingBuffer *rb = RingBuffer::Create(ri->GetPathname(), wr);
     if (!rb->IsOpen())
     {
         ri->SetRecordingStatus(rsFailed);
@@ -4504,6 +4504,30 @@ RecordingInfo *TVRec::SwitchRecordingRingBuffer(const RecordingInfo &rcinfo)
         recordEndTime = GetRecordEndTime(ri);
         switchingBuffer = true;
         ri->SetRecordingStatus(rsRecording);
+
+#ifdef CC_DUMP
+    	if (genOpt.textfd > 0)
+    	{
+    	    close(genOpt.textfd);
+    	    genOpt.textfd = -1;
+    	}
+
+    	QString textfname = QString("%1.txd").arg(ri->GetPathname());
+    	genOpt.textfd = open(textfname.toAscii(), 
+    	                     O_WRONLY|O_TRUNC|O_CREAT|O_LARGEFILE, 
+    	                     0644);
+    	if (genOpt.textfd <= 0)
+    	{
+    	    cerr << "ERROR opening text dump file.\n";
+    	    perror(textfname.toAscii());
+    	}
+    	else
+    	{
+    	    static const char finfo[12] = "MythTVCC-02";
+    	    write(genOpt.textfd, finfo, 12);
+        }
+#endif
+
         VERBOSE(VB_RECORD, LOC + "SwitchRecordingRingBuffer() -> true");
         return ri;
     }
