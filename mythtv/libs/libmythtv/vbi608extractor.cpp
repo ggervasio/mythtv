@@ -68,14 +68,14 @@ static float find_clock_diff(const QList<float> &list)
     }
     if (list.size() >= 2)
         avg_diff /= (list.size() - 1);
-    if (avg_diff * 1.15 < max_diff)
+    if (avg_diff * 2.20 < max_diff)
     {
-        VERBOSE(VB_VBI|VB_EXTRA, "max_diff too big");
+        VERBOSE(VB_VBI|VB_EXTRA, QString("max_diff too big:  %1").arg(max_diff/avg_diff, 4, 'f', 2));
         return 0.0f;
     }
-    if (avg_diff * 0.85 > max_diff)
+    if (avg_diff * 0.70 > min_diff)
     {
-        VERBOSE(VB_VBI|VB_EXTRA, "min_diff too small");
+        VERBOSE(VB_VBI|VB_EXTRA, QString("min_diff too small:  %1").arg(min_diff/avg_diff, 4, 'f', 2 ));
         return 0.0f;
     }
 
