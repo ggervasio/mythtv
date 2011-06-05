@@ -653,7 +653,9 @@ bool V4LChannel::SetInputAndFormat(int inputNum, QString newFmt)
             {
                 VERBOSE(VB_IMPORTANT, LOC_ERR + msg +
                         "\n\t\t\twhile disabling streaming (v4l v2)" + ENO);
+#if 0
                 ok = false;
+#endif
             }
             else
             {
