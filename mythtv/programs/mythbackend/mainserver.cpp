@@ -1420,6 +1420,9 @@ void MainServer::HandleAnnounce(QStringList &slist, QStringList commands,
             }
 
             QString basename = qurl.path();
+            if (qurl.hasFragment())
+                basename += "#" + qurl.fragment();
+
             if (basename.isEmpty())
             {
                 VERBOSE(VB_IMPORTANT, QString("ERROR: FileTransfer write "
@@ -2699,9 +2702,7 @@ void MainServer::HandleQueryFreeSpaceSummary(PlaybackSock *pbs)
     BackendQueryDiskSpace(fullStrList, true, true);
 
     // The TotalKB and UsedKB are the last two numbers encoded in the list
-    unsigned int index = fullStrList.size() - 4;
-    strList << fullStrList[index++];
-    strList << fullStrList[index++];
+    unsigned int index = fullStrList.size() - 2;
     strList << fullStrList[index++];
     strList << fullStrList[index++];
 
@@ -5799,6 +5800,9 @@ QString MainServer::LocalFilePath(const QUrl &url, const QString &wantgroup)
 {
     QString lpath = url.path();
     VERBOSE(VB_FILE, QString("Raw local file path: %1").arg(lpath));
+
+    if (url.hasFragment())
+        lpath += "#" + url.fragment();
 
     if (lpath.section('/', -2, -2) == "channels")
     {
