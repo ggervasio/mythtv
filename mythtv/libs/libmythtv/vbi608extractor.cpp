@@ -333,7 +333,7 @@ bool VBI608Extractor::ExtractCC12(const unsigned char *buf, uint width)
             maxv = max(uint(buf[j]), maxv);
         uint avgv = maxv / 2;
 
-        if (buf[uint(start + (0+7) * rate)] > avgv ||
+        if (//buf[uint(start + (0+7) * rate)] > avgv ||
             buf[uint(start + (1+7) * rate)] > avgv ||
             buf[uint(start + (2+7) * rate)] < avgv)
         {
@@ -363,7 +363,7 @@ bool VBI608Extractor::ExtractCC34(const unsigned char *buf, uint width)
             maxv = max(uint(buf[j]), maxv);
         uint avgv = maxv / 2;
 
-        if (buf[uint(start + (0+7) * rate)] > avgv ||
+        if (//buf[uint(start + (0+7) * rate)] > avgv ||
             buf[uint(start + (1+7) * rate)] > avgv ||
             buf[uint(start + (2+7) * rate)] < avgv)
         {
