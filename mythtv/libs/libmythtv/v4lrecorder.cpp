@@ -13,10 +13,14 @@
 #include <unistd.h>         // for IO_NONBLOCK
 #include <fcntl.h>          // for IO_NONBLOCK
 
-#if 1
+#define VBI_EXT_OLD
+//#define VBI_EXT_OLD_CMP
+#ifdef VBI_EXT_OLD
 #include "vbitext/cc.h"
 #endif
+#if !defined(VBI_EXT_OLD) || defined(VBI_EXT_OLD_CMP)
 #include "vbi608extractor.h"
+#endif
 #include "mythcontext.h"    // for VERBOSE
 #include "v4lrecorder.h"
 #include "vbitext/vbi.h"
@@ -101,7 +105,7 @@ int V4LRecorder::OpenVBIDevice(void)
     struct VBIData *vbi_cb = NULL;
     struct vbi     *pal_tt = NULL;
     uint width = 0, start_line = 0, line_count = 0;
-#if 1
+#if defined(VBI_EXT_OLD)
     uint rate = 0;
 #endif
 
@@ -181,7 +185,7 @@ int V4LRecorder::OpenVBIDevice(void)
         width      = fmt.fmt.vbi.samples_per_line;
         start_line = fmt.fmt.vbi.start[0];
         line_count = fmt.fmt.vbi.count[0];
-#if 1
+#if defined(VBI_EXT_OLD)
         rate       = fmt.fmt.vbi.sampling_rate;
 #endif
         if (line_count != fmt.fmt.vbi.count[1])
@@ -213,10 +217,12 @@ int V4LRecorder::OpenVBIDevice(void)
         ntsc_vbi_width      = width;
         ntsc_vbi_start_line = start_line;
         ntsc_vbi_line_count = line_count;
-#if 1
+#if defined(VBI_EXT_OLD)
         ntsc_vbi_rate       = rate;
 #endif
+#if !defined(VBI_EXT_OLD) || defined(VBI_EXT_OLD_CMP)
         vbi608 = new VBI608Extractor();
+#endif
     }
 
     {
@@ -243,7 +249,9 @@ void V4LRecorder::CloseVBIDevice(void)
     }
     else
     {
+#if !defined(VBI_EXT_OLD) || defined(VBI_EXT_OLD_CMP)
         delete vbi608; vbi608 = NULL;
+#endif
         close(vbi_fd);
     }
 
@@ -256,7 +264,7 @@ void V4LRecorder::RunVBIDevice(void)
         return;
 
     unsigned char *buf = NULL, *ptr = NULL, *ptr_end = NULL;
-#if 1
+#if defined(VBI_EXT_OLD)
     struct cc *ntsc_cc = NULL;
     if (VBIMode::NTSC_CC == vbimode)
     {
@@ -275,7 +283,7 @@ void V4LRecorder::RunVBIDevice(void)
     if (ntsc_vbi_width)
     {
         uint sz   = ntsc_vbi_width * ntsc_vbi_line_count * 2;
-#if 1
+#if defined(VBI_EXT_OLD)
         buf = ptr = (unsigned char *) ntsc_cc->buffer;
 #else
         buf = ptr = new unsigned char[sz];
@@ -327,6 +335,11 @@ void V4LRecorder::RunVBIDevice(void)
             ptr = (ret > 0) ? ptr + ret : ptr;
             if ((ptr_end - ptr) == 0)
             {
+#if defined(VBI_EXT_OLD)
+                cc_decode(ntsc_cc);
+                FormatCC(ntsc_cc->code1, ntsc_cc->code2);
+#endif
+#if !defined(VBI_EXT_OLD) || defined(VBI_EXT_OLD_CMP)
                 unsigned char *line21_field1 =
                     buf + ((21 - ntsc_vbi_start_line) * ntsc_vbi_width);
                 unsigned char *line21_field2 =
@@ -334,17 +347,15 @@ void V4LRecorder::RunVBIDevice(void)
                            * ntsc_vbi_width);
                 bool cc1 = vbi608->ExtractCC12(line21_field1, ntsc_vbi_width);
                 bool cc2 = vbi608->ExtractCC34(line21_field2, ntsc_vbi_width);
-#if 1
-                cc_decode(ntsc_cc);
+    #if defined(VBI_EXT_OLD_CMP)
                 int code1 = vbi608->GetCode1();
                 int code2 = vbi608->GetCode2();
                 if ((code1 != ntsc_cc->code1) || (code2 != ntsc_cc->code2))
-                    VERBOSE(VB_IMPORTANT, QString("ext. old = %1/%2, new = (%3/%4) %5/%6")
-                                           	 .arg(ntsc_cc->code1, 4, 16).arg(ntsc_cc->code2, 4, 16)
-                                           	 .arg(cc1).arg(cc2)
-                                           	 .arg(code1, 4, 16).arg(code2, 4, 16));
-                FormatCC(ntsc_cc->code1, ntsc_cc->code2);
-#else
+                    VERBOSE(VB_VBI, QString("ext. old = %1/%2, new = (%3/%4) %5/%6")
+                                           .arg(ntsc_cc->code1, 4, 16).arg(ntsc_cc->code2, 4, 16)
+                                           .arg(cc1).arg(cc2)
+                                           .arg(code1, 4, 16).arg(code2, 4, 16));
+    #else
                 if (cc1 || cc2)
                 {
                     int code1 = vbi608->GetCode1();
@@ -353,6 +364,7 @@ void V4LRecorder::RunVBIDevice(void)
                     code2 = (0xFFFF==code2) ? -1 : code2;
                     FormatCC(code1, code2);
                 }
+    #endif
 #endif
                 ptr = buf;
             }
@@ -363,7 +375,7 @@ void V4LRecorder::RunVBIDevice(void)
         }
     }
 
-#if 1
+#if defined(VBI_EXT_OLD)
     if (ntsc_cc)
         delete ntsc_cc;
 #else
