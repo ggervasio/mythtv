@@ -73,7 +73,7 @@ class CC608Decoder
 
     QString XDSDecodeString(const vector<unsigned char>&,
                             uint string, uint end) const;
-    void XDSDecode(int field, int b1, int b2);
+    void XDSDecode(int b1, int b2);
 
     bool XDSPacketParseProgram(const vector<unsigned char> &xds_buf,
                                bool future);
@@ -93,7 +93,6 @@ class CC608Decoder
     int lastcode[2];
     int lastcodetc[2];
     int ccmode[2];      // 0=cc1/txt1, 1=cc2/txt2
-    int xds[2];
     int txtmode[4];
 
     // per-mode state

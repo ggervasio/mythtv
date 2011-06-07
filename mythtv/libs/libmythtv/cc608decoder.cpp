@@ -34,7 +34,6 @@ CC608Decoder::CC608Decoder(CC608Input *ccr)
         lastcode[i]    = -1;
         lastcodetc[i]  =  0;
         ccmode[i]      = -1;
-        xds[i]         =  0;
         txtmode[i*2+0] =  0;
         txtmode[i*2+1] =  0;
     }
@@ -103,12 +102,13 @@ void CC608Decoder::FlushField(int field)
     {
         for (int mode = field*4; mode < (field*4 + 4); mode++)
             ResetCC(mode);
-        xds[field] = 0;
         badvbi[field] = 0;
         ccmode[field] = -1;
         txtmode[field*2] = 0;
         txtmode[field*2 + 1] = 0;
     }
+    if (field == 1)
+        xds_buf.clear();
 }
 
 void CC608Decoder::FormatCC(int tc, int code1, int code2)
@@ -194,7 +194,8 @@ void CC608Decoder::FormatCCField(int tc, int field, int data)
             goto skip;
     }
 
-    XDSDecode(field, b1, b2);
+    if (field == 1)
+        XDSDecode(b1, b2);
 
     if (b1 & 0x60)
         // 0x20 <= b1 <= 0x7F
@@ -1100,22 +1101,20 @@ QString CC608Decoder::GetXDS(const QString &key) const
     return QString::null;
 }
 
-void CC608Decoder::XDSDecode(int /*field*/, int b1, int b2)
+void CC608Decoder::XDSDecode(int b1, int b2)
 {
 #if DEBUG_XDS
-    VERBOSE(VB_VBI, QString("XDSDecode: 0x%1 0x%2 (cp 0x%3) '%4%5' "
-                            "xds[%6]=%7")
-            .arg(b1,2,16).arg(b2,2,16).arg(xds_current_packet,0,16)
-            .arg(((int)CharCC(b1)>0x20) ? CharCC(b1) : QChar(' '))
-            .arg(((int)CharCC(b2)>0x20) ? CharCC(b2) : QChar(' '))
-            .arg(field).arg(xds[field]));
+    VERBOSE(VB_VBI, QString("XDSDecode: 0x%1 0x%2 (cp %3) '%4%5' ")
+            .arg(b1,2,16).arg(b2,2,16).arg(xds_buf.size())
+            .arg((CharCC(b1).unicode()>0x20) ? CharCC(b1) : QChar(' '))
+            .arg((CharCC(b2).unicode()>0x20) ? CharCC(b2) : QChar(' ')));
 #endif // DEBUG_XDS
 
-    if (xds_buf.empty() && (b1 > 0x0f))
+    if (xds_buf.empty() && (b1 > 0x0f) && (b1 != 0x00))
         return; // waiting for start of XDS
 
     // Supports non-interleaved XDS packet continuation by ignoring cont.
-    if ((b1 & 0x01) == 0x00)
+    if (!xds_buf.empty() && (b1 < 0x0f) && !(b1 & 0x01))
         return;
 
     xds_buf.push_back(b1);
