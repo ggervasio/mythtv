@@ -1115,7 +1115,7 @@ void CC608Decoder::XDSDecode(int /*field*/, int b1, int b2)
         return; // waiting for start of XDS
 
     // Supports non-interleaved XDS packet continuation by ignoring cont.
-    if ((b1 < 0x0f) && (b1 > 0x0f))
+    if ((b1 & 0x01) == 0x00)
         return;
 
     xds_buf.push_back(b1);
