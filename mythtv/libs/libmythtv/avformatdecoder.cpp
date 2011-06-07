@@ -2441,8 +2441,8 @@ void AvFormatDecoder::DecodeDTVCC(const uint8_t *buf, uint len, bool scte)
             }
 
             // in film mode, we may start at the wrong field;
-            // correct if XDS is detected (must be field 2)
-            if (scte && field == 0 && data1 == 0x01)
+            // correct if XDS start/cont/end code is detected (must be field 2)
+            if (scte && field == 0 && (data1 & 0x7f) <= 0x0f)
             {
                 if (cc_type == 1)
                     invert_scte_field = 0;
