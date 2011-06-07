@@ -2434,28 +2434,42 @@ void AvFormatDecoder::DecodeDTVCC(const uint8_t *buf, uint len, bool scte)
                 // SCTE repeated field
                 field = !last_scte_field;
                 invert_scte_field = !invert_scte_field;
+#if 0
+                VERBOSE(VB_VBI, "SCTE field repeat");
+#endif
             }
             else
             {
                 field = cc_type ^ invert_scte_field;
+#if 0
+                if (invert_scte_field)
+                    VERBOSE(VB_VBI, "SCTE field inversion");
+#endif
             }
-
-            // in film mode, we may start at the wrong field;
-            // correct if XDS start/cont/end code is detected (must be field 2)
-            if (scte && field == 0 && (data1 & 0x7f) <= 0x0f)
-            {
-                if (cc_type == 1)
-                    invert_scte_field = 0;
-                field = 1;
-            }
-
-            last_scte_field = field;
 
             if (cc608_good_parity(cc608_parity_table, data))
             {
+       	        // in film mode, we may start at the wrong field;
+       	        // correct if XDS start/cont/end code is detected (must be field 2)
+       	        if (scte && field == 0 &&
+       	            (data1 & 0x7f) <= 0x0f && (data1 & 0x7f) != 0x00)
+       	        {
+       	            if (cc_type == 1)
+       	                invert_scte_field = 0;
+       	            field = 1;
+
+       	            // flush decoder
+       	            ccd608->Flush();
+#if 0
+       	            VERBOSE(VB_VBI, "SCTE field correction");
+#endif
+       	        }
+
                 had_608 = true;
                 ccd608->FormatCCField(lastccptsu / 1000, field, data);
             }
+
+            last_scte_field = field;
         }
         else
         {
