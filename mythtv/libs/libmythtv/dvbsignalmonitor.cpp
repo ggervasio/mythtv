@@ -153,9 +153,9 @@ void DVBSignalMonitor::Stop(void)
     VERBOSE(VB_CHANNEL, LOC + "Stop() -- end");
 }
 
-QStringList DVBSignalMonitor::GetStatusList(bool kick)
+QStringList DVBSignalMonitor::GetStatusList(void) const
 {
-    QStringList list = DTVSignalMonitor::GetStatusList(kick);
+    QStringList list = DTVSignalMonitor::GetStatusList();
     statusLock.lock();
     if (HasFlags(kDVBSigMon_WaitForSNR))
         list<<signalToNoise.GetName()<<signalToNoise.GetStatus();
@@ -293,8 +293,8 @@ void DVBSignalMonitor::UpdateValues(void)
     // Debug output
     if (wasLocked != isLocked)
     {
-        VERBOSE(VB_CHANNEL, LOC + "UpdateValues -- Signal "
-                <<(isLocked ? "Locked" : "Lost"));
+        VERBOSE(VB_CHANNEL, LOC + "UpdateValues -- Signal " +
+                (isLocked ? "Locked" : "Lost"));
     }
 
     EmitStatus();

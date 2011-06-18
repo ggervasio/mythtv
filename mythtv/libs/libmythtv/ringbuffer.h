@@ -47,6 +47,7 @@ class MTV_PUBLIC RingBuffer : protected QThread
     void UpdateRawBitrate(uint rawbitrate);
     void UpdatePlaySpeed(float playspeed);
     void EnableBitrateMonitor(bool enable) { bitrateMonitorEnabled = enable; }
+    void SetBufferSizeFactors(bool estbitrate, bool matroska);
 
     // Gets
     QString   GetSafeFilename(void) { return safefilename; }
@@ -68,8 +69,10 @@ class MTV_PUBLIC RingBuffer : protected QThread
     bool      IsNearEnd(double fps, uint vvf) const;
     /// \brief Returns true if open for either reading or writing.
     virtual bool IsOpen(void) const = 0;
-    virtual bool IsStreamed(void)     { return LiveMode(); }
-    virtual int  BestBufferSize(void) { return 32768; }
+    virtual bool IsStreamed(void)       { return LiveMode(); }
+    virtual bool IsSeekingAllowed(void) { return true;  }
+    virtual bool IsBookmarkAllowed(void) { return true; }
+    virtual int  BestBufferSize(void)   { return 32768; }
     static QString BitrateToString(uint64_t rate);
 
     // DVD and bluray methods
@@ -141,6 +144,7 @@ class MTV_PUBLIC RingBuffer : protected QThread
     RingBuffer();
 
     void run(void); // QThread
+    void CreateReadAheadBuffer(void);
     void CalcReadAheadThresh(void);
     bool PauseAndWait(void);
     virtual int safe_read(void *data, uint sz) = 0;
@@ -187,6 +191,9 @@ class MTV_PUBLIC RingBuffer : protected QThread
 
     RemoteFile *remotefile;       // protected by rwlock
 
+    uint      bufferSize;         // protected by rwlock
+    bool      fileismatroska;     // protected by rwlock
+    bool      unknownbitrate;     // protected by rwlock
     bool      startreadahead;     // protected by rwlock
     char     *readAheadBuffer;    // protected by rwlock
     bool      readaheadrunning;   // protected by rwlock
@@ -233,10 +240,6 @@ class MTV_PUBLIC RingBuffer : protected QThread
     static QMutex subExtLock;
     static QStringList subExt;
     static QStringList subExtNoCheck;
-
-    // constants
-  public:
-    static const uint kBufferSize;
 };
 
 #endif // _RINGBUFFER_H_

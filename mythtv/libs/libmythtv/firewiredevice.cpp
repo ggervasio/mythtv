@@ -45,7 +45,7 @@ void FirewireDevice::AddListener(TSDataListener *listener)
             m_listeners.push_back(listener);
     }
 
-    VERBOSE(VB_RECORD, LOC + "AddListener() "<<m_listeners.size());
+    VERBOSE(VB_RECORD, LOC + QString("AddListener() %1").arg(m_listeners.size()));
 }
 
 void FirewireDevice::RemoveListener(TSDataListener *listener)
@@ -63,7 +63,7 @@ void FirewireDevice::RemoveListener(TSDataListener *listener)
     }
     while (it != m_listeners.end());
 
-    VERBOSE(VB_RECORD, LOC + "RemoveListener() "<<m_listeners.size());
+    VERBOSE(VB_RECORD, LOC + QString("RemoveListener() %1").arg(m_listeners.size()));
 }
 
 bool FirewireDevice::SetPowerState(bool on)
@@ -180,7 +180,7 @@ bool FirewireDevice::SetChannel(const QString &panel_model,
     vector<uint8_t> cmd;
     vector<uint8_t> ret;
 
-    if ((panel_model.toUpper() == "GENERIC") ||
+    if ((panel_model.toUpper() == "SA GENERIC") ||
         (panel_model.toUpper() == "SA4200HD") ||
         (panel_model.toUpper() == "SA4250HDC"))
     {
@@ -230,6 +230,7 @@ bool FirewireDevice::SetChannel(const QString &panel_model,
                    (panel_model.toUpper().left(4) == "DCH-") ||
                    (panel_model.toUpper().left(4) == "DCX-") ||
                    (panel_model.toUpper().left(4) == "QIP-") ||
+                   (panel_model.toUpper().left(4) == "MOTO") ||
                    (panel_model.toUpper().left(5) == "PACE-"));
 
     if (is_mot && !alt_method)
@@ -359,7 +360,7 @@ QString FirewireDevice::GetModelName(uint vendor_id, uint model_id)
     QString ret = s_id_to_model[(((uint64_t) vendor_id) << 32) | model_id];
 
     if (ret.isEmpty())
-        return "GENERIC";
+        return "MOTO GENERIC";
 
     ret.detach();
     return ret;
@@ -424,6 +425,7 @@ static void fw_init(QMap<uint64_t,QString> &id_to_model)
     {
         /* DCH-3200, DCX-3200 */
         0x1c11,    0x1cfb,    0x1fc4,    0x23a3,    0x23ee,    0x25f1,
+        0xfa01,    0x25f1,    0x25f2,
         /* DCX-3432 */
         0x24a0,
         /* DCH-3416 */
@@ -457,7 +459,10 @@ static void fw_init(QMap<uint64_t,QString> &id_to_model)
     for (uint i = 0; i < motorola_vendor_id_cnt; i++)
     {
         id_to_model[motorola_vendor_ids[i] << 32 | 0xf740] = "DCX-3200";
+        id_to_model[motorola_vendor_ids[i] << 32 | 0xf804] = "DCX-3200";
+        id_to_model[motorola_vendor_ids[i] << 32 | 0xfa03] = "DCX-3200";
         id_to_model[motorola_vendor_ids[i] << 32 | 0xfa07] = "DCX-3200";
+        id_to_model[motorola_vendor_ids[i] << 32 | 0x24a1] = "DCX-3200";
         id_to_model[motorola_vendor_ids[i] << 32 | 0xea05] = "DCX-3432";
         id_to_model[motorola_vendor_ids[i] << 32 | 0xd330] = "DCH-3200";
         id_to_model[motorola_vendor_ids[i] << 32 | 0xb630] = "DCH-3416";
@@ -508,6 +513,7 @@ bool FirewireDevice::IsSTBSupported(const QString &panel_model)
             (model == "PACE-779") ||
             (model == "QIP-6200") ||
             (model == "QIP-7100") ||
-            (model == "GENERIC"));
+            (model == "SA GENERIC") ||
+            (model == "MOTO GENERIC"));
 }
 

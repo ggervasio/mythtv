@@ -18,6 +18,7 @@
 #include "SoundTouch.h"
 #include "freesurround.h"
 #include "spdifencoder.h"
+#include "mythlogging.h"
 
 #define LOC QString("AO: ")
 #define LOC_ERR QString("AO, ERROR: ")
@@ -523,7 +524,7 @@ void AudioOutputBase::Reconfigure(const AudioSettings &orig_settings)
         lsource_channels == source_channels &&
         lneeds_downmix == needs_downmix;
 
-    if (general_deps)
+    if (general_deps && m_configure_succeeded)
     {
         VBAUDIO("Reconfigure(): No change -> exiting");
         return;
@@ -1691,9 +1692,11 @@ void AudioOutputBase::Drain()
  */
 void AudioOutputBase::run(void)
 {
+    threadRegister("AudioOutputBase");
     VBAUDIO(QString("kickoffOutputAudioLoop: pid = %1").arg(getpid()));
     OutputAudioLoop();
     VBAUDIO("kickoffOutputAudioLoop exiting");
+    threadDeregister();
 }
 
 int AudioOutputBase::readOutputData(unsigned char*, int)

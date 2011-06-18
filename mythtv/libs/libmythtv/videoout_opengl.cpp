@@ -40,10 +40,9 @@ void VideoOutputOpenGL::GetRenderOptions(render_opts &opts,
 
 VideoOutputOpenGL::VideoOutputOpenGL()
     : VideoOutput(),
-    gl_context_lock(QMutex::Recursive), gl_context(NULL),
+    gl_context_lock(QMutex::Recursive), gl_context(NULL), gl_valid(true),
     gl_videochain(NULL), gl_pipchain_active(NULL),
-    gl_parent_win(0), gl_embed_win(0),
-    gl_painter(NULL), gl_created_painter(false)
+    gl_parent_win(0),    gl_painter(NULL), gl_created_painter(false)
 {
     memset(&av_pause_frame, 0, sizeof(av_pause_frame));
     av_pause_frame.buf = NULL;
@@ -54,18 +53,50 @@ VideoOutputOpenGL::VideoOutputOpenGL()
 
 VideoOutputOpenGL::~VideoOutputOpenGL()
 {
-    QMutexLocker locker(&gl_context_lock);
+    gl_context_lock.lock();
     TearDown();
 
     if (gl_context)
         gl_context->DownRef();
     gl_context = NULL;
+    gl_context_lock.unlock();
 }
 
 void VideoOutputOpenGL::TearDown(void)
 {
-    QMutexLocker locker(&gl_context_lock);
+    gl_context_lock.lock();
+    DestroyCPUResources();
+    DestroyVideoResources();
+    DestroyGPUResources();
+    gl_context_lock.unlock();
+}
 
+bool VideoOutputOpenGL::CreateCPUResources(void)
+{
+    bool result = CreateBuffers();
+    result &= CreatePauseFrame();
+    return result;
+}
+
+bool VideoOutputOpenGL::CreateGPUResources(void)
+{
+    bool result = SetupContext();
+    QSize size = window.GetActualVideoDim();
+    InitDisplayMeasurements(size.width(), size.height(), false);
+    InitOSD();
+    return result;
+}
+
+bool VideoOutputOpenGL::CreateVideoResources(void)
+{
+    bool result = SetupOpenGL();
+    MoveResize();
+    return result;
+}
+
+void VideoOutputOpenGL::DestroyCPUResources(void)
+{
+    gl_context_lock.lock();
     DiscardFrames(true);
     vbuffers.DeleteBuffers();
     vbuffers.Reset();
@@ -80,7 +111,31 @@ void VideoOutputOpenGL::TearDown(void)
         delete [] av_pause_frame.qscale_table;
         av_pause_frame.qscale_table = NULL;
     }
+    gl_context_lock.unlock();
+}
 
+void VideoOutputOpenGL::DestroyGPUResources(void)
+{
+    gl_context_lock.lock();
+    if (gl_context)
+        gl_context->makeCurrent();
+
+    if (gl_created_painter)
+        delete gl_painter;
+    else if (gl_painter)
+        gl_painter->SetSwapControl(true);
+
+    gl_painter = NULL;
+    gl_created_painter = false;
+
+    if (gl_context)
+        gl_context->doneCurrent();
+    gl_context_lock.unlock();
+}
+
+void VideoOutputOpenGL::DestroyVideoResources(void)
+{
+    gl_context_lock.lock();
     if (gl_context)
         gl_context->makeCurrent();
 
@@ -89,14 +144,6 @@ void VideoOutputOpenGL::TearDown(void)
         delete gl_videochain;
         gl_videochain = NULL;
     }
-
-    if (gl_created_painter)
-        delete gl_painter;
-    else
-        gl_painter->SetSwapControl(true);
-
-    gl_painter = NULL;
-    gl_created_painter = false;
 
     while (!gl_pipchains.empty())
     {
@@ -107,39 +154,36 @@ void VideoOutputOpenGL::TearDown(void)
 
     if (gl_context)
         gl_context->doneCurrent();
+    gl_context_lock.unlock();
 }
 
-bool VideoOutputOpenGL::Init(int width, int height, float aspect,
-                        WId winid, int winx, int winy, int winw, int winh,
-                        MythCodecID codec_id, WId embedid)
+bool VideoOutputOpenGL::Init(int width, int height, float aspect, WId winid,
+                             const QRect &win_rect, MythCodecID codec_id)
 {
     QMutexLocker locker(&gl_context_lock);
-
     bool success = true;
-    // FIXME Mac OS X overlay does not work with preview
     window.SetAllowPreviewEPG(true);
     gl_parent_win = winid;
-    gl_embed_win  = embedid;
-
-    VideoOutput::Init(width, height, aspect,
-                      winid, winx, winy, winw, winh,
-                      codec_id, embedid);
-
+    success &= VideoOutput::Init(width, height, aspect, winid,
+                                 win_rect, codec_id);
     SetProfile();
-
-    success &= SetupContext();
-    InitDisplayMeasurements(width, height, false);
-    success &= CreateBuffers();
-    success &= CreatePauseFrame();
-    success &= SetupOpenGL();
-
-    InitOSD();
     InitPictureAttributes();
-    MoveResize();
+
+    success &= CreateCPUResources();
+
+    if (!gCoreContext->IsUIThread())
+    {
+        VERBOSE(VB_IMPORTANT, LOC + "Deferring creation of OpenGL resources");
+        gl_valid = false;
+    }
+    else
+    {
+        success &= CreateGPUResources();
+        success &= CreateVideoResources();
+    }
 
     if (!success)
         TearDown();
-
     return success;
 }
 
@@ -160,6 +204,18 @@ bool VideoOutputOpenGL::InputChanged(const QSize &input_size,
             .arg(toString(video_codec_id)).arg(toString(av_codec_id)));
 
     QMutexLocker locker(&gl_context_lock);
+
+    // Ensure we don't lose embedding through program changes. This duplicates
+    // code in VideoOutput::Init but we need start here otherwise the embedding
+    // is lost during window re-initialistion.
+    bool wasembedding = window.IsEmbedding();
+    QRect oldrect;
+    if (wasembedding)
+    {
+        oldrect = window.GetEmbeddingRect();
+        StopEmbedding();
+    }
+
     if (!codec_is_std(av_codec_id))
     {
         VERBOSE(VB_IMPORTANT, LOC_ERR +
@@ -175,17 +231,25 @@ bool VideoOutputOpenGL::InputChanged(const QSize &input_size,
         {
             VideoAspectRatioChanged(aspect);
             MoveResize();
+            if (wasembedding)
+                EmbedInWidget(oldrect);
         }
         return true;
     }
 
-    TearDown();
+    if (gCoreContext->IsUIThread())
+        TearDown();
+    else
+        DestroyCPUResources();
+
     QRect disp = window.GetDisplayVisibleRect();
     if (Init(input_size.width(), input_size.height(),
-             aspect, gl_parent_win, disp.left(),  disp.top(),
-             disp.width(), disp.height(), av_codec_id, gl_embed_win))
+             aspect, gl_parent_win, disp, av_codec_id))
     {
-        BestDeint();
+        if (wasembedding)
+            EmbedInWidget(oldrect);
+        if (gCoreContext->IsUIThread())
+            BestDeint();
         return true;
     }
 
@@ -213,7 +277,7 @@ bool VideoOutputOpenGL::SetupContext(void)
         return false;
     }
 
-    //gl_context = dynamic_cast<MythRenderOpenGL*>(win->GetRenderDevice());
+    gl_context = dynamic_cast<MythRenderOpenGL*>(win->GetRenderDevice());
     if (gl_context)
     {
         gl_context->UpRef();
@@ -352,8 +416,24 @@ void VideoOutputOpenGL::ProcessFrame(VideoFrame *frame, OSD *osd,
                                      FrameScanType scan)
 {
     QMutexLocker locker(&gl_context_lock);
+
     if (!gl_context)
         return;
+
+    if (!gl_valid)
+    {
+        if (!gCoreContext->IsUIThread())
+        {
+            VERBOSE(VB_IMPORTANT, LOC_ERR +
+                "ProcessFrame called from wrong thread");
+        }
+        QSize size = window.GetActualVideoDim();
+        InitDisplayMeasurements(size.width(), size.height(), false);
+        DestroyVideoResources();
+        CreateVideoResources();
+        BestDeint();
+        gl_valid = true;
+    }
 
     bool sw_frame = codec_is_std(video_codec_id) && video_codec_id != kCodec_NONE;
     bool deint_proc = m_deinterlacing && (m_deintFilter != NULL);
@@ -511,7 +591,7 @@ void VideoOutputOpenGL::UpdatePauseFrame(void)
 
 void VideoOutputOpenGL::InitPictureAttributes(void)
 {
-    if (!gl_context || video_codec_id == kCodec_NONE)
+    if (video_codec_id == kCodec_NONE)
         return;
 
     videoColourSpace.SetSupportedAttributes((PictureAttributeSupported)
@@ -739,10 +819,10 @@ void VideoOutputOpenGL::MoveResizeWindow(QRect new_rect)
         gl_context->MoveResizeWindow(new_rect);
 }
 
-void VideoOutputOpenGL::EmbedInWidget(int x, int y, int w, int h)
+void VideoOutputOpenGL::EmbedInWidget(const QRect &rect)
 {
     if (!window.IsEmbedding())
-        VideoOutput::EmbedInWidget(x,y,w,h);
+        VideoOutput::EmbedInWidget(rect);
 
     MoveResize();
 }

@@ -423,7 +423,7 @@ bool DDStructureParser::endDocument()
 
 bool DDStructureParser::characters(const QString& pchars)
 {
-    // cerr << "Characters : " << pchars << "\n";
+    // VERBOSE(VB_GENERAL, "Characters : " + pchars);
     if (pchars.trimmed().isEmpty())
         return true;
 
@@ -589,7 +589,6 @@ DataDirectProcessor::~DataDirectProcessor()
 
     for (uint i = 0; i < d.count(); i++)
     {
-        //cout<<"deleting '"<<tmpDir<<"/"<<d[i]<<"'"<<endl;
         QString    tmps = QString(tmpDir + "/" + d[i]);
         QByteArray tmpa = tmps.toAscii();
         unlink(tmpa.constData());
@@ -683,8 +682,8 @@ int DataDirectProcessor::UpdateChannelsSafe(
     if (!SourceUtil::GetConnectionCount(sourceid))
     {
         VERBOSE(VB_IMPORTANT, LOC +
-                "Not inserting channels into disconnected source "
-                <<sourceid<<".");
+                QString("Not inserting channels into disconnected source %1.")
+                .arg(sourceid));
         return -1;
     }
 
@@ -834,7 +833,7 @@ void DataDirectProcessor::DataDirectProgramUpdate(void)
 {
     MSqlQuery query(MSqlQuery::DDCon());
 
-    //cerr << "Adding rows to main program table from view table..\n";
+    //VERBOSE(VB_GENERAL, "Adding rows to main program table from view table");
     query.prepare(
         "INSERT IGNORE INTO program "
         "  ( chanid,        starttime,   endtime,         title,           "
@@ -871,8 +870,8 @@ void DataDirectProcessor::DataDirectProgramUpdate(void)
     if (!query.exec())
         MythDB::DBError("Inserting into program table", query);
 
-    //cerr << "Finished adding rows to main program table...\n";
-    //cerr << "Adding program ratings...\n";
+    //VERBOSE(VB_GENERAL, "Finished adding rows to main program table");
+    //VERBOSE(VB_GENERAL, "Adding program ratings");
 
     if (!query.exec("INSERT IGNORE INTO programrating (chanid, starttime, "
                     "system, rating) SELECT dd_v_program.chanid, "
@@ -891,8 +890,8 @@ void DataDirectProcessor::DataDirectProgramUpdate(void)
                     " AND dd_v_program.chanid = channel.chanid"))
         MythDB::DBError("Inserting into programrating table", query);
 
-    //cerr << "Finished adding program ratings...\n";
-    //cerr << "Populating people table from production crew list...\n";
+    //VERBOSE(VB_GENERAL, "Finished adding program ratings");
+    //VERBOSE(VB_GENERAL, "Populating people table from production crew list");
 
     if (!query.exec("INSERT IGNORE INTO people (name) "
                     "SELECT fullname "
@@ -902,8 +901,8 @@ void DataDirectProcessor::DataDirectProgramUpdate(void)
                     "WHERE people.name IS NULL;"))
         MythDB::DBError("Inserting into people table", query);
 
-    //cerr << "Finished adding people...\n";
-    //cerr << "Adding credits entries from production crew list...\n";
+    //VERBOSE(VB_GENERAL, "Finished adding people");
+    //VERBOSE(VB_GENERAL, "Adding credits entries from production crew list");
 
     if (!query.exec("INSERT IGNORE INTO credits (chanid, starttime, person, role)"
                     "SELECT dd_v_program.chanid, "
@@ -925,8 +924,8 @@ void DataDirectProcessor::DataDirectProgramUpdate(void)
                     "WHERE credits.role IS NULL;"))
         MythDB::DBError("Inserting into credits table", query);
 
-    //cerr << "Finished inserting credits...\n";
-    //cerr << "Adding genres...\n";
+    //VERBOSE(VB_GENERAL, "Finished inserting credits");
+    //VERBOSE(VB_GENERAL, "Adding genres");
 
     if (!query.exec("INSERT IGNORE INTO programgenres (chanid, starttime, "
                     "relevance, genre) SELECT dd_v_program.chanid, "
@@ -936,7 +935,7 @@ void DataDirectProcessor::DataDirectProgramUpdate(void)
                     "AND dd_v_program.chanid = channel.chanid"))
         MythDB::DBError("Inserting into programgenres table",query);
 
-    //cerr << "Done...\n";
+    //VERBOSE(VB_GENERAL, "Done");
 }
 
 bool DataDirectProcessor::DDPost(
@@ -1015,7 +1014,7 @@ bool DataDirectProcessor::DDPost(
 #endif
 
     if (SHOW_WGET_OUTPUT)
-        VERBOSE(VB_GENERAL, "command: "<<command<<endl);
+        VERBOSE(VB_GENERAL, "command: " + command);
 
     err_txt = "Returned failure";
     if (myth_system(command, kMSAnonLog) != GENERIC_EXIT_OK)
@@ -1099,7 +1098,7 @@ bool DataDirectProcessor::GrabNextSuggestedTime(void)
     }
 
     if (SHOW_WGET_OUTPUT)
-        VERBOSE(VB_GENERAL, "command: "<<command<<endl);
+        VERBOSE(VB_GENERAL, "command: " + command);
 #ifndef USING_MINGW
     else
         command += " 2> /dev/null ";
@@ -1163,7 +1162,7 @@ bool DataDirectProcessor::GrabData(const QDateTime pstartDate,
                                    const QDateTime pendDate)
 {
     QString msg = (pstartDate.addSecs(1) == pendDate) ? "channel" : "listing";
-    VERBOSE(VB_GENERAL, "Grabbing " << msg << " data");
+    VERBOSE(VB_GENERAL, "Grabbing " + msg + " data");
 
     QString err = "";
     QString ddurl = providers[listings_provider].webServiceURL;
@@ -1450,22 +1449,22 @@ QDateTime DataDirectProcessor::GetLineupCacheAge(const QString &lineupid) const
     QFile lfile(get_cache_filename(lineupid));
     if (!lfile.exists())
     {
-        VERBOSE(VB_GENERAL, "GrabLineupCacheAge("<<lineupid<<") failed -- "
-                <<QString("file '%1' doesn't exist")
+        VERBOSE(VB_GENERAL, "GrabLineupCacheAge("+lineupid+") failed -- " +
+                QString("file '%1' doesn't exist")
                 .arg(get_cache_filename(lineupid)));
         return cache_dt;
     }
     if (lfile.size() < 8)
     {
-        VERBOSE(VB_IMPORTANT, "GrabLineupCacheAge("<<lineupid<<") failed -- "
-                <<QString("file '%1' size %2 too small")
+        VERBOSE(VB_IMPORTANT, "GrabLineupCacheAge("+lineupid+") failed -- " +
+                QString("file '%1' size %2 too small")
                 .arg(get_cache_filename(lineupid)).arg(lfile.size()));
         return cache_dt;
     }
     if (!lfile.open(QIODevice::ReadOnly))
     {
-        VERBOSE(VB_IMPORTANT, "GrabLineupCacheAge("<<lineupid<<") failed -- "
-                <<QString("cannot open file '%1'")
+        VERBOSE(VB_IMPORTANT, "GrabLineupCacheAge("+lineupid+") failed -- " +
+                QString("cannot open file '%1'")
                 .arg(get_cache_filename(lineupid)));
         return cache_dt;
     }
@@ -1475,8 +1474,8 @@ QDateTime DataDirectProcessor::GetLineupCacheAge(const QString &lineupid) const
     io >> tmp;
     cache_dt = QDateTime::fromString(tmp, Qt::ISODate);
 
-    VERBOSE(VB_GENERAL, "GrabLineupCacheAge("<<lineupid<<") -> "
-            <<cache_dt.toString(Qt::ISODate));
+    VERBOSE(VB_GENERAL, "GrabLineupCacheAge("+lineupid+") -> " +
+            cache_dt.toString(Qt::ISODate));
 
     return cache_dt;
 }
@@ -1486,7 +1485,7 @@ bool DataDirectProcessor::GrabLineupsFromCache(const QString &lineupid)
     QFile lfile(get_cache_filename(lineupid));
     if (!lfile.exists() || (lfile.size() < 8) || !lfile.open(QIODevice::ReadOnly))
     {
-        VERBOSE(VB_IMPORTANT, "GrabLineupFromCache("<<lineupid<<") -- failed");
+        VERBOSE(VB_IMPORTANT, "GrabLineupFromCache("+lineupid+") -- failed");
         return false;
     }
 
@@ -1535,7 +1534,7 @@ bool DataDirectProcessor::GrabLineupsFromCache(const QString &lineupid)
         stations[station.stationid] = station;
     }
 
-    VERBOSE(VB_GENERAL, "GrabLineupFromCache("<<lineupid<<") -- success");
+    VERBOSE(VB_GENERAL, "GrabLineupFromCache("+lineupid+") -- success");
 
     return true;
 }
@@ -1547,7 +1546,7 @@ bool DataDirectProcessor::SaveLineupToCache(const QString &lineupid) const
     QFile lfile(fna.constData());
     if (!lfile.open(QIODevice::WriteOnly))
     {
-        VERBOSE(VB_IMPORTANT, "SaveLineupToCache("<<lineupid<<") -- failed");
+        VERBOSE(VB_IMPORTANT, "SaveLineupToCache("+lineupid+") -- failed");
         return false;
     }
 
@@ -1590,7 +1589,7 @@ bool DataDirectProcessor::SaveLineupToCache(const QString &lineupid) const
     }
     io << flush;
 
-    VERBOSE(VB_GENERAL, "SaveLineupToCache("<<lineupid<<") -- success");
+    VERBOSE(VB_GENERAL, "SaveLineupToCache("+lineupid+") -- success");
 
     makeFileAccessible(fna.constData()); // Let anybody update it
 
@@ -1919,7 +1918,7 @@ bool DataDirectProcessor::Post(QString url, const PostList &list,
 #endif
 
     if (SHOW_WGET_OUTPUT)
-        VERBOSE(VB_GENERAL, "command: "<<command<<endl);
+        VERBOSE(VB_GENERAL, "command: " + command);
     else
     {
         command += (documentFile.isEmpty()) ? "&> " : "2> ";
@@ -1962,7 +1961,7 @@ bool DataDirectProcessor::ParseLineups(const QString &documentFile)
             in_form = true;
             get_action = get_setting(line.mid(frm + 5), "action");
             name_value.clear();
-            //cerr<<QString("action: %1").arg(action)<<endl;
+            //VERBOSE(VB_GENERAL, QString("action: %1").arg(action));
         }
 
         if (!in_form)
@@ -1972,11 +1971,11 @@ bool DataDirectProcessor::ParseLineups(const QString &documentFile)
         if (inp >= 0)
         {
             QString input_line = line.mid(inp + 6);
-            //cerr<<QString("input: %1").arg(input_line)<<endl;
+            //VERBOSE(VB_GENERAL, QString("input: %1").arg(input_line));
             QString name  = get_setting(input_line, "name");
             QString value = get_setting(input_line, "value");
-            //cerr<<QString("name: %1").arg(name)<<endl;
-            //cerr<<QString("value: %1").arg(value)<<endl;
+            //VERBOSE(VB_GENERAL, QString("name: %1").arg(name));
+            //VERBOSE(VB_GENERAL, QString("value: %1").arg(value));
             if (!name.isEmpty() && !value.isEmpty())
                 name_value[name] = value;
         }
@@ -2035,7 +2034,7 @@ bool DataDirectProcessor::ParseLineup(const QString &lineupid,
         {
             in_form = true;
             lineup.set_action = get_setting(line.mid(frm + 5), "action");
-            //cerr<<"set_action: "<<lineup.set_action<<endl;
+            //VERBOSE(VB_GENERAL "set_action: " + lineup.set_action);
         }
 
         if (!in_form)
@@ -2354,7 +2353,7 @@ static void set_lineup_type(const QString &lineupid, const QString &type)
         tmptype.detach();
         srcid_to_type[srcid] = tmptype;
 
-        VERBOSE(VB_GENERAL, "sourceid "<<srcid<<" has lineup type: "<<type);
+        VERBOSE(VB_GENERAL, QString("sourceid %1 has lineup type: %2").arg(srcid).arg(type));
     }
 }
 

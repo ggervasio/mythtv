@@ -142,7 +142,7 @@ void SubtitleScreen::ClearDisplayedSubtitles(void)
 
 void SubtitleScreen::ExpireSubtitles(void)
 {
-    VideoOutput    *videoOut = m_player->getVideoOutput();
+    VideoOutput    *videoOut = m_player->GetVideoOutput();
     VideoFrame *currentFrame = videoOut ? videoOut->GetLastShownFrame() : NULL;
     long long now = currentFrame ? currentFrame->timecode : LLONG_MAX;
     QMutableHashIterator<MythUIType*, long long> it(m_expireTimes);
@@ -194,7 +194,7 @@ void SubtitleScreen::DisplayAVSubtitles(void)
     if (!m_player || !m_subreader)
         return;
 
-    VideoOutput    *videoOut = m_player->getVideoOutput();
+    VideoOutput    *videoOut = m_player->GetVideoOutput();
     VideoFrame *currentFrame = videoOut ? videoOut->GetLastShownFrame() : NULL;
 
     if (!currentFrame || !videoOut)
@@ -406,7 +406,7 @@ int SubtitleScreen::DisplayScaledAVSubtitles(const AVSubtitleRect *rect, QRect &
     bbox.setWidth(bbox.width() * zoom/100);
     bbox.setHeight(bbox.height() * zoom/100);
 
-    VideoOutput *videoOut = m_player->getVideoOutput();
+    VideoOutput *videoOut = m_player->GetVideoOutput();
     QRect scaled = videoOut->GetImageRect(bbox, &display);
 
     if (scaled.size() != orig_rect.size())
@@ -462,11 +462,11 @@ void SubtitleScreen::DisplayTextSubtitles(void)
         return;
 
     bool changed = false;
-    VideoOutput *vo = m_player->getVideoOutput();
+    VideoOutput *vo = m_player->GetVideoOutput();
     if (vo)
     {
         QRect oldsafe = m_safeArea;
-        m_safeArea = m_player->getVideoOutput()->GetSafeRect();
+        m_safeArea = m_player->GetVideoOutput()->GetSafeRect();
         if (oldsafe != m_safeArea)
         {
             changed = true;
@@ -548,11 +548,11 @@ void SubtitleScreen::DisplayRawTextSubtitles(void)
     if (subs.empty())
         return;
 
-    VideoOutput *vo = m_player->getVideoOutput();
+    VideoOutput *vo = m_player->GetVideoOutput();
     if (vo)
     {
         QRect oldsafe = m_safeArea;
-        m_safeArea = m_player->getVideoOutput()->GetSafeRect();
+        m_safeArea = m_player->GetVideoOutput()->GetSafeRect();
         if (oldsafe != m_safeArea)
         {
             int height = (m_safeArea.height() * m_textFontZoom) / 1800;
@@ -651,7 +651,7 @@ void SubtitleScreen::DisplayDVDButton(AVSubtitle* dvdButton, QRect &buttonPos)
     if (!dvdButton || !m_player)
         return;
 
-    VideoOutput *vo = m_player->getVideoOutput();
+    VideoOutput *vo = m_player->GetVideoOutput();
     if (!vo)
         return;
 
@@ -737,10 +737,10 @@ void SubtitleScreen::DisplayCC608Subtitles(void)
 
     bool changed = false;
 
-    if (m_player && m_player->getVideoOutput())
+    if (m_player && m_player->GetVideoOutput())
     {
         QRect oldsafe = m_safeArea;
-        m_safeArea = m_player->getVideoOutput()->GetSafeRect();
+        m_safeArea = m_player->GetVideoOutput()->GetSafeRect();
         if (oldsafe != m_safeArea || m_xmid == 0)
         {
             changed = true;
@@ -863,11 +863,11 @@ void SubtitleScreen::DisplayCC708Subtitles(void)
 
     CC708Service *cc708service = m_708reader->GetCurrentService();
     float video_aspect = 1.77777f;
-    if (m_player && m_player->getVideoOutput())
+    if (m_player && m_player->GetVideoOutput())
     {
         video_aspect = m_player->GetVideoAspect();
         QRect oldsafe = m_safeArea;
-        m_safeArea = m_player->getVideoOutput()->GetSafeRect();
+        m_safeArea = m_player->GetVideoOutput()->GetSafeRect();
         if (oldsafe != m_safeArea)
         {
             for (uint i = 0; i < 8; i++)
@@ -1105,7 +1105,7 @@ void SubtitleScreen::Display708Strings(const CC708Window &win, int num,
 
 void SubtitleScreen::AddScaledImage(QImage &img, QRect &pos)
 {
-    VideoOutput *vo = m_player->getVideoOutput();
+    VideoOutput *vo = m_player->GetVideoOutput();
     if (!vo)
         return;
 
@@ -1388,7 +1388,7 @@ void SubtitleScreen::InitialiseAssTrack(int tracknum)
     if (!header.isNull())
         ass_process_codec_private(m_assTrack, header.data(), header.size());
 
-    m_safeArea = m_player->getVideoOutput()->GetMHEGBounds();
+    m_safeArea = m_player->GetVideoOutput()->GetMHEGBounds();
     ResizeAssRenderer();
 }
 
@@ -1419,7 +1419,7 @@ void SubtitleScreen::RenderAssTrack(uint64_t timecode)
     if (!m_player || !m_assRenderer || !m_assTrack)
         return;
 
-    VideoOutput *vo = m_player->getVideoOutput();
+    VideoOutput *vo = m_player->GetVideoOutput();
     if (!vo )
         return;
 

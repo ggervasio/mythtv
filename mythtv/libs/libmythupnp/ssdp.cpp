@@ -21,14 +21,17 @@
 //
 //////////////////////////////////////////////////////////////////////////////
 
+#include <algorithm>
+
 #include "upnp.h"
 #include "mythverbose.h"
+#include "mythlogging.h"
 
 #include "upnptasksearch.h"
 #include "upnptaskcache.h"
 
-#include "multicast.h"
-#include "broadcast.h"
+#include "mmulticastsocketdevice.h"
+#include "mbroadcastsocketdevice.h"
 
 #include <QRegExp>
 #include <QStringList>
@@ -45,6 +48,7 @@
 
 // We're creating this class immediately so it will always be available.
 
+static QMutex g_pSSDPCreationLock;
 SSDP* SSDP::g_pSSDP = NULL;
 
 /////////////////////////////////////////////////////////////////////////////
@@ -53,6 +57,7 @@ SSDP* SSDP::g_pSSDP = NULL;
 
 SSDP* SSDP::Instance()
 {
+    QMutexLocker locker(&g_pSSDPCreationLock);
     return g_pSSDP ? g_pSSDP : (g_pSSDP = new SSDP());
 }
  
@@ -74,12 +79,15 @@ SSDP::SSDP() :
 
     Configuration *pConfig = UPnp::GetConfiguration();
 
-    m_nPort       = pConfig->GetValue( "UPnP/SSDP/Port"      , SSDP_PORT       );
-    m_nSearchPort = pConfig->GetValue( "UPnP/SSDP/SearchPort", SSDP_SEARCHPORT );
+    m_nPort       = pConfig->GetValue("UPnP/SSDP/Port"      , SSDP_PORT      );
+    m_nSearchPort = pConfig->GetValue("UPnP/SSDP/SearchPort", SSDP_SEARCHPORT);
 
-    m_Sockets[ SocketIdx_Search    ] = new MSocketDevice( MSocketDevice::Datagram );
-    m_Sockets[ SocketIdx_Multicast ] = new QMulticastSocket( SSDP_GROUP, m_nPort );
-    m_Sockets[ SocketIdx_Broadcast ] = new QBroadcastSocket( "255.255.255.255", m_nPort );
+    m_Sockets[ SocketIdx_Search    ] =
+        new MMulticastSocketDevice();
+    m_Sockets[ SocketIdx_Multicast ] =
+        new MMulticastSocketDevice(SSDP_GROUP, m_nPort);
+    m_Sockets[ SocketIdx_Broadcast ] =
+        new MBroadcastSocketDevice("255.255.255.255", m_nPort);
 
     m_Sockets[ SocketIdx_Search    ]->setBlocking( false );
     m_Sockets[ SocketIdx_Multicast ]->setBlocking( false );
@@ -88,7 +96,7 @@ SSDP::SSDP() :
     // Setup SearchSocket
     QHostAddress ip4addr( QHostAddress::Any );
 
-    m_Sockets[ SocketIdx_Search ]->bind( ip4addr          , m_nSearchPort ); 
+    m_Sockets[ SocketIdx_Search ]->bind( ip4addr          , m_nSearchPort );
     m_Sockets[ SocketIdx_Search ]->bind( QHostAddress::Any, m_nSearchPort );
 
     // ----------------------------------------------------------------------
@@ -97,7 +105,7 @@ SSDP::SSDP() :
 
     start();
 
-    VERBOSE(VB_UPNP, "SSDP::ctor - SSDP Thread Started." );
+    VERBOSE(VB_UPNP, "SSDP::ctor - SSDP Thread Starting soon" );
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -124,6 +132,7 @@ SSDP::~SSDP()
         }
     }
 
+    QMutexLocker locker(&g_pSSDPCreationLock);
     g_pSSDP = NULL;
 
     VERBOSE(VB_UPNP, "SSDP::Destructor - SSDP Thread Terminated." );
@@ -193,15 +202,20 @@ void SSDP::DisableNotifications()
 /////////////////////////////////////////////////////////////////////////////
 //
 /////////////////////////////////////////////////////////////////////////////
-
-void SSDP::PerformSearch( const QString &sST )
+void SSDP::PerformSearch(const QString &sST, uint timeout_secs)
 {
-    QString rRequest = QString( "M-SEARCH * HTTP/1.1\r\n"
-                                "HOST: 239.255.255.250:1900\r\n"
-                                "MAN: \"ssdp:discover\"\r\n"
-                                "MX: 2\r\n"
-                                "ST: %1\r\n"
-                                "\r\n" ).arg( sST );
+    timeout_secs = std::max(std::min(timeout_secs, 5U), 1U);
+    QString rRequest = QString(
+        "M-SEARCH * HTTP/1.1\r\n"
+        "HOST: 239.255.255.250:1900\r\n"
+        "MAN: \"ssdp:discover\"\r\n"
+        "MX: %1\r\n"
+        "ST: %2\r\n"
+        "\r\n")
+        .arg(timeout_secs).arg(sST);
+
+    VERBOSE(VB_UPNP, QString("\n\n%1\n").arg(rRequest));
+
     QByteArray sRequest = rRequest.toUtf8();
 
     MSocketDevice *pSocket = m_Sockets[ SocketIdx_Search ];
@@ -218,13 +232,15 @@ void SSDP::PerformSearch( const QString &sST )
 
     if ( pSocket->writeBlock( sRequest.data(),
                               sRequest.size(), address, SSDP_PORT ) != nSize)
-        cerr << "SSDP::PerformSearch - did not write entire buffer." << endl;
+        VERBOSE(VB_GENERAL, "SSDP::PerformSearch - did not write entire "
+                            "buffer.");
 
     usleep( rand() % 250000 );
 
     if ( pSocket->writeBlock( sRequest.data(),
                               sRequest.size(), address, SSDP_PORT ) != nSize)
-        cerr << "SSDP::PerformSearch - did not write entire buffer." << endl;
+        VERBOSE(VB_GENERAL, "SSDP::PerformSearch - did not write entire "
+                            "buffer.");
 
 }
 
@@ -237,6 +253,7 @@ void SSDP::run()
     fd_set          read_set;
     struct timeval  timeout;
 
+    threadRegister("SSDP");
     VERBOSE(VB_UPNP, "SSDP::Run - SSDP Thread Started." );
 
     // ----------------------------------------------------------------------
@@ -259,7 +276,8 @@ void SSDP::run()
 #if 0
                 if (m_Sockets[ nIdx ]->bytesAvailable() > 0)
                 {
-	            cout << "Found Extra data before select: " << nIdx << endl;
+	            VERBOSE(VB_IMPORTANT, QString("Found Extra data before "
+                            "select: %1").arg(nIdx));
                     ProcessData( m_Sockets[ nIdx ] );
                 }
 #endif
@@ -278,7 +296,10 @@ void SSDP::run()
                 {
                     if (FD_ISSET( m_Sockets[ nIdx ]->socket(), &read_set ))
                     {
-                        // cout << "FD_ISSET( " << nIdx << " ) " << endl;
+#if 0
+                        VERBOSE(VB_IMPORTANT, QString("FD_ISSET( %1 )")
+                            .arg(nIdx));
+#endif
 
                         ProcessData( m_Sockets[ nIdx ] );
                     }
@@ -286,6 +307,7 @@ void SSDP::run()
             }
         }
     }
+    threadDeregister();
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -727,68 +749,27 @@ void SSDPExtension::GetFile( HTTPRequest *pRequest, QString sFileName )
 
 void SSDPExtension::GetDeviceList( HTTPRequest *pRequest )
 {
-    SSDPCache*    pCache  = SSDPCache::Instance();
-    int           nCount = 0;
-    NameValues    list;
+    VERBOSE(VB_UPNP, "SSDPExtension::GetDeviceList");
 
-    VERBOSE( VB_UPNP, "SSDPExtension::GetDeviceList" );
+    QString     sXML;
+    QTextStream os(&sXML, QIODevice::WriteOnly);
 
-    pCache->Lock();
+    uint nDevCount, nEntryCount;
+    SSDPCache::Instance()->OutputXML(os, &nDevCount, &nEntryCount);
 
-    QString     sXML = "";
-    QTextStream os( &sXML, QIODevice::WriteOnly );
+    NameValues list;
+    list.push_back(
+        NameValue("DeviceCount",           (int)nDevCount));
+    list.push_back(
+        NameValue("DevicesAllocated",      SSDPCacheEntries::g_nAllocated));
+    list.push_back(
+        NameValue("CacheEntriesFound",     (int)nEntryCount));
+    list.push_back(
+        NameValue("CacheEntriesAllocated", DeviceLocation::g_nAllocated));
+    list.push_back(
+        NameValue("DeviceList",            sXML));
 
-    for (SSDPCacheEntriesMap::Iterator it  = pCache->Begin();
-                                       it != pCache->End();
-                                     ++it )
-    {
-        SSDPCacheEntries *pEntries = *it;
-
-        if (pEntries != NULL)
-        {
-            os << "<Device uri='" << it.key() << "'>" << endl;
-
-            pEntries->Lock();
-
-            EntryMap *pMap = pEntries->GetEntryMap();
-
-            for (EntryMap::Iterator itEntry  = pMap->begin();
-                                    itEntry != pMap->end();
-                                  ++itEntry )
-            {
-
-                DeviceLocation *pEntry = *itEntry;
-
-                if (pEntry != NULL)
-                {
-                    nCount++;
-
-                    pEntry->AddRef();
-
-                    os << "<Service usn='" << pEntry->m_sUSN 
-                       << "' expiresInSecs='" << pEntry->ExpiresInSecs()
-                       << "' url='" << pEntry->m_sLocation << "' />" << endl;
-
-                    pEntry->Release();
-                }
-            }
-
-            os << "</Device>" << endl;
-
-            pEntries->Unlock();
-        }
-    }
-    os << flush;
-
-    list.push_back( NameValue("DeviceCount"          , pCache->Count()               ));
-    list.push_back( NameValue("DevicesAllocated"     , SSDPCacheEntries::g_nAllocated));
-    list.push_back( NameValue("CacheEntriesFound"    , nCount                        ));
-    list.push_back( NameValue("CacheEntriesAllocated", DeviceLocation::g_nAllocated  ));
-    list.push_back( NameValue("DeviceList"           , sXML                          ));
-
-    pCache->Unlock();
-
-    pRequest->FormatActionResponse( list );
+    pRequest->FormatActionResponse(list);
 
     pRequest->m_eResponseType   = ResponseTypeXML;
     pRequest->m_nResponseStatus = 200;

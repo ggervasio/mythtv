@@ -35,10 +35,12 @@ void init_sections(sections_t &sect, uint last_section)
     sect[endz] = init_bits[last_section & 0x7];
 
 #if 0
-    cerr<<"init_sections ls("<<last_section<<"): "<<hex;
-    for (uint i = 0 ; i < 32; i++)
-        cerr<<((int)sect[i])<<" ";
-    cerr<<dec<<endl;
+    {
+        QString msg = QString("init_sections ls(%1): ").arg(last_section);
+        for (uint i = 0 ; i < 32; i++)
+            msg += QString("%1 ").arg((int)sect[i], 0, 16);
+        VERBOSE(VB_GENERAL, msg);
+    }
 #endif
 }
 
@@ -605,16 +607,15 @@ bool MPEGStreamData::CreatePMTSingleProgram(const ProgramMapTable &pmt)
 
     if (video_cnt < _pmt_single_program_num_video)
     {
-        VERBOSE(VB_RECORD, "Only "<<video_cnt<<" video streams seen in PMT, "
-                "but "<<_pmt_single_program_num_video<<" are required.");
+        VERBOSE(VB_RECORD, QString("Only %1 video streams seen in PMT, "
+                "but %2 are required.").arg(video_cnt).arg(_pmt_single_program_num_video));
         return false;
     }
 
     if (audioPIDs.size() < _pmt_single_program_num_audio)
     {
-        VERBOSE(VB_RECORD, "Only "<<audioPIDs.size()
-                <<" audio streams seen in PMT, but "
-                <<_pmt_single_program_num_audio<<" are required.");
+        VERBOSE(VB_RECORD, QString("Only %1 audio streams seen in PMT, but %2"
+                " are required.").arg(audioPIDs.size()).arg(_pmt_single_program_num_audio));
         return false;
     }
 

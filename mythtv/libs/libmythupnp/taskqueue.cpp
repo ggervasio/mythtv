@@ -23,12 +23,11 @@
 
 #include "taskqueue.h"
 #include "mythverbose.h"
+#include "mythlogging.h"
 
 #include <QDateTime>
 
 #include <iostream>
-
-using std::cerr;
 
 /////////////////////////////////////////////////////////////////////////////
 // Define Global instance 
@@ -115,6 +114,7 @@ void TaskQueue::run( )
 {
     Task *pTask;
 
+    threadRegister("TaskQueue");
     VERBOSE(VB_UPNP, "TaskQueue::run - TaskQueue Thread Running.");
 
     while ( !m_bTermRequested )
@@ -135,7 +135,8 @@ void TaskQueue::run( )
             }
             catch( ... )
             {
-                cerr << "TaskQueue::run - Call to Execute threw an exception.";
+                VERBOSE(VB_GENERAL, "TaskQueue::run - Call to Execute threw "
+                                    "an exception.");
             }
 
         }
@@ -143,7 +144,7 @@ void TaskQueue::run( )
 
         msleep( 100 );
     }
-
+    threadDeregister();
 }
 
 /////////////////////////////////////////////////////////////////////////////

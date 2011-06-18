@@ -1176,7 +1176,8 @@ FirewireModel::FirewireModel(const CaptureCard  &parent,
     guid(_guid)
 {
     setLabel(QObject::tr("Cable box model"));
-    addSelection(QObject::tr("Generic"), "GENERIC");
+    addSelection(QObject::tr("Motorola Generic"), "MOTO GENERIC");
+    addSelection(QObject::tr("SA/Cisco Generic"), "SA GENERIC");
     addSelection("DCH-3200");
     addSelection("DCX-3200");
     addSelection("DCT-3412");
@@ -2568,9 +2569,12 @@ void InputGroup::Load(void)
 #if 0
     VERBOSE(VB_IMPORTANT, QString("Group num: %1 id: %2")
             .arg(groupnum).arg(groupid));
-    for (uint i = 0; i < selected_groupids.size(); i++)
-        cout<<selected_groupids[i]<<" ";
-    cout<<endl;
+    {
+        QString msg;
+        for (uint i = 0; i < selected_groupids.size(); i++)
+            msg += QString("%1 ").arg(selected_groupids[i]);
+        VERBOSE(VB_IMPORTANT, msg);
+    }
 #endif
 
     // add selections to combobox

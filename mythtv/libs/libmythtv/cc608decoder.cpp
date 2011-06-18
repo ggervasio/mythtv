@@ -1272,8 +1272,8 @@ bool CC608Decoder::XDSPacketParseProgram(
             {
                 xds_rating_systems[cf]            |= kHasCanEnglish;
                 xds_rating[cf][kRatingCanEnglish]  = tv_rating;
-                VERBOSE(VB_VBI, loc + "VChip "
-                        << GetRatingString(kRatingCanEnglish, future));
+                VERBOSE(VB_VBI, loc + QString("VChip %1")
+                        .arg(GetRatingString(kRatingCanEnglish, future)));
             }
         }
         else if (sel == 7)
@@ -1283,8 +1283,8 @@ bool CC608Decoder::XDSPacketParseProgram(
             {
                 xds_rating_systems[cf]           |= kHasCanFrench;
                 xds_rating[cf][kRatingCanFrench]  = tv_rating;
-                VERBOSE(VB_VBI, loc + "VChip "
-                        << GetRatingString(kRatingCanFrench, future));
+                VERBOSE(VB_VBI, loc + QString("VChip %1")
+                        .arg(GetRatingString(kRatingCanFrench, future)));
             }
         }
         else if (sel == 0x13 || sel == 0x1f)
@@ -1297,8 +1297,8 @@ bool CC608Decoder::XDSPacketParseProgram(
                 uint f = ((xds_buf[0]<<3) & 0x80) | ((xds_buf[1]<<1) & 0x70);
                 xds_rating_systems[cf]     |= kHasTPG;
                 xds_rating[cf][kRatingTPG]  = tv_rating | f;
-                VERBOSE(VB_VBI, loc + "VChip "
-                        << GetRatingString(kRatingTPG, future));
+                VERBOSE(VB_VBI, loc + QString("VChip %1")
+                        .arg(GetRatingString(kRatingTPG, future)));
             }
         }
         else if (rating_system == 0)
@@ -1308,14 +1308,15 @@ bool CC608Decoder::XDSPacketParseProgram(
             {
                 xds_rating_systems[cf]      |= kHasMPAA;
                 xds_rating[cf][kRatingMPAA]  = movie_rating;
-                VERBOSE(VB_VBI, loc + "VChip "
-                        << GetRatingString(kRatingMPAA, future));
+                VERBOSE(VB_VBI, loc + QString("VChip %1")
+                        .arg(GetRatingString(kRatingMPAA, future)));
             }
         }
         else
         {
-            VERBOSE(VB_VBI, loc + "VChip Unhandled -- rs("<<rating_system
-                    <<") rating("<<tv_rating<<":"<<movie_rating<<")");
+            VERBOSE(VB_VBI, loc + 
+                    QString("VChip Unhandled -- rs(%1) rating(%2:%3)")
+		    .arg(rating_system).arg(tv_rating).arg(movie_rating));
         }
     }
 #if 0
