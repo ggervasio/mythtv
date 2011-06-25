@@ -1,3 +1,4 @@
+#include <iostream>
 #include <unistd.h>      // for isatty() on Windows
 
 #include "dialogbox.h"
@@ -7,7 +8,7 @@
 #include "util.h"
 
 #include "mythtimer.h"
-#include "mythverbose.h"
+#include "mythlogging.h"
 #include "mythmainwindow.h"
 #include "mythuihelper.h"
 #include "mythdb.h"

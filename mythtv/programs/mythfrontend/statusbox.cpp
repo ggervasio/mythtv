@@ -9,7 +9,7 @@ using namespace std;
 #include "mythcorecontext.h"
 
 #include "mythdb.h"
-#include "mythverbose.h"
+#include "mythlogging.h"
 #include "mythversion.h"
 #include "util.h"
 
@@ -1203,8 +1203,8 @@ void StatusBox::doMachineStatus()
     // get free disk space
     QString hostnames;
 
-    vector<FileSystemInfo> fsInfos = RemoteGetFreeSpace();
-    for (uint i=0; i<fsInfos.size(); ++i)
+    QVector<FileSystemInfo> fsInfos = RemoteGetFreeSpace();
+    for (int i = 0; i < fsInfos.size(); ++i)
     {
         // For a single-directory installation just display the totals
         if ((fsInfos.size() == 2) && (i == 0) &&

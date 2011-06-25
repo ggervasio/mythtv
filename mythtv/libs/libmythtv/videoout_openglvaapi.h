@@ -25,6 +25,7 @@ class VideoOutputOpenGLVAAPI : public VideoOutputOpenGL
     bool  InputChanged(const QSize &input_size, float aspect,
                        MythCodecID  av_codec_id, void *codec_private,
                        bool &aspect_only);
+    virtual void UpdatePauseFrame(void);
     void  ProcessFrame(VideoFrame *frame, OSD *osd,
                        FilterChain *filterList,
                        const PIPMap &pipPlayers,
@@ -32,7 +33,8 @@ class VideoOutputOpenGLVAAPI : public VideoOutputOpenGL
     bool  ApproveDeintFilter(const QString& filtername) const;
     bool  SetDeinterlacingEnabled(bool enable);
     bool  SetupDeinterlace(bool i, const QString& ovrf="");
-    void  InitPictureAttributes(void) { }
+    virtual void InitPictureAttributes(void);
+    virtual int  SetPictureAttribute(PictureAttribute attribute, int newValue);
 
     static QStringList GetAllowedRenderers(MythCodecID myth_codec_id,
                                            const QSize &video_dim);
@@ -43,6 +45,7 @@ class VideoOutputOpenGLVAAPI : public VideoOutputOpenGL
 
   private:
     VAAPIContext *m_ctx;
+    void         *m_pauseBuffer;
 };
 #endif // VIDEOOUTPUTOPENGLVAAPI_H
 
