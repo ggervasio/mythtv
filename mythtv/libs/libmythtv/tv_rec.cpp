@@ -2348,7 +2348,7 @@ bool TVRec::SetVideoFiltersForChannel(uint  sourceid,
     QString videoFilters = ChannelUtil::GetVideoFilters(sourceid, channum);
     if (!videoFilters.isEmpty())
     {
-        cerr << "### setting videofilters\n";
+        VERBOSE(VB_RECORD, LOC + "### setting videofilters");
         recorder->SetVideoFilters(videoFilters);
         return true;
     }
@@ -3967,7 +3967,7 @@ void TVRec::TuningNewRecorder(MPEGStreamData *streamData)
                              0644);
         if (genOpt.textfd <= 0)
         {
-            cerr << "ERROR opening text dump file.\n";
+            VERBOSE(VB_IMPORTANT, LOC + "ERROR opening text dump file");
             perror(textfname.toAscii());
         }
         else
@@ -4533,7 +4533,7 @@ RecordingInfo *TVRec::SwitchRecordingRingBuffer(const RecordingInfo &rcinfo)
     	                     0644);
     	if (genOpt.textfd <= 0)
     	{
-    	    cerr << "ERROR opening text dump file.\n";
+            VERBOSE(VB_IMPORTANT, LOC + "ERROR opening text dump file");
     	    perror(textfname.toAscii());
     	}
     	else
