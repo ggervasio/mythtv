@@ -567,7 +567,8 @@ void MythPlayer::ReinitOSD(void)
             osd->SetPainter(videoOutput->GetOSDPainter());
             videoOutput->GetOSDBounds(total, visible, aspect,
                                       scaling, 1.0f);
-            if (osd->Bounds() != visible)
+            if (osd->Bounds() != visible ||
+                osd->GetFontAspect() != aspect)
             {
                 uint old = textDisplayMode;
                 ToggleCaptions(old);
