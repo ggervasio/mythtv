@@ -2036,7 +2036,10 @@ void MythPlayer::DisplayNormalFrame(bool check_prebuffer)
                 .arg(video_aspect).arg(frame->aspect));
             video_aspect = frame->aspect;
             if (videoOutput)
+            {
                 videoOutput->VideoAspectRatioChanged(video_aspect);
+                ReinitOSD();
+            }
         }
     }
 
