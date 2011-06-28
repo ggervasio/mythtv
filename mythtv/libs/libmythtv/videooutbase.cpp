@@ -747,11 +747,13 @@ QRect VideoOutput::GetVisibleOSDBounds(
         dispPixelAdj = (GetDisplayAspect() * dvr2.height()) / dvr2.width();
     visible_aspect = themeaspect / dispPixelAdj;
     font_scaling   = 1.0f;
+#if 0
     VERBOSE(VB_PLAYBACK, QString("### DA = %1, DVR = %2x%3, VA = %4")
                          .arg(GetDisplayAspect())
                          .arg(dvr2.width())
                          .arg(dvr2.height())
                          .arg(visible_aspect));
+#endif
     return QRect(QPoint(0,0), dvr2);
 }
 
