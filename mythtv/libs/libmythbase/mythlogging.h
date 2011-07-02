@@ -66,7 +66,7 @@ extern MBASE_PUBLIC int LogLevelNameCount;
 extern MBASE_PUBLIC char *LogLevelShortNames[];
 extern MBASE_PUBLIC int LogLevelShortNameCount;
 #endif
-extern MBASE_PUBLIC LogLevel_t LogLevel;
+extern MBASE_PUBLIC LogLevel_t logLevel;
 
 typedef struct
 {
@@ -91,17 +91,17 @@ extern "C" {
 #endif
 
 #ifdef __cplusplus
-#define LogPrint(mask, level, string) \
+#define LOG(mask, level, string) \
     LogPrintLine(mask, (LogLevel_t)level, __FILE__, __LINE__, __FUNCTION__, \
                  QString(string).toLocal8Bit().constData())
 #else
-#define LogPrint(mask, level, format, ...) \
+#define LOG(mask, level, format, ...) \
     LogPrintLine(mask, (LogLevel_t)level, __FILE__, __LINE__, __FUNCTION__, \
                  (const char *)format, ##__VA_ARGS__)
 #endif
 
 /* Define the external prototype */
-MBASE_PUBLIC void LogPrintLine( uint32_t mask, LogLevel_t level, 
+MBASE_PUBLIC void LogPrintLine( uint64_t mask, LogLevel_t level, 
                                 const char *file, int line, 
                                 const char *function, const char *format, ... );
 
@@ -121,8 +121,6 @@ MBASE_PUBLIC void threadRegister(QString name);
 MBASE_PUBLIC void threadDeregister(void);
 MBASE_PUBLIC int  syslogGetFacility(QString facility);
 MBASE_PUBLIC LogLevel_t logLevelGet(QString level);
-
-void LogTimeStamp( time_t *epoch, uint32_t *usec );
 
 typedef union {
     char   *string;
@@ -154,6 +152,7 @@ class FileLogger : public LoggerBase {
         int  m_fd;
 };
 
+#ifndef _WIN32
 class SyslogLogger : public LoggerBase {
     public:
         SyslogLogger(int facility);
@@ -164,6 +163,7 @@ class SyslogLogger : public LoggerBase {
         char *m_application;
         bool m_opened;
 };
+#endif
 
 class DBLoggerThread;
 
@@ -240,10 +240,10 @@ extern MBASE_PUBLIC uint64_t verboseMask;
 
 #ifdef __cplusplus
 #define VERBOSE(mask, ...) \
-    LogPrint((uint64_t)(mask), LOG_INFO, QString(__VA_ARGS__))
+    LOG((uint64_t)(mask), LOG_INFO, QString(__VA_ARGS__))
 #else
 #define VERBOSE(mask, ...) \
-    LogPrint((uint64_t)(mask), LOG_INFO, __VA_ARGS__)
+    LOG((uint64_t)(mask), LOG_INFO, __VA_ARGS__)
 #endif
 
 
@@ -255,12 +255,13 @@ extern MBASE_PUBLIC QString verboseString;
 
 MBASE_PUBLIC int verboseArgParse(QString arg);
 
-/// This can be appended to the VERBOSE args with 
+/// This can be appended to the LOG args with 
 /// "+".  Please do not use "<<".  It uses
 /// a thread safe version of strerror to produce the
 /// string representation of errno and puts it on the
 /// next line in the verbose output.
-#define ENO QString("\n\t\t\teno: ") + logStrerror(errno)
+#define ENO (QString("\n\t\t\teno: ") + logStrerror(errno))
+#define ENO_STR ENO.toLocal8Bit().constData()
 #endif // __cplusplus
 
 #endif

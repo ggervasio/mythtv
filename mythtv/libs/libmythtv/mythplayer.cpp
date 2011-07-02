@@ -567,8 +567,9 @@ void MythPlayer::ReinitOSD(void)
             osd->SetPainter(videoOutput->GetOSDPainter());
             videoOutput->GetOSDBounds(total, visible, aspect,
                                       scaling, 1.0f);
-            if (osd->Bounds() != visible ||
-                osd->GetFontAspect() != aspect)
+            int stretch = (int)((aspect * 100) + 0.5f);
+            if ((osd->Bounds() != visible) ||
+                (osd->GetFontStretch() != stretch))
             {
                 uint old = textDisplayMode;
                 ToggleCaptions(old);
@@ -983,6 +984,7 @@ int MythPlayer::OpenFile(uint retries, bool allow_libmpeg2)
         return -1;
     }
 
+    video_aspect = decoder->GetVideoAspectRatio();
     audio.CheckFormat();
 
     if (ret > 0)
@@ -4361,7 +4363,13 @@ void MythPlayer::GetPlaybackData(InfoMap &infoMap)
     if (decoder)
         infoMap["videodecoder"] = decoder->GetCodecDecoderName();
     if (output_jmeter)
-        infoMap["framerate"] = QString::number(output_jmeter->GetLastFPS(), 'f', 2);
+    {
+        infoMap["framerate"] = QString("%1%2%3")
+            .arg(output_jmeter->GetLastFPS(), 0, 'f', 2)
+            .arg(QChar(0xB1, 0))
+            .arg(output_jmeter->GetLastSD(), 0, 'f', 2);
+        infoMap["load"] = output_jmeter->GetLastCPUStats();
+    }
     GetCodecDescription(infoMap);
 }
 

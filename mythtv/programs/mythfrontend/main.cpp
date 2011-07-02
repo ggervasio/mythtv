@@ -59,7 +59,7 @@ using namespace std;
 #include "lcddevice.h"
 #include "langsettings.h"
 #include "mythtranslation.h"
-#include "mythcommandlineparser.h"
+#include "commandlineparser.h"
 #include "channelgroupsettings.h"
 
 #include "myththemedmenu.h"
@@ -981,7 +981,7 @@ static void TVMenuCallback(void *data, QString &selection)
         if (fa->Create())
             mainStack->AddScreen(fa);
     }
-    if (sel == "manager")
+    else if (sel == "manager")
         RunVideoScreen(VideoDialog::DLG_MANAGER);
     else if (sel == "browser")
         RunVideoScreen(VideoDialog::DLG_BROWSER);
@@ -1000,7 +1000,7 @@ static void TVMenuCallback(void *data, QString &selection)
     else
         VERBOSE(VB_IMPORTANT, "Unknown menu action: " + selection);
 
-    if (sel.left(9) == "settings ")
+    if (sel.left(9) == "settings " || sel == "video_settings_general")
     {
         GetMythUI()->RemoveCurrentLocation();
 
@@ -1105,6 +1105,8 @@ static int internal_play_media(const QString &mrl, const QString &plot,
     ProgramInfo *pginfo = new ProgramInfo(
         mrl, plot, title, subtitle, director, season, episode,
         lenMins, (year.toUInt()) ? year.toUInt() : 1900);
+
+    pginfo->SetProgramInfoType(pginfo->DiscoverProgramInfoType());
 
     int64_t pos = 0;
 
@@ -1376,7 +1378,6 @@ int main(int argc, char **argv)
     bool bPromptForBackend    = false;
     bool bBypassAutoDiscovery = false;
     bool upgradeAllowed = false;
-    int quiet = 0;
 
     MythFrontendCommandLineParser cmdline;
     if (!cmdline.Parse(argc, argv))
@@ -1403,40 +1404,16 @@ int main(int argc, char **argv)
     QApplication::setDesktopSettingsAware(false);
 #endif
     QApplication a(argc, argv);
-
     QCoreApplication::setApplicationName(MYTH_APPNAME_MYTHFRONTEND);
 
     QString pluginname;
 
     QFileInfo finfo(a.argv()[0]);
-
     QString binname = finfo.baseName();
 
-    if (cmdline.toBool("verbose"))
-        if (verboseArgParse(cmdline.toString("verbose")) ==
-                        GENERIC_EXIT_INVALID_CMDLINE)
-            return GENERIC_EXIT_INVALID_CMDLINE;
-
-    if (cmdline.toBool("quiet"))
-    {
-        quiet = cmdline.toUInt("quiet");
-        if (quiet > 1)
-        {
-            verboseMask = VB_NONE;
-            verboseArgParse("none");
-        }
-    }
-
-    int facility = cmdline.GetSyslogFacility();
-    bool dblog = !cmdline.toBool("nodblog");
-    LogLevel_t level = cmdline.GetLogLevel();
-    if (level == LOG_UNKNOWN)
-        return GENERIC_EXIT_INVALID_CMDLINE;
-
-    VERBOSE(VB_IMPORTANT, QString("%1 version: %2 [%3] www.mythtv.org")
-                            .arg(MYTH_APPNAME_MYTHFRONTEND)
-                            .arg(MYTH_SOURCE_PATH)
-                            .arg(MYTH_SOURCE_VERSION));
+    int retval;
+    if ((retval = cmdline.ConfigureLogging()) != GENERIC_EXIT_OK)
+        return retval;
 
     bool ResetSettings = false;
 
@@ -1465,10 +1442,6 @@ int main(int argc, char **argv)
 
     gContext = new MythContext(MYTH_BINARY_VERSION);
 
-    logfile = cmdline.GetLogFilePath();
-    bool propagate = cmdline.toBool("islogpath");
-    logStart(logfile, quiet, facility, level, dblog, propagate);
-
     if (!cmdline.toBool("noupnp"))
     {
         g_pUPnp  = new MediaRenderer();
@@ -1479,25 +1452,13 @@ int main(int argc, char **argv)
         }
     }
 
-    // Override settings as early as possible to cover bootstrapped screens
-    // such as the language prompt
-    QMap<QString,QString> settingsOverride = cmdline.GetSettingsOverride();
-    if (settingsOverride.size())
-    {
-        QMap<QString, QString>::iterator it;
-        for (it = settingsOverride.begin(); it != settingsOverride.end(); ++it)
-        {
-            VERBOSE(VB_IMPORTANT, QString("Setting '%1' being forced to '%2'")
-                                          .arg(it.key()).arg(*it));
-            gCoreContext->OverrideSettingForSession(it.key(), *it);
-        }
-    }
-
     if (!gContext->Init(true, bPromptForBackend, bBypassAutoDiscovery))
     {
         VERBOSE(VB_IMPORTANT, "Failed to init MythContext, exiting.");
         return GENERIC_EXIT_NO_MYTHCONTEXT;
     }
+
+    cmdline.ApplySettingsOverride();
 
     if (!GetMythDB()->HaveSchema())
     {
@@ -1530,9 +1491,6 @@ int main(int argc, char **argv)
     }
 
     setuid(getuid());
-
-    VERBOSE(VB_IMPORTANT,
-            QString("Enabled verbose msgs: %1").arg(verboseString));
 
     LCD::SetupLCD();
     if (LCD *lcd = LCD::Get())

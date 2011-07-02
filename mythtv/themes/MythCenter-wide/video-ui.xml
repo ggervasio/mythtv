@@ -1,19 +1,6 @@
 <mythuitheme>
 
     <!-- Popups -->
-    <window name="moviesel">
-        <area>-1,-1,413,426</area>
-
-        <imagetype name="box">
-            <filename>mv_results_popup.png</filename>
-        </imagetype>
-
-        <buttonlist name="results" from="basebuttonlist">
-            <area>20,22,357,378</area>
-            <showarrow>no</showarrow>
-        </buttonlist>
-    </window>
-
     <window name="artworksel">
         <area>-1,-1,413,426</area>
 
@@ -566,7 +553,7 @@
         </textarea>
 
         <textarea name="dirlbl" from="basetextarea">
-            <area>380,50,165,35</area>
+            <area>380,63,165,35</area>
             <value>Directed by</value>
         </textarea>
 
@@ -628,7 +615,7 @@
         </textarea>
 
         <textarea name="novideos" from="basetextarea">
-            <area>250,130,540,70</area>
+            <area>250,500,780,200</area>
             <multiline>yes</multiline>
             <align>hcenter,vcenter</align>
             <value>No videos in library, or no files found.  If you have configured a video directory, press "M" (or the MENU key) and select "Scan for Changes."</value>

@@ -156,7 +156,7 @@ OSD::OSD(MythPlayer *player, QObject *parent, MythPainter *painter)
     m_PulsedDialogText(QString()), m_NextPulseUpdate(QDateTime()),
     m_Refresh(false),   m_UIScaleOverride(false),
     m_SavedWMult(1.0f), m_SavedHMult(1.0f),   m_SavedUIRect(QRect()),
-    m_fontAspect(1.0f), m_fontStretch(100),
+    m_fontStretch(100),
     m_FunctionalType(kOSDFunctionalType_Default), m_FunctionalWindow(QString())
 {
     SetTimeouts(3000, 5000, 10000);
@@ -178,7 +178,6 @@ void OSD::TearDown(void)
 bool OSD::Init(const QRect &rect, float font_aspect)
 {
     m_Rect = rect;
-    m_fontAspect = font_aspect;
     m_fontStretch = (int)((font_aspect * 100) + 0.5f);
     OverrideUIScale();
     LoadWindows();
@@ -250,7 +249,8 @@ void OSD::RevertUIScale(void)
 bool OSD::Reinit(const QRect &rect, float font_aspect)
 {
     m_Refresh = true;
-    if ((rect == m_Rect) && (font_aspect == m_fontAspect))
+    int new_stretch = (int)((font_aspect * 100) + 0.5f);
+    if ((rect == m_Rect) && (new_stretch == m_fontStretch))
         return true;
 
     HideAll(false);
