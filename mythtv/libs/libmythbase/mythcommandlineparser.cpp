@@ -22,6 +22,7 @@ using namespace std;
 #include <QString>
 #include <QCoreApplication>
 #include <QTextStream>
+#include <QDateTime>
 
 #include "mythcommandlineparser.h"
 #include "mythcorecontext.h"
@@ -71,8 +72,9 @@ typedef struct helptmp {
 } HelpTmp;
 
 MythCommandLineParser::MythCommandLineParser(QString appname) :
-    m_appname(appname), m_allowExtras(false), m_allowPassthrough(false), 
-    m_passthroughActive(false), m_overridesImported(false), m_verbose(false)
+    m_appname(appname), m_allowExtras(false), m_allowArgs(false),
+    m_allowPassthrough(false), m_passthroughActive(false),
+    m_overridesImported(false), m_verbose(false)
 {
     char *verbose = getenv("VERBOSE_PARSER");
     if (verbose != NULL)
@@ -383,6 +385,15 @@ bool MythCommandLineParser::Parse(int argc, const char * const * argv)
         }
         else if (res == kArg)
         {
+            if (!m_allowArgs)
+            {
+                cerr << "Received '"
+                     << val.toAscii().constData()
+                     << "' but unassociated arguments have not been enabled"
+                     << endl;
+                return false;        
+            }
+
             m_remainingArgs << val;
             continue;
         }
@@ -474,6 +485,8 @@ bool MythCommandLineParser::Parse(int argc, const char * const * argv)
                 m_parsed[argdef.name] = QVariant(val.toLongLong());
             else if (argdef.type == QVariant::Double)
                 m_parsed[argdef.name] = QVariant(val.toDouble());
+            else if (argdef.type == QVariant::DateTime)
+                m_parsed[argdef.name] = QVariant(myth_dt_from_string(val));
             else if (argdef.type == QVariant::StringList)
             {
                 QStringList slist;
@@ -908,22 +921,11 @@ void MythCommandLineParser::addSettingsOverride(void)
             "loaded for setting overrides.", "");
 }
 
-void MythCommandLineParser::addVerbose(void)
-{
-    add(QStringList( QStringList() << "-v" << "--verbose" ), "verbose",
-            "important,general",
-            "Specify log filtering. Use '-v help' for level info.", "");
-    add("-V", "verboseint", 0U, "",
-            "This option is intended for internal use only.\n"
-            "This option takes an unsigned value corresponding "
-            "to the bitwise log verbosity operator.");
-}
-
 void MythCommandLineParser::addRecording(void)
 {
     add("--chanid", "chanid", 0U,
             "Specify chanid of recording to operate on.", "");
-    add("--starttime", "starttime", "",
+    add("--starttime", "starttime", QDateTime(),
             "Specify start time of recording to operate on.", "");
 }
 
@@ -947,11 +949,18 @@ void MythCommandLineParser::addUPnP(void)
 
 void MythCommandLineParser::addLogging(void)
 {
+    add(QStringList( QStringList() << "-v" << "--verbose" ), "verbose",
+            "general",
+            "Specify log filtering. Use '-v help' for level info.", "");
+    add("-V", "verboseint", 0U, "",
+            "This option is intended for internal use only.\n"
+            "This option takes an unsigned value corresponding "
+            "to the bitwise log verbosity operator.");
     add(QStringList( QStringList() << "-l" << "--logfile" << "--logpath" ), 
             "logpath", "",
             "Writes logging messages to a file at logpath.\n"
             "If a directory is given, a logfile will be created in that "
-            "directory with a filename of applicationName.pid.log.\n"
+            "directory with a filename of applicationName.date.pid.log.\n"
             "If a full filename is given, that file will be used.\n"
             "This is typically used in combination with --daemon, and if used "
             "in combination with --pidfile, this can be used with log "
@@ -1004,7 +1013,8 @@ QString MythCommandLineParser::GetLogFilePath(void)
     {
         m_parsed.insert("islogpath", true);
         logdir  = finfo.filePath();
-        logfile = QCoreApplication::applicationName() + 
+        logfile = QCoreApplication::applicationName() + "." +
+                  QDateTime::currentDateTime().toString("yyyyMMddhhmmss") +
                   QString(".%1").arg(pid) + ".log";
     }
     else
@@ -1108,8 +1118,9 @@ void MythCommandLineParser::ApplySettingsOverride(void)
         QMap<QString, QString>::iterator it;
         for (it = override.begin(); it != override.end(); ++it)
         {
-            VERBOSE(VB_IMPORTANT, QString("Setting '%1' being forced to '%2'")
-                        .arg(it.key()).arg(*it));
+            LOG(VB_GENERAL, LOG_NOTICE,
+                 QString("Setting '%1' being forced to '%2'")
+                     .arg(it.key()).arg(*it));
             gCoreContext->OverrideSettingForSession(it.key(), *it);
         }
     }

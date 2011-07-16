@@ -378,8 +378,10 @@ void MythSystemManager::run(void)
     }
 
     // kick to allow them to close themselves cleanly
-    readThread->wake();
-    writeThread->wake();
+    if (readThread)
+        readThread->wake();
+    if (writeThread)
+        writeThread->wake();
     threadDeregister();
 }
 
@@ -587,7 +589,7 @@ void MythSystemUnix::Fork(time_t timeout)
     {
         if( pipe(p_stdin) == -1 )
         {
-            LOG(VB_SYSTEM, LOG_ERR, "stdin pipe() failed");
+            LOG(VB_SYSTEM, LOG_ERR, LOC_ERR + "stdin pipe() failed");
             SetStatus( GENERIC_EXIT_NOT_OK );
         }
         else
@@ -597,7 +599,7 @@ void MythSystemUnix::Fork(time_t timeout)
     {
         if( pipe(p_stdout) == -1 )
         {
-            LOG(VB_SYSTEM, LOG_ERR, "stdout pipe() failed");
+            LOG(VB_SYSTEM, LOG_ERR, LOC_ERR + "stdout pipe() failed");
             SetStatus( GENERIC_EXIT_NOT_OK );
         }
         else
@@ -607,7 +609,7 @@ void MythSystemUnix::Fork(time_t timeout)
     {
         if( pipe(p_stderr) == -1 )
         {
-            LOG(VB_SYSTEM, LOG_ERR, "stderr pipe() failed");
+            LOG(VB_SYSTEM, LOG_ERR, LOC_ERR + "stderr pipe() failed");
             SetStatus( GENERIC_EXIT_NOT_OK );
         }
         else

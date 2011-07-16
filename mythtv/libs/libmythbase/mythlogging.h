@@ -7,6 +7,7 @@
 #include <QQueue>
 #include <QMutex>
 #include <QMutexLocker>
+#include <QRegExp>
 #endif
 #include <stdint.h>
 #include <time.h>
@@ -20,6 +21,7 @@
 
 typedef enum
 {
+    LOG_ANY = -1,       // For use with masking, not actual logging
     LOG_EMERG = 0,
     LOG_ALERT,
     LOG_CRIT,
@@ -90,10 +92,16 @@ typedef struct
 extern "C" {
 #endif
 
+// There are two LOG macros now.  One for use with Qt/C++, one for use
+// without Qt.
+//
+// Neither of them will lock the calling thread other than momentarily to put
+// the log message onto a queue.
 #ifdef __cplusplus
 #define LOG(mask, level, string) \
     LogPrintLine(mask, (LogLevel_t)level, __FILE__, __LINE__, __FUNCTION__, \
-                 QString(string).toLocal8Bit().constData())
+                 QString(string).replace(QRegExp("[%]{1,2}"), "%%") \
+                                .toLocal8Bit().constData())
 #else
 #define LOG(mask, level, format, ...) \
     LogPrintLine(mask, (LogLevel_t)level, __FILE__, __LINE__, __FUNCTION__, \
@@ -228,24 +236,13 @@ class DBLoggerThread : public QThread {
 /// of the verbose messages we want to see.
 extern MBASE_PUBLIC uint64_t verboseMask;
 
-// Helper for checking verbose flags outside of VERBOSE macro
+// Helper for checking verbose mask & level outside of LOG macro
 #define VERBOSE_LEVEL_NONE        (verboseMask == 0)
-#define VERBOSE_LEVEL_CHECK(mask) ((verboseMask & (mask)) == (mask))
+#define VERBOSE_LEVEL_CHECK(mask, level) \
+   (((verboseMask & (mask)) == (mask)) && logLevel >= (level))
 
-// There are two VERBOSE macros now.  One for use with Qt/C++, one for use
-// without Qt.
-//
-// Neither of them will lock the calling thread, but rather put the log message
-// onto a queue.
-
-#ifdef __cplusplus
-#define VERBOSE(mask, ...) \
-    LOG((uint64_t)(mask), LOG_INFO, QString(__VA_ARGS__))
-#else
-#define VERBOSE(mask, ...) \
-    LOG((uint64_t)(mask), LOG_INFO, __VA_ARGS__)
-#endif
-
+MBASE_PUBLIC void VERBOSE(uint64_t mask, ...)
+    MERROR("VERBOSE is gone, use LOG");
 
 #ifdef  __cplusplus
 /// Verbose helper function for ENO macro
