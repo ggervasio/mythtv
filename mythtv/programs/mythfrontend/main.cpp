@@ -72,6 +72,7 @@ using namespace std;
 #include "mythdb.h"
 #include "backendconnectionmanager.h"
 #include "themechooser.h"
+#include "mythversion.h"
 
 // Video
 #include "cleanup.h"
@@ -91,7 +92,7 @@ static QString         logfile;
 static MediaRenderer  *g_pUPnp   = NULL;
 static MythPluginManager *pmanager = NULL;
 
-static void handleExit(void);
+static void handleExit(bool prompt);
 
 namespace
 {
@@ -995,8 +996,10 @@ static void TVMenuCallback(void *data, QString &selection)
     }
     else if (sel == "tv_status")
         showStatus();
+    else if (sel == "exiting_app_prompt")
+        handleExit(true);
     else if (sel == "exiting_app")
-        handleExit();
+        handleExit(false);
     else
         LOG(VB_GENERAL, LOG_ERR, "Unknown menu action: " + selection);
 
@@ -1014,17 +1017,17 @@ static void TVMenuCallback(void *data, QString &selection)
     }
 }
 
-static void handleExit(void)
+static void handleExit(bool prompt)
 {
-    if (gCoreContext->GetNumSetting("NoPromptOnExit", 1) == 0)
-        qApp->quit();
-    else
+    if (prompt)
     {
         if (!exitPopup)
             exitPopup = new ExitPrompter();
 
         exitPopup->handleExit();
     }
+    else
+        qApp->quit();
 }
 
 static bool RunMenu(QString themedir, QString themename)
@@ -1083,7 +1086,7 @@ static void WriteDefaults()
 static int internal_play_media(const QString &mrl, const QString &plot,
                         const QString &title, const QString &subtitle,
                         const QString &director, int season, int episode,
-                        int lenMins, const QString &year)
+                        const QString &inetref, int lenMins, const QString &year)
 {
     int res = -1;
 
@@ -1103,7 +1106,7 @@ static int internal_play_media(const QString &mrl, const QString &plot,
 
     ProgramInfo *pginfo = new ProgramInfo(
         mrl, plot, title, subtitle, director, season, episode,
-        lenMins, (year.toUInt()) ? year.toUInt() : 1900);
+        inetref, lenMins, (year.toUInt()) ? year.toUInt() : 1900);
 
     pginfo->SetProgramInfoType(pginfo->DiscoverProgramInfoType());
 
@@ -1376,7 +1379,6 @@ int main(int argc, char **argv)
 {
     bool bPromptForBackend    = false;
     bool bBypassAutoDiscovery = false;
-    bool upgradeAllowed = false;
 
     MythFrontendCommandLineParser cmdline;
     if (!cmdline.Parse(argc, argv))
@@ -1531,7 +1533,7 @@ int main(int argc, char **argv)
             return GENERIC_EXIT_NO_THEME;
     }
 
-    if (!UpgradeTVDatabaseSchema(upgradeAllowed))
+    if (!UpgradeTVDatabaseSchema(false))
     {
         LOG(VB_GENERAL, LOG_ERR,
             "Couldn't upgrade database to new schema, exiting.");

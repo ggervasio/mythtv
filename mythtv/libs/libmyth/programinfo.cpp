@@ -764,6 +764,7 @@ ProgramInfo::ProgramInfo(const QString &_pathname,
                          const QString &_subtitle,
                          const QString &_director,
                          int _season, int _episode,
+                         const QString &_inetref,
                          uint _length_in_minutes,
                          uint _year) :
     positionMapDBReplacement(NULL)
@@ -805,7 +806,7 @@ ProgramInfo::ProgramInfo(const QString &_pathname,
 
     season = _season;
     episode = _episode;
-
+    inetref = _inetref;
     title = _title;
 }
 
@@ -841,11 +842,9 @@ ProgramInfo::ProgramInfo(const QString &_title, uint _chanid,
     {
         QString channelFormat =
             gCoreContext->GetSetting("ChannelFormat", "<num> <sign>");
-        QString timeformat =
-            gCoreContext->GetSetting("TimeFormat", "h:mm AP");
 
         title = QString("%1 - %2").arg(ChannelText(channelFormat))
-            .arg(startts.toString(timeformat));
+            .arg(MythDateTimeToString(startts, kTime));
     }
 
     description = title =
@@ -1323,12 +1322,6 @@ void ProgramInfo::ToMap(InfoMap &progMap,
 {
     // NOTE: Format changes and relevant additions made here should be
     //       reflected in RecordingRule
-    QString timeFormat = gCoreContext->GetSetting("TimeFormat", "h:mm AP");
-    QString dateFormat = gCoreContext->GetSetting("DateFormat", "ddd MMMM d");
-    QString fullDateFormat = dateFormat;
-    if (!fullDateFormat.contains("yyyy"))
-        fullDateFormat += " yyyy";
-    QString shortDateFormat = gCoreContext->GetSetting("ShortDateFormat", "M/d");
     QString channelFormat =
         gCoreContext->GetSetting("ChannelFormat", "<num> <sign>");
     QString longChannelFormat =
@@ -1392,37 +1385,35 @@ void ProgramInfo::ToMap(InfoMap &progMap,
     }
     else // if (IsRecording())
     {
-        progMap["starttime"] = startts.toString(timeFormat);
-        progMap["startdate"] = startts.toString(shortDateFormat);
-        progMap["endtime"] = endts.toString(timeFormat);
-        progMap["enddate"] = endts.toString(shortDateFormat);
-        progMap["recstarttime"] = recstartts.toString(timeFormat);
-        progMap["recstartdate"] = recstartts.toString(shortDateFormat);
-        progMap["recendtime"] = recendts.toString(timeFormat);
-        progMap["recenddate"] = recendts.toString(shortDateFormat);
+        progMap["starttime"] = MythDateTimeToString(startts, kTime);
+        progMap["startdate"] = MythDateTimeToString(startts, kDateShort);
+        progMap["endtime"] = MythDateTimeToString(endts, kTime);
+        progMap["enddate"] = MythDateTimeToString(endts, kDateShort);
+        progMap["recstarttime"] = MythDateTimeToString(recstartts, kTime);
+        progMap["recstartdate"] = MythDateTimeToString(recstartts, kDateShort);
+        progMap["recendtime"] = MythDateTimeToString(recendts, kTime);
+        progMap["recenddate"] = MythDateTimeToString(recendts, kDateShort);
     }
 
-    progMap["timedate"] = recstartts.date().toString(dateFormat) + ", " +
-                          recstartts.time().toString(timeFormat) + " - " +
-                          recendts.time().toString(timeFormat);
+    progMap["timedate"] = MythDateTimeToString(recstartts,
+                                            kDateTimeFull | kSimplify) + " - " +
+                          MythDateTimeToString(recendts, kTime);
 
-    progMap["shorttimedate"] =
-                          recstartts.date().toString(shortDateFormat) + ", " +
-                          recstartts.time().toString(timeFormat) + " - " +
-                          recendts.time().toString(timeFormat);
+    progMap["shorttimedate"] = MythDateTimeToString(recstartts,
+                                            kDateTimeShort | kSimplify) + " - " +
+                               MythDateTimeToString(recendts, kTime);
 
-    progMap["starttimedate"] =
-                          recstartts.date().toString(dateFormat) + ", " +
-                          recstartts.time().toString(timeFormat);
+    progMap["starttimedate"] = MythDateTimeToString(recstartts,
+                                            kDateTimeFull | kSimplify);
 
-    progMap["shortstarttimedate"] =
-                          recstartts.date().toString(shortDateFormat) + " " +
-                          recstartts.time().toString(timeFormat);
+    progMap["shortstarttimedate"] = MythDateTimeToString(recstartts,
+                                            kDateTimeShort | kSimplify);
 
-    progMap["lastmodifiedtime"] = lastmodified.toString(timeFormat);
-    progMap["lastmodifieddate"] = lastmodified.toString(dateFormat);
-    progMap["lastmodified"] = lastmodified.toString(dateFormat) + " " +
-                              lastmodified.toString(timeFormat);
+    progMap["lastmodifiedtime"] = MythDateTimeToString(lastmodified, kTime);
+    progMap["lastmodifieddate"] = MythDateTimeToString(lastmodified,
+                                                       kDateFull | kSimplify);
+    progMap["lastmodified"] = MythDateTimeToString(lastmodified,
+                                            kDateTimeFull | kSimplify);
 
     progMap["channum"] = chanstr;
     progMap["chanid"] = chanid;
@@ -1493,9 +1484,17 @@ void ProgramInfo::ToMap(InfoMap &progMap,
 
     progMap["recpriority"] = recpriority;
     progMap["recpriority2"] = recpriority2;
-    progMap["recgroup"] = recgroup;
+    progMap["recordingggroup"] = (recgroup == "Default")
+                                            ? QObject::tr("Default") : recgroup;
     progMap["playgroup"] = playgroup;
-    progMap["storagegroup"] = storagegroup;
+
+    if (storagegroup == "Default")
+        progMap["storagegroup"] = QObject::tr("Default");
+    else if (StorageGroup::kSpecialGroups.contains(storagegroup))
+        progMap["storagegroup"] = QObject::tr(storagegroup.toUtf8().constData());
+    else
+        progMap["storagegroup"] = storagegroup;
+
     progMap["programflags"] = programflags;
 
     progMap["audioproperties"] = GetAudioProperties();
@@ -1513,7 +1512,7 @@ void ProgramInfo::ToMap(InfoMap &progMap,
         {
             progMap["longrepeat"] = QString("(%1 %2) ")
                 .arg(QObject::tr("Repeat"))
-                .arg(originalAirDate.toString(fullDateFormat));
+                .arg(MythDateToString(originalAirDate, kDateFull | kAddYear));
         }
     }
     else
@@ -1551,9 +1550,8 @@ void ProgramInfo::ToMap(InfoMap &progMap,
     }
     else
     {
-        progMap["originalairdate"] = originalAirDate.toString(dateFormat);
-        progMap["shortoriginalairdate"] =
-            originalAirDate.toString(shortDateFormat);
+        progMap["originalairdate"] = MythDateToString(originalAirDate, kDateFull);
+        progMap["shortoriginalairdate"] = MythDateToString(originalAirDate, kDateShort);
     }
 }
 
@@ -3698,12 +3696,14 @@ void ProgramInfo::SaveSeasonEpisode(uint seas, uint ep)
     query.prepare(
         "UPDATE recorded "
         "SET season = :SEASON, episode = :EPISODE "
-        "WHERE chanid = :CHANID AND starttime = :STARTTIME");
+        "WHERE chanid = :CHANID AND starttime = :STARTTIME "
+        "AND recordid = :RECORDID");
 
     query.bindValue(":SEASON",     seas);
     query.bindValue(":EPISODE",    ep);
     query.bindValue(":CHANID",     chanid);
     query.bindValue(":STARTTIME",  recstartts);
+    query.bindValue(":RECORDID",   recordid);
     query.exec();
 
     SendUpdateEvent();
@@ -3716,11 +3716,13 @@ void ProgramInfo::SaveInetRef(const QString &inet)
     query.prepare(
         "UPDATE recorded "
         "SET inetref = :INETREF "
-        "WHERE chanid = :CHANID AND starttime = :STARTTIME");
+        "WHERE chanid = :CHANID AND starttime = :STARTTIME "
+        "AND recordid = :RECORDID");
 
     query.bindValue(":INETREF",    inet);
     query.bindValue(":CHANID",     chanid);
     query.bindValue(":STARTTIME",  recstartts);
+    query.bindValue(":RECORDID",   recordid);
     query.exec();
 
     SendUpdateEvent();
@@ -4695,6 +4697,47 @@ deque<int> GetPreferredSkipTypeCombinations(void)
     tmp.push_back(COMM_DETECT_PREPOSTROLL | COMM_DETECT_BLANK |
                   COMM_DETECT_SCENE);
     return tmp;
+}
+
+bool GetNextRecordingList(QDateTime &nextRecordingStart,
+                          bool *hasConflicts,
+                          vector<ProgramInfo> *list)
+{
+    nextRecordingStart = QDateTime();
+
+    bool dummy;
+    bool *conflicts = (hasConflicts) ? hasConflicts : &dummy;
+
+    ProgramList progList;
+    if (!LoadFromScheduler(progList, *conflicts))
+        return false;
+
+    // find the earliest scheduled recording
+    ProgramList::const_iterator it = progList.begin();
+    for (; it != progList.end(); ++it)
+    {
+        if (((*it)->GetRecordingStatus() == rsWillRecord) &&
+            (nextRecordingStart.isNull() ||
+             nextRecordingStart > (*it)->GetRecordingStartTime()))
+        {
+            nextRecordingStart = (*it)->GetRecordingStartTime();
+        }
+    }
+
+    if (!list)
+        return true;
+
+    // save the details of the earliest recording(s)
+    for (it = progList.begin(); it != progList.end(); ++it)
+    {
+        if (((*it)->GetRecordingStatus()    == rsWillRecord) &&
+            ((*it)->GetRecordingStartTime() == nextRecordingStart))
+        {
+            list->push_back(ProgramInfo(**it));
+        }
+    }
+
+    return true;
 }
 
 PMapDBReplacement::PMapDBReplacement() : lock(new QMutex())

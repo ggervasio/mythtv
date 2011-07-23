@@ -39,6 +39,7 @@
 #include "exitcodes.h"
 #include "jobqueue.h"
 #include "upnp.h"
+#include <util.h>
 
 /////////////////////////////////////////////////////////////////////////////
 //
@@ -166,13 +167,6 @@ void HttpStatus::GetStatusHTML( HTTPRequest *pRequest )
 
 void HttpStatus::FillStatusXML( QDomDocument *pDoc )
 {
-    QString   dateFormat   = gCoreContext->GetSetting("DateFormat", "M/d/yyyy");
-
-    if (dateFormat.indexOf(QRegExp("yyyy")) < 0)
-        dateFormat += " yyyy";
-
-    QString   shortdateformat = gCoreContext->GetSetting("ShortDateFormat", "M/d");
-    QString   timeformat      = gCoreContext->GetSetting("TimeFormat", "h:mm AP");
     QDateTime qdtNow          = QDateTime::currentDateTime();
 
     // Add Root Node.
@@ -180,8 +174,9 @@ void HttpStatus::FillStatusXML( QDomDocument *pDoc )
     QDomElement root = pDoc->createElement("Status");
     pDoc->appendChild(root);
 
-    root.setAttribute("date"    , qdtNow.toString(dateFormat));
-    root.setAttribute("time"    , qdtNow.toString(timeformat)   );
+    root.setAttribute("date"    , MythDateTimeToString(qdtNow,
+                                                       kDateFull | kAddYear));
+    root.setAttribute("time"    , MythDateTimeToString(qdtNow, kTime));
     root.setAttribute("ISODate" , qdtNow.toString(Qt::ISODate)  );
     root.setAttribute("version" , MYTH_BINARY_VERSION           );
     root.setAttribute("protoVer", MYTH_PROTO_VERSION            );
@@ -860,6 +855,7 @@ int HttpStatus::PrintScheduled( QTextStream &os, QDomElement scheduled )
 {
     QDateTime qdtNow          = QDateTime::currentDateTime();
     QString   shortdateformat = gCoreContext->GetSetting("ShortDateFormat", "M/d");
+    QString   longdateformat  = gCoreContext->GetSetting("DateFormat", "M/d/yyyy");
     QString   timeformat      = gCoreContext->GetSetting("TimeFormat", "h:mm AP");
 
     if (scheduled.isNull())
@@ -903,6 +899,7 @@ int HttpStatus::PrintScheduled( QTextStream &os, QDomElement scheduled )
 
                 QString   sTitle       = e.attribute( "title"   , "" );
                 QString   sSubTitle    = e.attribute( "subTitle", "" );
+                QDateTime airDate      = QDateTime::fromString( e.attribute( "airdate" ,"" ), Qt::ISODate );
                 QDateTime startTs      = QDateTime::fromString( e.attribute( "startTime" ,"" ), Qt::ISODate );
                 QDateTime endTs        = QDateTime::fromString( e.attribute( "endTime"   ,"" ), Qt::ISODate );
                 QDateTime recStartTs   = QDateTime::fromString( r.attribute( "recStartTs","" ), Qt::ISODate );
@@ -963,6 +960,11 @@ int HttpStatus::PrintScheduled( QTextStream &os, QDomElement scheduled )
 
                 if ( !sSubTitle.isEmpty())
                     os << "<em>" << sSubTitle << "</em><br /><br />";
+
+                if ( airDate.isValid())
+                    os << "Orig. Airdate: "
+                       << airDate.toString(longdateformat + " " +timeformat)
+                       << "<br /><br />";
 
                 os << sDesc << "<br /><br />"
                    << "This recording will start "  << sTimeToStart

@@ -1,5 +1,6 @@
 #include <QMutex>
 #include <QMutexLocker>
+#include <QWaitCondition>
 #include <QList>
 #include <QQueue>
 #include <QThread>
@@ -55,6 +56,7 @@ QList<LoggerBase *>     loggerList;
 
 QMutex                  logQueueMutex;
 QQueue<LoggingItem_t *> logQueue;
+QRegExp                 logRegExp = QRegExp("[%]{1,2}");
 
 QMutex                  logThreadMutex;
 QHash<uint64_t, char *> logThreadHash;
@@ -268,6 +270,7 @@ bool FileLogger::logmsg(LoggingItem_t *item)
             close( m_fd );
         return false;
     }
+    deleteItem(item);
     return true;
 }
 
@@ -310,6 +313,7 @@ bool SyslogLogger::logmsg(LoggingItem_t *item)
         item->refcount--;
     }
 
+    deleteItem(item);
     return true;
 }
 #endif
@@ -343,6 +347,7 @@ DatabaseLogger::DatabaseLogger(char *table) : LoggerBase(table, 0),
     m_thread->start();
 
     m_opened = true;
+    m_disabled = false;
 }
 
 DatabaseLogger::~DatabaseLogger()
@@ -367,8 +372,29 @@ DatabaseLogger::~DatabaseLogger()
 bool DatabaseLogger::logmsg(LoggingItem_t *item)
 {
     if( m_thread )
-        m_thread->enqueue(item);
-    return true;
+    {
+        if( !m_disabled && m_thread->queueFull() )
+        {
+            m_disabled = true;
+            LOG(VB_GENERAL, LOG_CRIT,
+                "Disabling DB Logging: too many messages queued");
+            return false;
+        }
+
+        if( m_disabled && isDatabaseReady() )
+        {
+            m_disabled = false;
+            LOG(VB_GENERAL, LOG_CRIT, "Reenabling DB Logging");
+            usleep(150000);  // Let the queue drain a touch so this won't flap
+        }
+
+        if( !m_disabled )
+        {
+            m_thread->enqueue(item);
+            return true;
+        }
+    }
+    return false;
 }
 
 bool DatabaseLogger::logqmsg(LoggingItem_t *item)
@@ -410,12 +436,22 @@ bool DatabaseLogger::logqmsg(LoggingItem_t *item)
     return true;
 }
 
+DBLoggerThread::DBLoggerThread(DatabaseLogger *logger) :
+    m_logger(logger), m_queue(new QQueue<LoggingItem_t *>),
+    m_wait(new QWaitCondition()), aborted(false)
+{
+}
+
+DBLoggerThread::~DBLoggerThread()
+{
+    delete m_queue;
+    delete m_wait;
+}
+
 void DBLoggerThread::run(void)
 {
     threadRegister("DBLogger");
     LoggingItem_t *item;
-
-    aborted = false;
 
     QMutexLocker qLock(&m_queueMutex);
 
@@ -423,9 +459,7 @@ void DBLoggerThread::run(void)
     {
         if (m_queue->isEmpty())
         {
-            qLock.unlock();
-            msleep(100);
-            qLock.relock();
+            m_wait->wait(qLock.mutex(), 100);
             continue;
         }
 
@@ -435,29 +469,41 @@ void DBLoggerThread::run(void)
 
         qLock.unlock();
 
-        if( item->message && !aborted )
+        if( item->message && !aborted && !m_logger->logqmsg(item) )
         {
-            m_logger->logqmsg(item);
+            qLock.relock();
+            m_queue->prepend(item);
+            m_wait->wait(qLock.mutex(), 100);
+        } else {
+            deleteItem(item);
+            qLock.relock();
         }
-
-        deleteItem(item);
-
-        qLock.relock();
     }
+
     MSqlQuery::CloseLogCon();
     threadDeregister();
+}
+
+void DBLoggerThread::stop(void)
+{
+    QMutexLocker qLock(&m_queueMutex);
+    aborted = true;
+    m_wait->wakeAll();
 }
 
 bool DatabaseLogger::isDatabaseReady()
 {
     bool ready = false;
-    MythDB *db;
+    MythDB *db = GetMythDB();
 
-    if ( !m_loggingTableExists )
-        m_loggingTableExists = tableExists(m_handle.string);
+    if ((db) && db->HaveValidDatabase())
+    {
+        if ( !m_loggingTableExists )
+            m_loggingTableExists = tableExists(m_handle.string);
 
-    if ( m_loggingTableExists && (db = GetMythDB()) && db->HaveValidDatabase() )
-        ready = true;
+        if ( m_loggingTableExists )
+            ready = true;
+    }
 
     return ready;
 }
@@ -553,7 +599,8 @@ void setThreadTid( LoggingItem_t *item )
 }
 
 
-LoggerThread::LoggerThread()
+LoggerThread::LoggerThread() :
+    m_wait(new QWaitCondition()), aborted(false)
 {
     char *debug = getenv("VERBOSE_THREADS");
     if (debug != NULL)
@@ -574,6 +621,8 @@ LoggerThread::~LoggerThread()
     {
         (*it)->deleteLater();
     }
+
+    delete m_wait;
 }
 
 void LoggerThread::run(void)
@@ -582,7 +631,6 @@ void LoggerThread::run(void)
     LoggingItem_t *item;
 
     logThreadFinished = false;
-    aborted = false;
 
     QMutexLocker qLock(&logQueueMutex);
 
@@ -590,9 +638,7 @@ void LoggerThread::run(void)
     {
         if (logQueue.isEmpty())
         {
-            qLock.unlock();
-            msleep(100);
-            qLock.relock();
+            m_wait->wait(qLock.mutex(), 100);
             continue;
         }
 
@@ -666,16 +712,22 @@ void LoggerThread::run(void)
 
             for(it = loggerList.begin(); it != loggerList.end(); it++)
             {
-                (*it)->logmsg(item);
+                if( !(*it)->logmsg(item) )
+                    deleteItem(item);
             }
         }
-
-        deleteItem(item);
 
         qLock.relock();
     }
 
     logThreadFinished = true;
+}
+
+void LoggerThread::stop(void)
+{
+    QMutexLocker qLock(&logQueueMutex);
+    aborted = true;
+    m_wait->wakeAll();
 }
 
 void deleteItem( LoggingItem_t *item )
@@ -731,7 +783,8 @@ void LogTimeStamp( struct tm *tm, uint32_t *usec )
 }
 
 void LogPrintLine( uint64_t mask, LogLevel_t level, const char *file, int line,
-                   const char *function, const char *format, ... )
+                   const char *function, int fromQString,
+                   const char *format, ... )
 {
     va_list         arguments;
     char           *message;
@@ -754,6 +807,14 @@ void LogPrintLine( uint64_t mask, LogLevel_t level, const char *file, int line,
     if( !message )
         return;
 
+    QMutexLocker qLock(&logQueueMutex);
+
+    if( fromQString && strchr(format, '%') )
+    {
+        QString string(format);
+        format = string.replace(logRegExp, "%%").toLocal8Bit().constData();
+    }
+
     va_start(arguments, format);
     vsnprintf(message, LOGLINE_MAX, format, arguments);
     va_end(arguments);
@@ -767,7 +828,6 @@ void LogPrintLine( uint64_t mask, LogLevel_t level, const char *file, int line,
     item->message  = message;
     setThreadTid(item);
 
-    QMutexLocker qLock(&logQueueMutex);
     logQueue.enqueue(item);
 }
 

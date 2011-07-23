@@ -100,18 +100,18 @@ extern "C" {
 #ifdef __cplusplus
 #define LOG(mask, level, string) \
     LogPrintLine(mask, (LogLevel_t)level, __FILE__, __LINE__, __FUNCTION__, \
-                 QString(string).replace(QRegExp("[%]{1,2}"), "%%") \
-                                .toLocal8Bit().constData())
+                 1, QString(string).toLocal8Bit().constData())
 #else
 #define LOG(mask, level, format, ...) \
     LogPrintLine(mask, (LogLevel_t)level, __FILE__, __LINE__, __FUNCTION__, \
-                 (const char *)format, ##__VA_ARGS__)
+                 0, (const char *)format, ##__VA_ARGS__)
 #endif
 
 /* Define the external prototype */
 MBASE_PUBLIC void LogPrintLine( uint64_t mask, LogLevel_t level, 
                                 const char *file, int line, 
-                                const char *function, const char *format, ... );
+                                const char *function, int fromQString,
+                                const char *format, ... );
 
 #ifdef __cplusplus
 }
@@ -195,8 +195,10 @@ class DatabaseLogger : public LoggerBase {
         pid_t m_pid;
         bool m_opened;
         bool m_loggingTableExists;
+        bool m_disabled;
 };
 
+class QWaitCondition;
 class LoggerThread : public QThread {
     Q_OBJECT
 
@@ -204,31 +206,39 @@ class LoggerThread : public QThread {
         LoggerThread();
         ~LoggerThread();
         void run(void);
-        void stop(void) { aborted = true; };
+        void stop(void);
     private:
-        bool aborted;
+        QWaitCondition *m_wait; // protected by logQueueMutex
+        bool aborted; // protected by logQueueMutex
 };
+
+#define MAX_QUEUE_LEN 1000
 
 class DBLoggerThread : public QThread {
     Q_OBJECT
 
     public:
-        DBLoggerThread(DatabaseLogger *logger) : m_logger(logger), 
-            m_queue(new QQueue<LoggingItem_t *>) {}
-        ~DBLoggerThread() { delete m_queue; }
+        DBLoggerThread(DatabaseLogger *logger);
+        ~DBLoggerThread();
         void run(void);
-        void stop(void) { aborted = true; }
+        void stop(void);
         bool enqueue(LoggingItem_t *item) 
         { 
             QMutexLocker qLock(&m_queueMutex); 
             m_queue->enqueue(item); 
             return true; 
         }
+        bool queueFull(void)
+        {
+            QMutexLocker qLock(&m_queueMutex); 
+            return (m_queue->size() >= MAX_QUEUE_LEN);
+        }
     private:
         DatabaseLogger *m_logger;
         QMutex m_queueMutex;
         QQueue<LoggingItem_t *> *m_queue;
-        bool aborted;
+        QWaitCondition *m_wait; // protected by m_queueMutex
+        bool aborted; // protected by m_queueMutex
 };
 #endif
 
