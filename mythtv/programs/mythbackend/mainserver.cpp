@@ -125,6 +125,7 @@ class ProcessRequestThread : public QThread
   public:
     ProcessRequestThread(MainServer *ms) :
         parent(ms), socket(NULL), threadlives(false) {}
+    ~ProcessRequestThread() { killit(); wait(); }
 
     void setup(MythSocket *sock)
     {
@@ -247,6 +248,12 @@ MainServer::MainServer(bool master, int port,
 
 MainServer::~MainServer()
 {
+    // since Scheduler::SetMainServer() isn't thread-safe
+    // we need to shut down the scheduler thread before we
+    // can call SetMainServer(NULL)
+    if (m_sched)
+        m_sched->Stop();
+
     PreviewGeneratorQueue::RemoveListener(this);
     PreviewGeneratorQueue::TeardownPreviewGeneratorQueue();
 
@@ -256,6 +263,23 @@ MainServer::~MainServer()
         mythserver->deleteLater();
         mythserver = NULL;
     }
+
+    if (m_sched)
+    {
+        m_sched->Wait();
+        m_sched->SetMainServer(NULL);
+    }
+
+    if (m_expirer)
+        m_expirer->SetMainServer(NULL);
+
+    QMutexLocker locker(&threadPoolLock);
+    MythDeque<ProcessRequestThread*>::iterator it;
+    for (it = threadPool.begin(); it != threadPool.end(); ++it)
+        (*it)->killit();
+    for (it = threadPool.begin(); it != threadPool.end(); ++it)
+        delete (*it);
+    threadPool.clear();
 }
 
 void MainServer::autoexpireUpdate(void)
@@ -3067,13 +3091,13 @@ void MainServer::HandleGetPendingRecordings(PlaybackSock *pbs,
     if (m_sched)
     {
         if (tmptable.isEmpty())
-            m_sched->getAllPending(strList);
+            m_sched->GetAllPending(strList);
         else
         {
             Scheduler *sched = new Scheduler(false, encoderList,
                                              tmptable, m_sched);
             sched->FillRecordListFromDB(recordid);
-            sched->getAllPending(strList);
+            sched->GetAllPending(strList);
             delete sched;
 
             if (recordid > 0)
@@ -5153,7 +5177,7 @@ void MainServer::HandleSetLogLevel(QStringList &slist, PlaybackSock *pbs)
             logPropagateCalc();
             LOG(VB_GENERAL, LOG_NOTICE,
                 QString("Log level changed, new level is: %1")
-                    .arg(LogLevelNames[logLevel]));
+                    .arg(logLevelGetName(logLevel)));
 
             retlist << "OK";
         }

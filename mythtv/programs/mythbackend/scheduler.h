@@ -20,21 +20,15 @@ using namespace std;
 #include "remoteutil.h"
 #include "inputgroupmap.h"
 #include "mythdeque.h"
+#include "mythscheduler.h"
 
 class EncoderLink;
 class MainServer;
 class AutoExpire;
 
-typedef deque<RecordingInfo*> RecList;
-#define SORT_RECLIST(LIST, ORDER) \
-  do { stable_sort((LIST).begin(), (LIST).end(), ORDER); } while (0)
-
-typedef RecList::const_iterator RecConstIter;
-typedef RecList::iterator RecIter;
-
 class Scheduler;
 
-class Scheduler : public QThread
+class Scheduler : public QThread, public MythScheduler
 {
     Q_OBJECT
 
@@ -42,6 +36,9 @@ class Scheduler : public QThread
     Scheduler(bool runthread, QMap<int, EncoderLink *> *tvList,
               QString recordTbl = "record", Scheduler *master_sched = NULL);
     ~Scheduler();
+
+    void Stop(void);
+    void Wait(void) { QThread::wait(); }
 
     void SetExpirer(AutoExpire *autoExpirer) { m_expirer = autoExpirer; }
 
@@ -54,10 +51,11 @@ class Scheduler : public QThread
     void UpdateRecStatus(uint cardid, uint chanid,
                          const QDateTime &startts, RecStatusType recstatus,
                          const QDateTime &recendts);
-
-    bool getAllPending(RecList *retList);
-    void getAllPending(QStringList &strList);
-    QMap<QString,ProgramInfo*> GetRecording(void);
+    // Returns a list of all pending recordings and returns
+    // true iff there are conflicts
+    bool GetAllPending(RecList &retList) const;
+    virtual void GetAllPending(QStringList &strList) const;
+    virtual QMap<QString,ProgramInfo*> GetRecording(void) const;
 
     void getAllScheduled(QStringList &strList);
 
@@ -165,11 +163,12 @@ class Scheduler : public QThread
         RecordingInfo &ri, RecStatusTypes recStatus, const QString &details);
     void HandleIdleShutdown(
         bool &blockShutdown, QDateTime &idleSince, int prerollseconds,
-        int idleTimeoutSecs, int idleWaitForRecordingTime);
+        int idleTimeoutSecs, int idleWaitForRecordingTime,
+        bool &statuschanged);
 
 
     MythDeque<int> reschedQueue;
-    QMutex schedLock;
+    mutable QMutex schedLock;
     QMutex recordmatchLock;
     QWaitCondition reschedWait;
     RecList reclist;
