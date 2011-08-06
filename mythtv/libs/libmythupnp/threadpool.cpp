@@ -249,6 +249,16 @@ void WorkerThread::SetTimeout( long nIdleTimeout )
 //
 /////////////////////////////////////////////////////////////////////////////
 
+void WorkerThread::RequestTerminate( void )
+{
+    m_bTermRequested = true;
+    quit();
+}
+
+/////////////////////////////////////////////////////////////////////////////
+//
+/////////////////////////////////////////////////////////////////////////////
+
 void WorkerThread::run( void )
 {
     threadRegister("WorkerThread");
@@ -327,21 +337,26 @@ ThreadPool::~ThreadPool( )
     // Request Termination of all worker threads.
     // --------------------------------------------------------------
 
-    // --------------------------------------------------------------
-    // If we lock the m_mList mutex, a deadlock will occur due to the Worker 
-    // thread removing themselves from the Avail Deque... should be relatively
-    // safe to use this list's iterator at this time without the lock.
-    // --------------------------------------------------------------
+    m_mList.lock();
+    WorkerThreadList list = m_lstThreads;
+    m_mList.unlock();
 
-    WorkerThreadList::iterator it = m_lstThreads.begin(); 
-    
-    while (it != m_lstThreads.end() )
+    WorkerThreadList::iterator it = list.begin(); 
+    for (; it != list.end(); ++it)
     {
-        WorkerThread *pThread = *it;
-        it = m_lstThreads.erase( it );
+        if (*it != NULL) 
+            (*it)->RequestTerminate();
+    }
 
+    while (!list.empty())
+    {
+        WorkerThread *pThread = list.front();
+        list.pop_front();
         if (pThread != NULL) 
-            pThread->deleteLater();
+        {
+            pThread->wait();
+            delete pThread;
+        }
     }
 }
 
@@ -497,7 +512,6 @@ void ThreadPool::ThreadTerminating ( WorkerThread *pThread )
                                          m_lstAvailableThreads.end(), pThread);
     m_lstAvailableThreads.erase(it);
 
-#if 0
     it = find(m_lstThreads.begin(), m_lstThreads.end(), pThread);
     m_lstThreads.erase(it);
 
@@ -505,9 +519,6 @@ void ThreadPool::ThreadTerminating ( WorkerThread *pThread )
     LOG(VB_GENERAL, LOG_DEBUG,
         QString("ThreadPool:%1: thread pool size %2")
             .arg(m_sName) .arg(nThreadCount));
-
-    pThread->deleteLater();
-#endif
 
     m_mList.unlock();
 }

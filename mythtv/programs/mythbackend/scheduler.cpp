@@ -2619,7 +2619,7 @@ void Scheduler::HandleIdleShutdown(
                         msg = QString("I\'m idle now... shutdown will "
                                       "occur in %1 seconds.")
                             .arg(idleTimeoutSecs);
-                        LOG(VB_GENERAL, LOG_CRIT, msg);
+                        LOG(VB_GENERAL, LOG_NOTICE, msg);
                         MythEvent me(QString("SHUTDOWN_COUNTDOWN %1")
                                      .arg(idleTimeoutSecs));
                         gCoreContext->dispatch(me);
@@ -2628,7 +2628,7 @@ void Scheduler::HandleIdleShutdown(
                     {
                         msg = QString("%1 secs left to system shutdown!")
                             .arg(idleTimeoutSecs - itime);
-                        LOG(VB_IDLE, LOG_CRIT, msg);
+                        LOG(VB_IDLE, LOG_NOTICE, msg);
                         MythEvent me(QString("SHUTDOWN_COUNTDOWN %1")
                                      .arg(idleTimeoutSecs - itime));
                         gCoreContext->dispatch(me);
@@ -3978,12 +3978,12 @@ void Scheduler::AddNewRecords(void)
     {
         result.prepare("DROP TABLE IF EXISTS sched_temp_record;");
         if (!result.exec())
-            MythDB::DBError("AddNewRecords sched_temp_record", query);
+            MythDB::DBError("AddNewRecords sched_temp_record", result);
     }
 
     result.prepare("DROP TABLE IF EXISTS sched_temp_recorded;");
     if (!result.exec())
-        MythDB::DBError("AddNewRecords drop table", query);
+        MythDB::DBError("AddNewRecords drop table", result);
 }
 
 void Scheduler::AddNotListed(void) {
