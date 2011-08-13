@@ -894,7 +894,7 @@ void SubtitleScreen::DisplayCC608Subtitles(void)
             int x0;
             if (first)
             {
-                x0 = teletextmode ? cc->y : (cc->x + 3);
+                x0 = teletextmode ? cc->y : cc->x;
                 // position as if we use a fixed size font
                 // - font size already has zoom factor applied
 
