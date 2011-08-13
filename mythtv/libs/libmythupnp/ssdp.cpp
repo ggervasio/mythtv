@@ -65,6 +65,7 @@ SSDP* SSDP::Instance()
 /////////////////////////////////////////////////////////////////////////////
 
 SSDP::SSDP() :
+    MThread                ("SSDP" ),
     m_procReqLineExp       ("[ \r\n][ \r\n]*"),
     m_nPort                ( SSDP_PORT ),
     m_nSearchPort          ( SSDP_SEARCHPORT ),
@@ -255,10 +256,11 @@ void SSDP::PerformSearch(const QString &sST, uint timeout_secs)
 
 void SSDP::run()
 {
+    RunProlog();
+
     fd_set          read_set;
     struct timeval  timeout;
 
-    threadRegister("SSDP");
     LOG(VB_UPNP, LOG_INFO, "SSDP::Run - SSDP Thread Started." );
 
     // ----------------------------------------------------------------------
@@ -281,9 +283,9 @@ void SSDP::run()
 #if 0
                 if (m_Sockets[ nIdx ]->bytesAvailable() > 0)
                 {
-	            LOG(VB_GENERAL, LOG_DEBUG,
+                    LOG(VB_GENERAL, LOG_DEBUG,
                         QString("Found Extra data before select: %1")
-                            .arg(nIdx));
+                        .arg(nIdx));
                     ProcessData( m_Sockets[ nIdx ] );
                 }
 #endif
@@ -299,7 +301,7 @@ void SSDP::run()
         {
             if (m_Sockets[nIdx] != NULL && m_Sockets[nIdx]->socket() >= 0 &&
                 FD_ISSET(m_Sockets[nIdx]->socket(), &read_set))
-	    {
+            {
 #if 0
                 LOG(VB_GENERAL, LOG_DEBUG, QString("FD_ISSET( %1 )").arg(nIdx));
 #endif
@@ -308,7 +310,8 @@ void SSDP::run()
             }
         }
     }
-    threadDeregister();
+
+    RunEpilog();
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -675,7 +678,7 @@ QStringList SSDPExtension::GetBasePaths()
 //
 /////////////////////////////////////////////////////////////////////////////
 
-bool SSDPExtension::ProcessRequest( HttpWorkerThread *, HTTPRequest *pRequest )
+bool SSDPExtension::ProcessRequest( HTTPRequest *pRequest )
 {
     if (pRequest)
     {

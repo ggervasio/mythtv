@@ -42,6 +42,7 @@ CC608Decoder::CC608Decoder(CC608Input *ccr)
     memset(lastrow,    0, sizeof(lastrow));
     memset(newrow,     0, sizeof(newrow));
     memset(newcol,     0, sizeof(newcol));
+    memset(newattr,    0, sizeof(newattr));
     memset(timecode,   0, sizeof(timecode));
     memset(row,        0, sizeof(row));
     memset(col,        0, sizeof(col));
@@ -271,11 +272,27 @@ void CC608Decoder::FormatCCField(int tc, int field, int data)
                 newrow[mode] = lastrow[mode] + 1;
 
             if (b2 & 0x10)        //row contains indent flag
+            {
                 newcol[mode] = (b2 & 0x0E) << 1;
+                // Encode as 0x7020 or 0x7021 depending on the
+                // underline flag.
+                newattr[mode] = (b2 & 0x1) + 0x20;
+                LOG(VB_VBI, LOG_INFO,
+                        QString("cc608 preamble indent, b2=%1")
+                        .arg(b2, 2, 16));
+            }
             else
+            {
                 newcol[mode] = 0;
+                newattr[mode] = (b2 & 0xf) + 0x10;
+                // Encode as 0x7010 through 0x702f for the 16 possible
+                // values of b2.
+                LOG(VB_VBI, LOG_INFO,
+                        QString("cc608 preamble color change, b2=%1")
+                        .arg(b2, 2, 16));
+            }
 
-            // row, indent settings are not final
+            // row, indent, attribute settings are not final
             // until text code arrives
         }
         else
@@ -295,8 +312,12 @@ void CC608Decoder::FormatCCField(int tc, int field, int data)
                     switch (b2 & 0x70)
                     {
                         case 0x20:      //midrow attribute change
-                            // TODO: we _do_ want colors, is that an attribute?
-                            ccbuf[mode] += ' ';
+                            LOG(VB_VBI, LOG_INFO,
+                                    QString("cc608 mid-row color change, b2=%1")
+                                    .arg(b2, 2, 16));
+                            // Encode as 0x7000 through 0x700f for the
+                            // 16 possible values of b2.
+                            ccbuf[mode] += QChar(0x7000 + (b2 & 0xf));
                             len = ccbuf[mode].length();
                             col[mode]++;
                             break;
@@ -433,6 +454,7 @@ void CC608Decoder::FormatCCField(int tc, int field, int data)
                             {
                                 newrow[mode] = 1;
                                 newcol[mode] = 0;
+                                newattr[mode] = 0;
                             }
                             style[mode] = CC_STYLE_ROLLUP;
                             break;
@@ -495,6 +517,7 @@ void CC608Decoder::FormatCCField(int tc, int field, int data)
                             // TXT starts at row 1
                             newrow[mode] = 1;
                             newcol[mode] = 0;
+                            newattr[mode] = 0;
                             style[mode] = CC_STYLE_ROLLUP;
                             break;
 
@@ -566,7 +589,9 @@ int CC608Decoder::FalseDup(int tc, int field, int data)
             return 1;
         }
         else
+        {
             return 0;
+        }
     }
 
     // bttv-0.9 VBI reads are pretty reliable (1 read/33367us).
@@ -677,7 +702,8 @@ void CC608Decoder::BufferCC(int mode, int len, int clr)
         int i = 0;
         while (i < dispbuf.length()) {
             QChar cp = dispbuf.at(i);
-            switch (cp.unicode())
+            int cpu = cp.unicode();
+            switch (cpu)
             {
                 case 0x2120 :  vbuf += "(SM)"; break;
                 case 0x2122 :  vbuf += "(TM)"; break;
@@ -691,7 +717,10 @@ void CC608Decoder::BufferCC(int mode, int len, int clr)
                 case 0x2588 :  vbuf += "[]"; break;
                 case 0x266A :  vbuf += "o/~"; break;
                 case '\b'   :  vbuf += "\\b"; break;
-                default     :  vbuf += QString(cp.toLatin1());
+                default     :
+                    if (cpu >= 0x7000 && cpu < 0x7000 + 0x30)
+                        vbuf += QString("[%1]").arg(cpu - 0x7000, 2, 16);
+                    else vbuf += QString(cp.toLatin1());
             }
             i++;
         }
@@ -797,13 +826,23 @@ int CC608Decoder::NewRowCC(int mode, int len)
     lastrow[mode] = newrow[mode];
     newrow[mode] = 0;
 
-    for (int x = 0; x < newcol[mode]; x++)
+    int limit = (newattr[mode] ? newcol[mode] - 1 : newcol[mode]);
+    for (int x = 0; x < limit; x++)
     {
         ccbuf[mode] += ' ';
         len++;
         col[mode]++;
     }
+
+    if (newattr[mode])
+    {
+        ccbuf[mode] += QChar(newattr[mode] + 0x7000);
+        len++;
+        col[mode]++;
+    }
+
     newcol[mode] = 0;
+    newattr[mode] = 0;
 
     return len;
 }
@@ -1321,7 +1360,7 @@ bool CC608Decoder::XDSPacketParseProgram(
         {
             LOG(VB_VBI, LOG_ERR, loc + 
                     QString("VChip Unhandled -- rs(%1) rating(%2:%3)")
-		    .arg(rating_system).arg(tv_rating).arg(movie_rating));
+                .arg(rating_system).arg(tv_rating).arg(movie_rating));
         }
     }
 #if 0

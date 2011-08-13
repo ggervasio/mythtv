@@ -290,7 +290,7 @@ AvFormatDecoder::AvFormatDecoder(MythPlayer *parent,
       special_decode(special_decoding),
       maxkeyframedist(-1),
       // Closed Caption & Teletext decoders
-      choose_scte_cc(true),
+      ignore_scte(false),
       invert_scte_field(0),
       last_scte_field(0),
       ccd608(new CC608Decoder(parent->GetCC608Reader())),
@@ -2550,7 +2550,8 @@ void AvFormatDecoder::DecodeDTVCC(const uint8_t *buf, uint len, bool scte)
             if (cc608_good_parity(cc608_parity_table, data))
             {
                 // in film mode, we may start at the wrong field;
-                // correct if XDS start/cont/end code is detected (must be field 2)
+                // correct if XDS start/cont/end code is detected
+                // (must be field 2)
                 if (scte && field == 0 &&
                     (data1 & 0x7f) <= 0x0f && (data1 & 0x7f) != 0x00)
                 {
@@ -3082,30 +3083,22 @@ bool AvFormatDecoder::ProcessVideoFrame(AVStream *stream, AVFrame *mpa_pic)
 {
     AVCodecContext *context = stream->codec;
 
-    // Decode CEA-608 and CEA-708 captions
-    uint cc_len;
-    uint8_t *cc_buf;
-    bool scte;
+    uint cc_len = (uint) max(mpa_pic->scte_cc_len,0);
+    uint8_t *cc_buf = mpa_pic->scte_cc_buf;
+    bool scte = true;
 
-    // if both ATSC and SCTE caption data are available, choose ATSC(?)
-    if (choose_scte_cc || mpa_pic->atsc_cc_len)
+    // If both ATSC and SCTE caption data are available, prefer ATSC
+    if ((mpa_pic->atsc_cc_len > 0) || ignore_scte)
     {
-        choose_scte_cc = false;
-        cc_len = (uint)mpa_pic->atsc_cc_len;
+        ignore_scte = true;
+        cc_len = (uint) max(mpa_pic->atsc_cc_len, 0);
         cc_buf = mpa_pic->atsc_cc_buf;
         scte = false;
     }
-    else
-    {
-        cc_len = (uint)mpa_pic->scte_cc_len;
-        cc_buf = mpa_pic->scte_cc_buf;
-        scte = true;
-    }
 
+    // Decode CEA-608 and CEA-708 captions
     for (uint i = 0; i < cc_len; i += ((cc_buf[i] & 0x1f) * 3) + 2)
-    {
         DecodeDTVCC(cc_buf + i, cc_len - i, scte);
-    }
 
     VideoFrame *picframe = (VideoFrame *)(mpa_pic->opaque);
 

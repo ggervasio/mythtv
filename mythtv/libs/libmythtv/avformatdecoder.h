@@ -313,7 +313,7 @@ class AvFormatDecoder : public DecoderBase
     int maxkeyframedist;
 
     // Caption/Subtitle/Teletext decoders
-    bool             choose_scte_cc;
+    bool             ignore_scte;
     uint             invert_scte_field;
     uint             last_scte_field;
     CC608Decoder     *ccd608;

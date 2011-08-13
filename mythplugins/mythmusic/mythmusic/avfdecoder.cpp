@@ -88,6 +88,7 @@ avfDecoder::avfDecoder(const QString &file, DecoderFactory *d, QIODevice *i,
     m_byteIOContext(NULL),      errcode(0),
     m_samples(NULL)
 {
+    setObjectName("avfDecoder");
     setFilename(file);
     memset(&m_params, 0, sizeof(AVFormatParameters));
 }
@@ -372,10 +373,13 @@ void avfDecoder::deinit()
 
 void avfDecoder::run()
 {
+    RunProlog();
     if (!inited)
+    {
+        RunEpilog();
         return;
+    }
 
-    threadRegister("avfDecoder");
     AVPacket pkt, tmp_pkt;
     char *s;
     int data_size, dec_len;
@@ -421,11 +425,11 @@ void avfDecoder::run()
                     break;
                 }
 
-		tmp_pkt.data = pkt.data;
-		tmp_pkt.size = pkt.size;
+                tmp_pkt.data = pkt.data;
+                tmp_pkt.size = pkt.size;
 
                 while (tmp_pkt.size > 0 && !finish &&
-		       !user_stop && seekTime <= 0.0)
+                       !user_stop && seekTime <= 0.0)
                 {
                     // Decode the stream to the output codec
                     // m_samples is the output buffer
@@ -496,7 +500,7 @@ void avfDecoder::run()
     }
 
     deinit();
-    threadDeregister();
+    RunEpilog();
 }
 
 MetaIO* avfDecoder::doCreateTagger(void)
@@ -508,7 +512,13 @@ MetaIO* avfDecoder::doCreateTagger(void)
     else if (extension == "ogg" || extension == "oga")
         return new MetaIOOggVorbis();
     else if (extension == "flac")
-        return new MetaIOFLACVorbis();
+    {
+        MetaIOID3 *file = new MetaIOID3();
+        if (file->TagExists(filename))
+            return file;
+        else
+            return new MetaIOFLACVorbis();  
+    }
     else if (extension == "m4a")
         return new MetaIOMP4();
     else if (extension == "wv")

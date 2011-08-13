@@ -1302,7 +1302,7 @@ void GLSingleView::EffectKenBurns(void)
     if (effect_pct > single_image_pct && m_effect_kenBurns_image_ready) 
     {
         if (!m_effect_kenBurns_new_image_started)
-        { 			
+        {             
             if (m_effect_kenBurns_item) //Do not create textures for first two images, since they are preloaded
             {
                 m_texItem[!m_tex1First].SetItem(m_effect_kenBurns_item, m_effect_kenBurns_orig_image_size);
@@ -1329,9 +1329,9 @@ void GLSingleView::EffectKenBurns(void)
         {
             // Start in center and pan out
             x_loc = m_effect_kenBurns_location_x[m_texCur] * t[m_texCur]; 
-            y_loc = m_effect_kenBurns_location_y[m_texCur] * t[m_texCur]; 		
+            y_loc = m_effect_kenBurns_location_y[m_texCur] * t[m_texCur];         
             scale_max = FindMaxScale(x_loc,y_loc);
-            scale_factor = 	1.0f + (scale_max * s[m_texCur]); 
+            scale_factor =     1.0f + (scale_max * s[m_texCur]); 
         }
         else // Zoom out image
         {
@@ -1339,7 +1339,7 @@ void GLSingleView::EffectKenBurns(void)
             x_loc = m_effect_kenBurns_location_x[m_texCur] -  m_effect_kenBurns_location_x[m_texCur] * t[m_texCur]; 
             y_loc = m_effect_kenBurns_location_y[m_texCur] -  m_effect_kenBurns_location_y[m_texCur] * t[m_texCur];
             scale_max = FindMaxScale(x_loc,y_loc);
-            scale_factor = 	1.0f + scale_max -  (scale_max * t[m_texCur]);
+            scale_factor =     1.0f + scale_max -  (scale_max * t[m_texCur]);
         } 
 
         glMatrixMode(GL_MODELVIEW);
@@ -1355,7 +1355,7 @@ void GLSingleView::EffectKenBurns(void)
         x_loc = m_effect_kenBurns_location_x[m_texCur ? 0 : 1] * t[m_texCur ? 0 : 1]; 
         y_loc = m_effect_kenBurns_location_y[m_texCur ? 0 : 1] * t[m_texCur ? 0 : 1];
         scale_max = FindMaxScale(x_loc,y_loc);
-        scale_factor = 	1.0f + (scale_max * s[m_texCur ? 0 : 1]);
+        scale_factor =     1.0f + (scale_max * s[m_texCur ? 0 : 1]);
     }
     else // Zoom out image
     {
@@ -1364,7 +1364,7 @@ void GLSingleView::EffectKenBurns(void)
         y_loc = m_effect_kenBurns_location_y[m_texCur ? 0 : 1] -  
             m_effect_kenBurns_location_y[m_texCur ? 0 : 1] * t[m_texCur ? 0 : 1];
         scale_max = FindMaxScale(x_loc,y_loc);
-        scale_factor = 	1.0f + scale_max -  (scale_max * t[m_texCur ? 0 : 1]);
+        scale_factor =     1.0f + scale_max -  (scale_max * t[m_texCur ? 0 : 1]);
     } 
 
     glMatrixMode(GL_MODELVIEW);
@@ -1517,12 +1517,16 @@ void GLSingleView::FindRandXY(float &x_loc, float &y_loc)
         y_loc = -1 * y_loc;   
 }
 
-KenBurnsImageLoader::KenBurnsImageLoader(GLSingleView *singleView, ThumbList &itemList, QSize texSize, QSize screenSize)
+KenBurnsImageLoader::KenBurnsImageLoader(
+    GLSingleView *singleView, ThumbList &itemList,
+    QSize texSize, QSize screenSize) :
+    MThread("KenBurnsImageLoader"),
+    m_singleView(singleView),
+    m_itemList(itemList),
+    m_pos(0),
+    m_screenSize(screenSize),
+    m_texSize(texSize)
 {
-    m_singleView = singleView;
-    m_itemList = itemList;
-    m_texSize = texSize;
-    m_screenSize = screenSize;
 }
 
 void KenBurnsImageLoader::Initialize(int pos)
@@ -1532,18 +1536,23 @@ void KenBurnsImageLoader::Initialize(int pos)
 
 void KenBurnsImageLoader::run() 
 {
-    threadRegister("KenBurnsImageLoader");
+    RunProlog();
     ThumbItem *item = m_itemList.at(m_pos);
     if (!item)
     {
         LOG(VB_GENERAL, LOG_ERR, LOC + QString("No item at %1").arg(m_pos));
+        RunEpilog();
         return;
     }
     QImage image(item->GetPath());
     if (image.isNull())
+    {
+        RunEpilog();
         return;
-    
+    }
+
     m_singleView->LoadImage(QGLWidget::convertToGLFormat(image.scaled(m_texSize, Qt::IgnoreAspectRatio, Qt::SmoothTransformation)), image.size());   
     m_singleView->Ready();
-    threadDeregister();
+
+    RunEpilog();
 }

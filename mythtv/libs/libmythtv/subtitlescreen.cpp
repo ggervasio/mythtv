@@ -472,6 +472,8 @@ void SubtitleScreen::DisplayTextSubtitles(void)
             changed = true;
             int height = (m_safeArea.height() * m_textFontZoom) / 1800;
             gTextSubFont->GetFace()->setPixelSize(height);
+            gTextSubFont->GetFace()->setItalic(false);
+            gTextSubFont->GetFace()->setUnderline(false);
             gTextSubFont->SetColor(Qt::white);
         }
     }
@@ -557,6 +559,8 @@ void SubtitleScreen::DisplayRawTextSubtitles(void)
         {
             int height = (m_safeArea.height() * m_textFontZoom) / 1800;
             gTextSubFont->GetFace()->setPixelSize(height);
+            gTextSubFont->GetFace()->setItalic(false);
+            gTextSubFont->GetFace()->setUnderline(false);
             gTextSubFont->SetColor(Qt::white);
         }
     }
@@ -720,12 +724,86 @@ void SubtitleScreen::SetFontParams(void)
                                        arg(m_xmid).arg(m_fontwidth));
 }
 
+/// Extract everything from the text buffer up until the next format
+/// control character.  Return that substring, and remove it from the
+/// input string.  Bogus control characters are left unchanged.  If the
+/// buffer starts with a valid control character, the output parameters
+/// are corresondingly updated (and the control character is stripped).
+static QString extract_cc608(
+    QString &text, bool teletextmode, int &color,
+    bool &isItalic, bool &isUnderline, bool &showedNonControl)
+{
+    QString result;
+    QString orig(text);
+
+    if (teletextmode)
+    {
+        result = text;
+        text = QString::null;
+        showedNonControl = true;
+        return result;
+    }
+
+    // Handle an initial control sequence.
+    if (text.length() >= 1 && text[0] >= 0x7000)
+    {
+        int op = text[0].unicode() - 0x7000;
+        isUnderline = (op & 0x1);
+        switch (op & ~1)
+        {
+        case 0x0e:
+            // color unchanged
+            isItalic = true;
+            break;
+        case 0x1e:
+            color = op >> 1;
+            isItalic = true;
+            break;
+        case 0x20:
+            // color unchanged
+            // italics unchanged
+            break;
+        default:
+            color = (op & 0xf) >> 1;
+            isItalic = false;
+            break;
+        }
+        text = text.mid(1);
+    }
+
+    // Copy the string into the result, up to the next control
+    // character.
+    int nextControl = text.indexOf(QRegExp("[\\x7000-\\x7fff]"));
+    if (nextControl < 0)
+    {
+        result = text;
+        text = QString::null;
+        showedNonControl = true;
+    }
+    else
+    {
+        result = text.left(nextControl);
+        // Print the space character before handling the next control
+        // character, otherwise the space character will be lost due
+        // to the text.trimmed() operation in the MythUIText
+        // constructor, combined with the left-justification of
+        // captions.
+        if (text[nextControl] < (0x7000 + 0x10))
+            result += " ";
+        text = text.mid(nextControl);
+        if (nextControl > 0)
+            showedNonControl = true;
+    }
+
+    return result;
+}
+
 void SubtitleScreen::DisplayCC608Subtitles(void)
 {
     static const QColor clr[8] =
     {
-        Qt::lightGray,   Qt::red,     Qt::green, Qt::yellow,
-        Qt::blue,    Qt::magenta, Qt::cyan,  Qt::white,
+        Qt::lightGray,   Qt::green,   Qt::blue,    Qt::cyan,
+        Qt::red,     Qt::yellow,  Qt::magenta, Qt::white,
     };
 
     if (!InitialiseFont(m_fontStretch) || !m_608reader)
@@ -769,50 +847,69 @@ void SubtitleScreen::DisplayCC608Subtitles(void)
 
     vector<CC608Text*>::iterator i = textlist->buffers.begin();
     bool teletextmode = (*i)->teletextmode;
+    int rows, cols;
     if (teletextmode != m_teletextmode)
     {
         m_teletextmode = teletextmode;
         SetFontParams();
     }
-    QFontMetrics font(*(gTextSubFont->GetFace()));
+    if (teletextmode)
+    {
+        // teletext expects a 24 row / 40 char grid
+        rows = 24+1;
+        cols = 40;
+    }
+    else
+    {
+        // CC has 15 rows, 32 columns
+        // - add one row top and bottom for margin
+        rows = 15+2;
+        cols = 32;
+    }
+
     QBrush bgfill = QBrush(QColor(0, 0, 0), Qt::SolidPattern);
-    int height = font.height() * (1 + PAD_HEIGHT);
-    int pad_width = font.maxWidth() * PAD_WIDTH;
 
     for (; i != textlist->buffers.end(); i++)
     {
         CC608Text *cc = (*i);
+        int color = 0;
+        bool isItalic = false, isUnderline = false;
+        bool first = true;
+        bool showedNonControl = false;
+        int x = 0, width = 0;
+        QString text(cc->text);
 
-        if (cc && (cc->text != QString::null))
+        for (int chunk = 0; text != QString::null; first = false, chunk++)
         {
-            int width = font.width(cc->text) + pad_width;
-            int x0, y0;
-            int x, y;
-            int rows, cols;
-
-            if (cc->teletextmode)
+            QString captionText =
+                extract_cc608(text, cc->teletextmode,
+                              color, isItalic, isUnderline,
+                              showedNonControl);
+            gTextSubFont->GetFace()->setItalic(isItalic);
+            gTextSubFont->GetFace()->setUnderline(isUnderline);
+            gTextSubFont->SetColor(clr[min(max(0, color), 7)]);
+            QFontMetrics font(*(gTextSubFont->GetFace()));
+            // XXX- could there be different heights across the same line?
+            int height = font.height() * (1 + PAD_HEIGHT);
+            int x0;
+            if (first)
             {
-                // teletext expects a 24 row / 40 char grid
-                rows = 24+1;
-                cols = 40;
-                x0 = cc->y;
-                y0 = cc->x;
+                x0 = teletextmode ? cc->y : (cc->x + 3);
+                // position as if we use a fixed size font
+                // - font size already has zoom factor applied
+
+                // center horizontally
+                x = m_xmid + (x0 - cols/2) * m_fontwidth;
             }
             else
             {
-                // CC has 15 rows, 32 columns
-                // - add one row top and bottom for margin
-                rows = 15+2;
-                cols = 32;
-                x0 = cc->x;  // +3 ?
-                y0 = cc->y;
+                x += width; // bump x by the previous width
             }
 
-            // position as if we use a fixed size font
-            // - font size already has zoom factor applied
-
-            // center horizontally
-            x = m_xmid + (x0 - cols/2) * m_fontwidth;
+            int pad_width = font.maxWidth() * PAD_WIDTH;
+            width = font.width(captionText) + pad_width;
+            int y0 = teletextmode ? cc->x : cc->y;
+            int y;
 
             if (y0 < rows/2)
                 // top half -- clamp up
@@ -831,6 +928,14 @@ void SubtitleScreen::DisplayCC608Subtitles(void)
             //if (maxy > surface->height)
             //    maxy = surface->height;
 
+            // Sometimes a line of caption text begins with a mid-row
+            // format control like italics or a color change.  The
+            // spec says the mid-row control also includes a space
+            // character.  But this looks clumsy when using a
+            // background, so we suppress it after the placement is
+            // calculated.
+            if (!showedNonControl)
+                continue;
             QRect rect(x, y, width, height);
 
             if (!teletextmode && m_useBackground)
@@ -842,15 +947,20 @@ void SubtitleScreen::DisplayCC608Subtitles(void)
                 shape->SetArea(MythRect(bgrect));
             }
 
-            gTextSubFont->SetColor(clr[min(max(0, cc->color), 7)]);
             MythUIText *text = new MythUIText(
-                   cc->text, *gTextSubFont, rect, rect, (MythUIType*)this,
-                   QString("cc608txt%1%2%3").arg(cc->x).arg(cc->y).arg(width));
+                captionText, *gTextSubFont, rect, rect, (MythUIType*)this,
+                QString("cc608txt%1%2%3%4").arg(cc->x).arg(cc->y)
+                .arg(width).arg(chunk));
             if (text)
                 text->SetJustification(Qt::AlignLeft);
+
             m_refreshArea = true;
-            LOG(VB_VBI, LOG_INFO, QString("x %1 y %2 String: '%3'")
-                                .arg(cc->x).arg(cc->y).arg(cc->text));
+
+            LOG(VB_VBI, LOG_INFO,
+                QString("x %1 y %2 uline=%4 ital=%5 "
+                        "color=%6 coord=%7,%8 String: '%3'")
+                .arg(cc->x).arg(cc->y).arg(captionText)
+                .arg(isUnderline).arg(isItalic).arg(color).arg(x).arg(y));
         }
     }
     textlist->lock.unlock();

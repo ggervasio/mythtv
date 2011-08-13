@@ -2168,7 +2168,7 @@ static void mpeg_decode_user_data(AVCodecContext *avctx,
         unsigned int cc_bytes = (cc_bits + 7 - 3) / 8;
         Mpeg1Context *s1 = avctx->priv_data;
         MpegEncContext *s = &s1->mpeg_enc_ctx;
-        if (buf_end - p >= (2+cc_bytes) && (s->tmp_scte_cc_len + 2 + 3*cc_count) < ATSC_CC_BUF_SIZE) {
+        if (buf_end - p >= (2+cc_bytes) && (s->tmp_scte_cc_len + 2 + 3*cc_count) < SCTE_CC_BUF_SIZE) {
             int scte_cnt_loc = s->tmp_scte_cc_len;
             uint8_t real_count = 0, marker = 1, i;
             GetBitContext gb;
