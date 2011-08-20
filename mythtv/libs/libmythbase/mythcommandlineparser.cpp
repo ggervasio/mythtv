@@ -616,17 +616,13 @@ QVariant MythCommandLineParser::operator[](const QString &name)
 
 QMap<QString,QString> MythCommandLineParser::GetSettingsOverride(void)
 {
-    QMap<QString,QString> smap;
-    if (!m_parsed.contains("overridesettings"))
-        return smap;
-
-    QVariantMap vmap = m_parsed["overridesettings"].toMap();
+    QMap<QString,QString> smap = toMap("overridesettings");
 
     if (!m_overridesImported)
     {
-        if (m_parsed.contains("overridesettingsfile"))
+        if (toBool("overridesettingsfile"))
         {
-            QString filename = m_parsed["overridesettingsfile"].toString();
+            QString filename = toString("overridesettingsfile");
             if (!filename.isEmpty())
             {
                 QFile f(filename);
@@ -648,11 +644,10 @@ QMap<QString,QString> MythCommandLineParser::GetSettingsOverride(void)
                             tokens[1].replace(QRegExp("^[\"']"), "");
                             tokens[1].replace(QRegExp("[\"']$"), "");
                             if (!tokens[0].isEmpty())
-                                vmap[tokens[0]] = QVariant(tokens[1]);
+                                smap[tokens[0]] = tokens[1];
                         }
                         len = f.readLine(buf, sizeof(buf) - 1);
                     }
-                    m_parsed["overridesettings"] = QVariant(vmap);
                 }
                 else
                 {
@@ -662,14 +657,24 @@ QMap<QString,QString> MythCommandLineParser::GetSettingsOverride(void)
                 }
             }
         }
+
+        if (toBool("windowed"))
+            smap["RunFrontendInWindow"] = "1";
+        else if (toBool("notwindowed"))
+            smap["RunFrontendInWindow"] = "0";
+
         m_overridesImported = true;
+
+        if (!smap.isEmpty())
+        {
+            QVariantMap vmap;
+            QMap<QString, QString>::const_iterator it;
+            for (it = smap.begin(); it != smap.end(); ++it)
+                vmap[it.key()] = QVariant(it.value());
+
+            m_parsed["overridesettings"] = QVariant(vmap);
+        }
     }
-
-    QVariantMap::const_iterator i;
-    for (i = vmap.begin(); i != vmap.end(); ++i)
-        smap[i.key()] = i.value().toString();
-
-    // add windowed boolean
 
     return smap;
 }
@@ -892,12 +897,10 @@ void MythCommandLineParser::addVersion(void)
 
 void MythCommandLineParser::addWindowed(bool def)
 {
-    if (def)
-        add(QStringList( QStringList() << "-nw" << "--no-windowed" ),
-            "notwindowed", false, 
-            "Prevent application from running in window.", "");
-    else
-        add(QStringList( QStringList() << "-w" << "--windowed" ), "windowed", 
+    add(QStringList( QStringList() << "-nw" << "--no-windowed" ),
+        "notwindowed", false, 
+        "Prevent application from running in window.", "");
+    add(QStringList( QStringList() << "-w" << "--windowed" ), "windowed", 
         false, "Force application to run in a window.", "");
 }
 
@@ -974,7 +977,7 @@ void MythCommandLineParser::addLogging(
         "If a full filename is given, that file will be used.\n"
         "This is typically used in combination with --daemon, and if used "
         "in combination with --pidfile, this can be used with log "
-        "rotaters, using the HUP call to inform MythTV to reload the "
+        "rotators, using the HUP call to inform MythTV to reload the "
         "file (currently disabled).", "");
     add(QStringList( QStringList() << "-q" << "--quiet"), "quiet", 0,
         "Don't log to the console (-q).  Don't log anywhere (-q -q)", "");
@@ -996,7 +999,7 @@ void MythCommandLineParser::addPIDFile(void)
             "Write PID of application to filename.",
             "Write the PID of the currently running process as a single "
             "line to this file. Used for init scripts to know what "
-            "process to terminate, and with --logfile and log rotaters "
+            "process to terminate, and with --logfile and log rotators "
             "to send a HUP signal to process to have it re-open files.");
 }
 
