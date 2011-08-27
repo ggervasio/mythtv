@@ -3686,7 +3686,7 @@ AppearanceSettings::AppearanceSettings()
 
 #if defined(USING_XRANDR) || CONFIG_DARWIN
     const vector<DisplayResScreen> scr = GetVideoModes();
-    if (scr.size())
+    if (!scr.empty())
         addChild(new VideoModeSettings());
 #endif
     VerticalConfigurationGroup* dates = new VerticalConfigurationGroup(false);

@@ -1874,7 +1874,7 @@ void MainServer::DoDeleteThread(DeleteStruct *ds)
     // sleep a little to let frontends reload the recordings list
     // after deleting a recording, then we can hammer the DB and filesystem
     sleep(3);
-    usleep(rand()%2000);
+    usleep(random()%2000);
 
     deletelock.lock();
 
@@ -1882,7 +1882,7 @@ void MainServer::DoDeleteThread(DeleteStruct *ds)
                               .arg(ds->m_chanid)
                               .arg(ds->m_recstartts.toString());
 
-    QString name = QString("deleteThread%1%2").arg(getpid()).arg(rand());
+    QString name = QString("deleteThread%1%2").arg(getpid()).arg(random());
     QFile checkFile(ds->m_filename);
 
     if (!MSqlQuery::testDBConnection())
@@ -4458,7 +4458,7 @@ void MainServer::BackendQueryDiskSpace(QStringList &strlist, bool consolidated,
         fsInfo.setPath(*(it++));
         fsInfo.setLocal((*(it++)).toInt() > 0);
         fsInfo.setFSysID(-1);
-        it++;   // Without this, the strlist gets out of whack
+        ++it;   // Without this, the strlist gets out of whack
         fsInfo.setGroupID((*(it++)).toInt());
         fsInfo.setBlockSize((*(it++)).toInt());
         fsInfo.setTotalSpace((*(it++)).toLongLong());
@@ -4553,7 +4553,7 @@ void MainServer::GetFilesystemInfos(QList<FileSystemInfo> &fsInfos)
         fsInfo.setPath(*(it++));
         fsInfo.setLocal((*(it++)).toInt() > 0);
         fsInfo.setFSysID(-1);
-        it++;
+        ++it;
         fsInfo.setGroupID((*(it++)).toInt());
         fsInfo.setBlockSize((*(it++)).toInt());
         fsInfo.setTotalSpace((*(it++)).toLongLong());
@@ -5321,23 +5321,23 @@ void MainServer::HandleGenPreviewPixmap(QStringList &slist, PlaybackSock *pbs)
     if (token.toLower() == "do_not_care")
     {
         token = QString("%1:%2")
-            .arg(pginfo.MakeUniqueKey()).arg(rand());
+            .arg(pginfo.MakeUniqueKey()).arg(random());
     }
     if (it != slist.end())
-        (time_fmt_sec = ((*it).toLower() == "s")), it++;
+        (time_fmt_sec = ((*it).toLower() == "s")), ++it;
     if (it != slist.end())
-        (time = (*it).toLongLong()), it++;
+        (time = (*it).toLongLong()), ++it;
     if (it != slist.end())
-        (outputfile = *it), it++;
+        (outputfile = *it), ++it;
     outputfile = (outputfile == "<EMPTY>") ? QString::null : outputfile;
     if (it != slist.end())
     {
-        width = (*it).toInt(&ok); it++;
+        width = (*it).toInt(&ok); ++it;
         width = (ok) ? width : -1;
     }
     if (it != slist.end())
     {
-        height = (*it).toInt(&ok); it++;
+        height = (*it).toInt(&ok); ++it;
         height = (ok) ? height : -1;
         has_extra_data = true;
     }

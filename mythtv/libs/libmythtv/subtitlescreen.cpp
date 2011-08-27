@@ -869,7 +869,7 @@ void SubtitleScreen::DisplayCC608Subtitles(void)
 
     QBrush bgfill = QBrush(QColor(0, 0, 0), Qt::SolidPattern);
 
-    for (; i != textlist->buffers.end(); i++)
+    for (; i != textlist->buffers.end(); ++i)
     {
         CC608Text *cc = (*i);
         int color = 0;
@@ -1008,7 +1008,7 @@ void SubtitleScreen::DisplayCC708Subtitles(void)
 
         QMutexLocker locker(&win.lock);
         vector<CC708String*> list = win.GetStrings();
-        if (list.size())
+        if (!list.empty())
             Display708Strings(win, i, video_aspect, list);
         for (uint j = 0; j < list.size(); j++)
             delete list[j];

@@ -35,7 +35,7 @@ XMLParse::XMLParse(void) : wmult(0.0), hmult(0.0)
 XMLParse::~XMLParse()
 {
     vector<LayerSet *>::iterator i = allTypes->begin();
-    for (; i != allTypes->end(); i++)
+    for (; i != allTypes->end(); ++i)
     {
         LayerSet *type = (*i);
         if (type)
@@ -50,7 +50,7 @@ bool XMLParse::LoadTheme(QDomElement &ele, QString winName, QString specialfile)
 
     QStringList searchpath = ui->GetThemeSearchPath();
     for (QStringList::const_iterator ii = searchpath.begin();
-        ii != searchpath.end(); ii++)
+        ii != searchpath.end(); ++ii)
     {
         QString themefile = *ii + specialfile + "ui.xml";
         if (doLoadTheme(ele, winName, themefile))
@@ -585,7 +585,7 @@ bool XMLParse::parseDefaultCategoryColors(QMap<QString, QString> &catColors)
     QFile f;
     QStringList searchpath = ui->GetThemeSearchPath();
     for (QStringList::const_iterator ii = searchpath.begin();
-        ii != searchpath.end(); ii++)
+        ii != searchpath.end(); ++ii)
     {
         f.setFileName(*ii + "categories.xml");
         if (f.open(QIODevice::ReadOnly))
@@ -2301,8 +2301,6 @@ void XMLParse::parseListTreeArea(LayerSet *container, QDomElement &element)
     int     leveloffset = 0;
     QString fontActive;
     QString fontInactive;
-    bool    showArrow = true;
-    bool    showScrollArrows = false;
     int     draworder = 0;
     QColor  grUnselectedBeg(Qt::black);
     QColor  grUnselectedEnd(80,80,80);
@@ -2368,16 +2366,6 @@ void XMLParse::parseListTreeArea(LayerSet *container, QDomElement &element)
                             .arg(fontFcn));
                     return;
                 }
-            }
-            else if (info.tagName() == "showarrow")
-            {
-                if (getFirstText(info).toLower() == "no")
-                    showArrow = false;
-            }
-            else if (info.tagName() == "showscrollarrows")
-            {
-                if (getFirstText(info).toLower() == "yes")
-                    showScrollArrows = true;
             }
             else if (info.tagName() == "gradient")
             {
@@ -2858,7 +2846,7 @@ void XMLParse::parseKeyboard(LayerSet *container, QDomElement &element)
     container->AddType(kbd);
 
     vector<UIType *>::iterator i = container->getAllTypes()->begin();
-    for (; i != container->getAllTypes()->end(); i++)
+    for (; i != container->getAllTypes()->end(); ++i)
     {
         UIType *type = (*i);
         if (UIKeyType *keyt = dynamic_cast<UIKeyType*>(type))
