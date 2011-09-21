@@ -133,8 +133,11 @@ void HDHRStreamHandler::run(void)
     int remainder = 0;
     while (_running_desired && !_error)
     {
-        UpdateFiltersFromStreamData();
-        UpdateFilters();
+        if (_tune_mode != hdhrTuneModeVChannel)
+        {
+            UpdateFiltersFromStreamData();
+            UpdateFilters();
+        }
 
         size_t read_size = 64 * 1024; // read about 64KB
         read_size /= VIDEO_DATA_PACKET_SIZE;
