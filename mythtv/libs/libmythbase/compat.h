@@ -256,6 +256,22 @@ static inline struct tm *gmtime_r(const time_t *timep, struct tm *result)
 }
 #endif 
 
+#if defined(USING_MINGW) && !defined(localtime_r)
+// FFmpeg libs already have a workaround, use it if the headers are included,
+// use this otherwise.
+static inline struct tm *localtime_r(const time_t *timep, struct tm *result)
+{
+    // this is safe, windows uses a thread local variable for localtime().
+    if (timep && result)
+    {
+        struct tm *win_tmp = localtime(timep);
+        memcpy(result, win_tmp, sizeof(struct tm));
+        return result;
+    }
+    return NULL;
+}
+#endif
+
 #ifdef USING_MINGW
 #define    timeradd(a, b, result)                       \
   do {                                                  \
@@ -330,6 +346,12 @@ static inline struct tm *gmtime_r(const time_t *timep, struct tm *result)
 #ifdef USING_MINGW
 #define fseeko(stream, offset, whence) fseeko64(stream, offset, whence)
 #define ftello(stream) ftello64(stream)
+#endif
+
+#ifdef _WIN32
+#define PREFIX64 "I64"
+#else
+#define PREFIX64 "ll"
 #endif
 
 #endif // __COMPAT_H__

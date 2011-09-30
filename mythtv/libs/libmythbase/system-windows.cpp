@@ -363,7 +363,7 @@ void MythSystemManager::ChildListRebuild()
         m_children = (HANDLE *)realloc(m_children, 
                                        m_childCount * sizeof(HANDLE));
 
-    for (i = m_pMap.begin(), j = 0; i != m_pMap.end(); ++i++)
+    for (i = m_pMap.begin(), j = 0; i != m_pMap.end(); ++i)
     {
         child = i.key();
         m_children[j++] = child;
@@ -636,7 +636,7 @@ void MythSystemWindows::Fork(time_t timeout)
     }
 
     // set up command args
-    QString cmd = GetCommand() + " " + GetArgs().join(" ");
+    QString cmd = GetCommand().replace('/','\\') + " " + GetArgs().join(" ");
     if (GetSetting("UseShell"))
         cmd.prepend("cmd.exe /c ");
 

@@ -34,20 +34,21 @@ class MTV_PUBLIC AudioPlayer
     void  SetEffDsp(int dsprate);
 
     void  CheckFormat(void);
-    void  SetNoAudio(void)        { m_no_audio_out = true;  }
-    bool  HasAudioIn(void) const  { return !m_no_audio_in;  }
-    bool  HasAudioOut(void) const { return !m_no_audio_out; }
+    void  SetNoAudio(void)           { m_no_audio_out = true;    }
+    bool  HasAudioIn(void) const     { return !m_no_audio_in;    }
+    bool  HasAudioOut(void) const    { return !m_no_audio_out;   }
+    bool  ControlsVolume(void) const { return m_controls_volume; }
 
     bool  Pause(bool pause);
     bool  IsPaused(void);
     void  PauseAudioUntilBuffered(void);
-    int   GetCodec(void)        { return m_codec;         }
-    int   GetNumChannels(void)  { return m_channels;      }
-    int   GetOrigChannels(void) { return m_orig_channels; }
-    int   GetSampleRate(void)   { return m_samplerate;    }
+    int   GetCodec(void)        const { return m_codec;         }
+    int   GetNumChannels(void)  const { return m_channels;      }
+    int   GetOrigChannels(void) const { return m_orig_channels; }
+    int   GetSampleRate(void)   const { return m_samplerate;    }
     uint  GetVolume(void);
     uint  AdjustVolume(int change);
-    float GetStretchFactor(void) { return m_stretchfactor;   }
+    float GetStretchFactor(void) const { return m_stretchfactor; }
     void  SetStretchFactor(float factor);
     bool  ToggleUpmix(void);
     bool  CanPassthrough(int samplerate, int channels, int codec, int profile);
@@ -94,6 +95,7 @@ class MTV_PUBLIC AudioPlayer
     QString      m_passthru_device;
     bool         m_no_audio_in;
     bool         m_no_audio_out;
+    bool         m_controls_volume;
     vector<MythTV::Visual*> m_visuals;
 };
 

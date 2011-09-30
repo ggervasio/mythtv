@@ -2103,12 +2103,13 @@ int AvFormatDecoder::ScanStreams(bool novideo)
 
         if (enc->codec_type == CODEC_TYPE_SUBTITLE)
         {
+            bool forced = ic->streams[i]->disposition & AV_DISPOSITION_FORCED;
             int lang = GetSubtitleLanguage(subtitleStreamCount, i);
             int lang_indx = lang_sub_cnt[lang]++;
             subtitleStreamCount++;
 
             tracks[kTrackTypeSubtitle].push_back(
-                StreamInfo(i, lang, lang_indx, ic->streams[i]->id, 0));
+                StreamInfo(i, lang, lang_indx, ic->streams[i]->id, 0, 0, false, false, forced));
 
             LOG(VB_PLAYBACK, LOG_INFO, LOC +
                 QString("Subtitle track #%1 is A/V stream #%2 "
@@ -3432,8 +3433,8 @@ bool AvFormatDecoder::ProcessSubtitlePacket(AVStream *curstream, AVPacket *pkt)
 
 bool AvFormatDecoder::ProcessRawTextPacket(AVPacket *pkt)
 {
-    if (!decodeAllSubtitles ||
-        selectedTrack[kTrackTypeRawText].av_stream_index != pkt->stream_index)
+    if (!(decodeAllSubtitles ||
+        selectedTrack[kTrackTypeRawText].av_stream_index == pkt->stream_index))
     {
         return false;
     }
@@ -3500,6 +3501,7 @@ QString AvFormatDecoder::GetTrackDesc(uint type, uint trackNo) const
     if (trackNo >= tracks[type].size())
         return "";
 
+    bool forced = tracks[type][trackNo].forced;
     int lang_key = tracks[type][trackNo].language;
     if (kTrackTypeAudio == type)
     {
@@ -3539,8 +3541,9 @@ QString AvFormatDecoder::GetTrackDesc(uint type, uint trackNo) const
         if (ringBuffer->IsDVD())
             lang_key = ringBuffer->DVD()->GetSubtitleLanguage(trackNo);
 
-        return QObject::tr("Subtitle") + QString(" %1: %2")
-            .arg(trackNo + 1).arg(iso639_key_toName(lang_key));
+        return QObject::tr("Subtitle") + QString(" %1: %2%3")
+            .arg(trackNo + 1).arg(iso639_key_toName(lang_key))
+            .arg(forced ? " (forced)" : "");
     }
     else
     {
@@ -4555,9 +4558,11 @@ inline bool AvFormatDecoder::DecoderWillDownmix(const AVCodecContext *ctx)
 {
     // Until ffmpeg properly implements dialnorm
     // use Myth internal downmixer if machines has FPU/SSE
-    if (!m_audio->CanDownmix() || !AudioOutputUtil::has_hardware_fpu())
+    if (m_audio->CanDownmix() && AudioOutputUtil::has_hardware_fpu())
+        return false;
+    if (!m_audio->CanDownmix())
         return true;
-
+    // use ffmpeg only for dolby codecs if we have to
     switch (ctx->codec_id)
     {
         case CODEC_ID_AC3:

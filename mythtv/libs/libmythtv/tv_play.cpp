@@ -828,7 +828,6 @@ TV::TV(void)
       db_browse_all_tuners(false),
       db_use_channel_groups(false), db_remember_last_channel_group(false),
 
-      arrowAccel(false),
       tryUnflaggedSkip(false),
       smartForward(false),
       ff_rew_repos(1.0f), ff_rew_reverse(false),
@@ -941,7 +940,6 @@ void TV::InitFromDB(void)
     kv["TimeFormat"]               = "h:mm AP";
     kv["ShortDateFormat"]          = "M/d";
 
-    kv["UseArrowAccels"]           = "1";
     kv["TryUnflaggedSkip"]         = "0";
 
     kv["ChannelGroupDefault"]      = "-1";
@@ -989,7 +987,6 @@ void TV::InitFromDB(void)
     db_channel_format      = kv["ChannelFormat"];
     db_time_format         = kv["TimeFormat"];
     db_short_date_format   = kv["ShortDateFormat"];
-    arrowAccel             = kv["UseArrowAccels"].toInt();
     tryUnflaggedSkip       = kv["TryUnflaggedSkip"].toInt();
     smartForward           = kv["SmartForward"].toInt();
     ff_rew_repos           = kv["FFRewReposTime"].toFloat() * 0.01f;
@@ -7772,11 +7769,16 @@ void TV::EditSchedule(const PlayerContext *ctx, int editType)
 void TV::ChangeVolume(PlayerContext *ctx, bool up)
 {
     ctx->LockDeletePlayer(__FILE__, __LINE__);
-    if (!ctx->player)
+    if (!ctx->player ||
+        ctx->player && !ctx->player->PlayerControlsVolume())
     {
         ctx->UnlockDeletePlayer(__FILE__, __LINE__);
         return;
     }
+
+    if (ctx->player->IsMuted() && up)
+        ToggleMute(ctx);
+
     uint curvol = ctx->player->AdjustVolume((up) ? +2 : -2);
     ctx->UnlockDeletePlayer(__FILE__, __LINE__);
 
@@ -7919,7 +7921,8 @@ void TV::ChangeAudioSync(PlayerContext *ctx, int dir)
 void TV::ToggleMute(PlayerContext *ctx, const bool muteIndividualChannels)
 {
     ctx->LockDeletePlayer(__FILE__, __LINE__);
-    if (!ctx->player || !ctx->player->HasAudioOut())
+    if (!ctx->player || !ctx->player->HasAudioOut() ||
+        !ctx->player->PlayerControlsVolume())
     {
         ctx->UnlockDeletePlayer(__FILE__, __LINE__);
         return;
@@ -8728,7 +8731,7 @@ PictureAttribute TV::NextPictureAdjustType(
     if ((kAdjustingPicture_Playback == type) && mp && mp->GetVideoOutput())
     {
         sup = mp->GetVideoOutput()->GetSupportedPictureAttributes();
-        if (mp->HasAudioOut())
+        if (mp->HasAudioOut() && mp->PlayerControlsVolume())
             sup |= kPictureAttributeSupported_Volume;
     }
     else if (kAdjustingPicture_Channel == type)
