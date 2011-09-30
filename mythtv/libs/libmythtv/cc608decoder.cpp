@@ -168,12 +168,14 @@ void CC608Decoder::FormatCCField(int tc, int field, int data)
         return;
     }
 
+#if 0
     if ((last_format_data[field&1] == data) &&
         (last_format_tc[field&1] == tc))
     {
         LOG(VB_VBI, LOG_DEBUG, "Format CC -- Duplicate");
         return;
     }
+#endif
 
     last_format_tc[field&1] = tc;
     last_format_data[field&1] = data;
