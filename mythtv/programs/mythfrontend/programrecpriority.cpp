@@ -1431,11 +1431,38 @@ void ProgramRecPriority::UpdateList()
             state = "normal";
         else if (m_nowMatch[progInfo->GetRecordingRuleID()] > 0)
             state = "running";
+        else
+            state = "warning";
 
         InfoMap infoMap;
         progInfo->ToMap(infoMap);
         item->SetTextFromMap(infoMap, state);
 
+        QString subtitle;
+        if (progInfo->subtitle != "(null)" &&
+            (progInfo->rectype == kSingleRecord ||
+             progInfo->rectype == kOverrideRecord ||
+             progInfo->rectype == kDontRecord))
+        {
+            subtitle = progInfo->subtitle;
+        }
+
+        QString matchInfo;
+        if (progInfo->GetRecordingStatus() == rsInactive)
+        {
+            matchInfo = QString("%1 %2")
+                        .arg(m_listMatch[progInfo->GetRecordingRuleID()])
+                        .arg(toString(progInfo->GetRecordingStatus(),
+                                      progInfo->GetRecordingRuleType()));
+        }
+        else
+            matchInfo = QString(tr("Recording %1 of %2"))
+                        .arg(m_recMatch[progInfo->GetRecordingRuleID()])
+                        .arg(m_listMatch[progInfo->GetRecordingRuleID()]);
+
+        subtitle = QString("(%1) %2").arg(matchInfo).arg(subtitle);
+
+        item->SetText(subtitle, "scheduleinfo", state);
         item->SetText(QString::number(progRecPriority), "progpriority", state);
         item->SetText(QString::number(finalRecPriority), "finalpriority", state);
 

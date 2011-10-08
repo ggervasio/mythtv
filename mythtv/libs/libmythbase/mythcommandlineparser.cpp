@@ -1287,6 +1287,11 @@ QStringList MythCommandLineParser::GetArgs(void) const
     return toStringList("_args");
 }
 
+QMap<QString,QString> MythCommandLineParser::GetExtra(void) const
+{
+    return toMap("_extra");
+}
+
 QString MythCommandLineParser::GetPassthrough(void) const
 {
     return toStringList("_passthrough").join(" ");
@@ -1777,7 +1782,7 @@ void MythCommandLineParser::addLogging(
                 ->SetGroup("Logging");
     add("--syslog", "syslog", "none", 
         "Set the syslog logging facility.\nSet to \"none\" to disable, "
-        "defaults to none", "")
+        "defaults to none.", "")
                 ->SetGroup("Logging");
     add("--nodblog", "nodblog", false, "Disable database logging.", "")
                 ->SetGroup("Logging");
