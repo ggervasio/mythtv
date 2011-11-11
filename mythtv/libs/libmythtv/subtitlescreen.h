@@ -22,7 +22,8 @@ class SubtitleScreen : public MythScreenType
     SubtitleScreen(MythPlayer *player, const char * name, int fontStretch);
     virtual ~SubtitleScreen();
 
-    void EnableSubtitles(int type);
+    void EnableSubtitles(int type, bool forced_only = false);
+    void DisableForcedSubtitles(void);
     int  EnabledSubtitleType(void) { return m_subtitleType; }
 
     void ClearAllSubtitles(void);
@@ -39,7 +40,7 @@ class SubtitleScreen : public MythScreenType
     void OptimiseDisplayedArea(void);
     void DisplayAVSubtitles(void);
     int  DisplayScaledAVSubtitles(const AVSubtitleRect *rect, QRect &bbox,
-                                  bool top, QRect &display,
+                                  bool top, QRect &display, int forced,
                                   long long displayuntil, long long late);
     void DisplayTextSubtitles(void);
     void SetFontParams(void);

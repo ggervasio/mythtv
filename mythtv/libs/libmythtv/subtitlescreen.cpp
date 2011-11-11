@@ -2,7 +2,7 @@
 
 #include "mythlogging.h"
 #include "mythfontproperties.h"
-#include "mythuitext.h"
+#include "mythuisimpletext.h"
 #include "mythuishape.h"
 #include "mythuiimage.h"
 #include "mythpainter.h"
@@ -52,8 +52,15 @@ SubtitleScreen::~SubtitleScreen(void)
 #endif
 }
 
-void SubtitleScreen::EnableSubtitles(int type)
+void SubtitleScreen::EnableSubtitles(int type, bool forced_only)
 {
+    if (forced_only)
+    {
+        SetVisible(true);
+        SetArea(MythRect());
+        return;
+    }
+
     m_subtitleType = type;
     if (m_subreader)
     {
@@ -67,6 +74,15 @@ void SubtitleScreen::EnableSubtitles(int type)
         m_708reader->SetEnabled(kDisplayCC708 == m_subtitleType);
     ClearAllSubtitles();
     SetVisible(m_subtitleType != kDisplayNone);
+    SetArea(MythRect());
+}
+
+void SubtitleScreen::DisableForcedSubtitles(void)
+{
+    if (kDisplayNone != m_subtitleType)
+        return;
+    ClearAllSubtitles();
+    SetVisible(false);
     SetArea(MythRect());
 }
 
@@ -94,9 +110,10 @@ bool SubtitleScreen::Create(void)
 void SubtitleScreen::Pulse(void)
 {
     ExpireSubtitles();
-    if (kDisplayAVSubtitle == m_subtitleType)
-        DisplayAVSubtitles();
-    else if (kDisplayTextSubtitle == m_subtitleType)
+
+    DisplayAVSubtitles(); // allow forced subtitles to work
+
+    if (kDisplayTextSubtitle == m_subtitleType)
         DisplayTextSubtitles();
     else if (kDisplayCC608 == m_subtitleType)
         DisplayCC608Subtitles();
@@ -194,6 +211,11 @@ void SubtitleScreen::DisplayAVSubtitles(void)
     if (!m_player || !m_subreader)
         return;
 
+    AVSubtitles* subs = m_subreader->GetAVSubtitles();
+    QMutexLocker lock(&(subs->lock));
+    if (subs->buffers.empty() && (kDisplayAVSubtitle != m_subtitleType))
+        return;
+
     VideoOutput    *videoOut = m_player->GetVideoOutput();
     VideoFrame *currentFrame = videoOut ? videoOut->GetLastShownFrame() : NULL;
 
@@ -204,8 +226,6 @@ void SubtitleScreen::DisplayAVSubtitles(void)
     QRect dummy;
     videoOut->GetOSDBounds(dummy, m_safeArea, tmp, tmp, tmp);
 
-    AVSubtitles* subs = m_subreader->GetAVSubtitles();
-    subs->lock.lock();
     while (!subs->buffers.empty())
     {
         const AVSubtitle subtitle = subs->buffers.front();
@@ -271,6 +291,7 @@ void SubtitleScreen::DisplayAVSubtitles(void)
                 {
                     bbox = QRect(0, 0, rect->w, uh);
                     uh = DisplayScaledAVSubtitles(rect, bbox, true, display,
+                                                  subtitle.forced,
                                                   currentFrame->timecode + displayfor, late);
                 }
                 else
@@ -280,6 +301,7 @@ void SubtitleScreen::DisplayAVSubtitles(void)
                 {
                     bbox = QRect(0, uh, rect->w, lh);
                     lh = DisplayScaledAVSubtitles(rect, bbox, false, display,
+                                                  subtitle.forced,
                                                   currentFrame->timecode + displayfor, late);
                 }
             }
@@ -296,11 +318,10 @@ void SubtitleScreen::DisplayAVSubtitles(void)
 #ifdef USING_LIBASS
     RenderAssTrack(currentFrame->timecode);
 #endif
-    subs->lock.unlock();
 }
 
 int SubtitleScreen::DisplayScaledAVSubtitles(const AVSubtitleRect *rect, QRect &bbox,
-                                             bool top, QRect &display,
+                                             bool top, QRect &display, int forced,
                                              long long displayuntil, long long late)
 {
     // crop image to reduce scaling time
@@ -447,10 +468,12 @@ int SubtitleScreen::DisplayScaledAVSubtitles(const AVSubtitleRect *rect, QRect &
     if (uiimage)
     {
         LOG(VB_PLAYBACK, LOG_INFO, LOC +
-            QString("Display AV sub until %1 ms").arg(displayuntil));
+            QString("Display %1AV sub until %1ms")
+           .arg(forced ? "FORCED " : "")
+           .arg(displayuntil));
         if (late > 50)
             LOG(VB_PLAYBACK, LOG_INFO, LOC +
-                QString("AV Sub was %1 ms late").arg(late));
+                QString("AV Sub was %1ms late").arg(late));
     }
 
     return (ysplit+1);
@@ -633,10 +656,10 @@ void SubtitleScreen::DrawTextSubtitles(QStringList &wrappedsubs,
             if (duration > 0)
                 m_expireTimes.insert(shape, start + duration);
         }
-        MythUIText* text = new MythUIText(subtitle, *gTextSubFont, rect,
-                                rect, this, QString("tsub%1%2").arg(x).arg(y));
-        if (text)
-            text->SetJustification(Qt::AlignCenter);
+        MythUISimpleText* text = new MythUISimpleText
+                                 (subtitle, *gTextSubFont, rect,
+                                  Qt::AlignCenter, this,
+                                  QString("tsub%1%2").arg(x).arg(y));
         y += height;
         LOG(VB_PLAYBACK, LOG_INFO, LOC + subtitle);
         m_refreshArea = true;
@@ -785,7 +808,7 @@ static QString extract_cc608(
         result = text.left(nextControl);
         // Print the space character before handling the next control
         // character, otherwise the space character will be lost due
-        // to the text.trimmed() operation in the MythUIText
+        // to the text.trimmed() operation in the MythUISimpleText
         // constructor, combined with the left-justification of
         // captions.
         if (text[nextControl] < (0x7000 + 0x10))
@@ -832,9 +855,9 @@ void SubtitleScreen::DisplayCC608Subtitles(void)
 
     if (textlist)
         textlist->lock.lock();
-    
+
     DeleteAllChildren();
-    
+
     if (!textlist)
         return;
 
@@ -947,12 +970,11 @@ void SubtitleScreen::DisplayCC608Subtitles(void)
                 shape->SetArea(MythRect(bgrect));
             }
 
-            MythUIText *text = new MythUIText(
-                captionText, *gTextSubFont, rect, rect, (MythUIType*)this,
-                QString("cc608txt%1%2%3%4").arg(cc->x).arg(cc->y)
-                .arg(width).arg(chunk));
-            if (text)
-                text->SetJustification(Qt::AlignLeft);
+            new MythUISimpleText(captionText, *gTextSubFont, rect,
+                                 Qt::AlignLeft, (MythUIType*)this,
+                                 QString("cc608txt%1%2%3%4")
+                                     .arg(cc->x).arg(cc->y)
+                                     .arg(width).arg(chunk));
 
             m_refreshArea = true;
 
@@ -1181,13 +1203,12 @@ void SubtitleScreen::Display708Strings(const CC708Window &win, int num,
 
             if (trimmed.size() && textwidth)
             {
-                MythUIText *text = new MythUIText(list[i]->str, *mythfont,
-                                                  rect, rect,
-                                                  (MythUIType*)this,
-                                                  QString("cc708text%1x%2").arg(row).arg(i));
+                MythUISimpleText *text = new MythUISimpleText
+                                         (list[i]->str, *mythfont,
+                                          rect, Qt::AlignCenter,
+                                          (MythUIType*)this,
+                                  QString("cc708text%1x%2").arg(row).arg(i));
                 m_708imageCache[num].append(text);
-                if (text)
-                    text->SetJustification(Qt::AlignLeft);
                 m_refreshArea = true;
             }
 
