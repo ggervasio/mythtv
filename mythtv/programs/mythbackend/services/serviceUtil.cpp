@@ -58,7 +58,8 @@ void FillProgramInfo( DTC::Program *pProgram,
         pProgram->setFileSize    ( pInfo->GetFilesize()         );
         pProgram->setLastModified( pInfo->GetLastModifiedTime() );
         pProgram->setProgramFlags( pInfo->GetProgramFlags()     );
-        pProgram->setHostname    ( pInfo->GetHostname()         );
+        pProgram->setFileName    ( pInfo->GetPathname()         );
+        pProgram->setHostName    ( pInfo->GetHostname()         );
 
         if (pInfo->GetOriginalAirDate().isValid())
             pProgram->setAirdate( pInfo->GetOriginalAirDate() );
@@ -95,13 +96,14 @@ void FillProgramInfo( DTC::Program *pProgram,
 
         if (bDetails)
         {
-            pRecording->setRecordId ( pInfo->GetRecordingRuleID()       );
-            pRecording->setRecGroup ( pInfo->GetRecordingGroup()        );
-            pRecording->setPlayGroup( pInfo->GetPlaybackGroup()         );
-            pRecording->setRecType  ( pInfo->GetRecordingRuleType()     );
-            pRecording->setDupInType( pInfo->GetDuplicateCheckSource()  );
-            pRecording->setDupMethod( pInfo->GetDuplicateCheckMethod()  );
-            pRecording->setEncoderId( pInfo->GetCardID()                );
+            pRecording->setRecordId    ( pInfo->GetRecordingRuleID()      );
+            pRecording->setRecGroup    ( pInfo->GetRecordingGroup()       );
+            pRecording->setPlayGroup   ( pInfo->GetPlaybackGroup()        );
+            pRecording->setStorageGroup( pInfo->GetStorageGroup()         );
+            pRecording->setRecType     ( pInfo->GetRecordingRuleType()    );
+            pRecording->setDupInType   ( pInfo->GetDuplicateCheckSource() );
+            pRecording->setDupMethod   ( pInfo->GetDuplicateCheckMethod() );
+            pRecording->setEncoderId   ( pInfo->GetCardID()               );
 
             const RecordingInfo ri(*pInfo);
             pRecording->setProfile( ri.GetProgramRecordingProfile() );
@@ -165,7 +167,7 @@ void FillRecRuleInfo( DTC::RecRule  *pRecRule,
                                              pRule->m_endtime) );
     pRecRule->setSeriesId       (  pRule->m_seriesid          );
     pRecRule->setProgramId      (  pRule->m_programid         );
-    pRecRule->setInetRef        (  pRule->m_inetref           );
+    pRecRule->setInetref        (  pRule->m_inetref           );
     pRecRule->setChanId         (  pRule->m_channelid         );
     pRecRule->setCallSign       (  pRule->m_station           );
     pRecRule->setDay            (  pRule->m_findday           );

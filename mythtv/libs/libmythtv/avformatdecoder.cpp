@@ -331,11 +331,7 @@ AvFormatDecoder::AvFormatDecoder(MythPlayer *parent,
     if (gCoreContext->GetNumSetting("CCBackground", 0))
         CC708Window::forceWhiteOnBlackText = true;
 
-    int x = gCoreContext->GetNumSetting("CommFlagFast", 0);
-    LOG(VB_COMMFLAG, LOG_INFO, LOC + QString("CommFlagFast: %1").arg(x));
-    if (x == 0)
-        special_decode = kAVSpecialDecode_None;
-    LOG(VB_COMMFLAG, LOG_INFO, LOC + QString("Special Decode Flags: 0x%1")
+    LOG(VB_PLAYBACK, LOG_DEBUG, LOC + QString("Special Decode Flags: 0x%1")
         .arg(special_decode, 0, 16));
 }
 
@@ -1485,9 +1481,15 @@ void AvFormatDecoder::ScanATSCCaptionStreams(int av_index)
     if (!pmt.IsVideo(i, "dvb"))
         return;
 
-    const desc_list_t desc_list = MPEGDescriptor::ParseOnlyInclude(
+    desc_list_t desc_list = MPEGDescriptor::ParseOnlyInclude(
         pmt.StreamInfo(i), pmt.StreamInfoLength(i),
         DescriptorID::caption_service);
+
+    const desc_list_t desc_list2 = MPEGDescriptor::ParseOnlyInclude(
+        pmt.ProgramInfo(), pmt.ProgramInfoLength(),
+        DescriptorID::caption_service);
+
+    desc_list.insert(desc_list.end(), desc_list2.begin(), desc_list2.end());
 
     for (uint j = 0; j < desc_list.size(); j++)
     {
@@ -2221,6 +2223,7 @@ void AvFormatDecoder::DoFastForwardSeek(long long desiredFrame, bool &needflush)
     return;
 }
 
+/// Returns DVD Subtitle language
 int AvFormatDecoder::GetSubtitleLanguage(uint subtitle_index, uint stream_index)
 {
     (void)subtitle_index;
@@ -2229,6 +2232,35 @@ int AvFormatDecoder::GetSubtitleLanguage(uint subtitle_index, uint stream_index)
                         "language", NULL, 0);
     return metatag ? get_canonical_lang(metatag->value) :
                      iso639_str3_to_key("und");
+}
+
+/// Return ATSC Closed Caption Language
+int AvFormatDecoder::GetCaptionLanguage(TrackTypes trackType, int service_num)
+{
+    int ret = -1;
+    for (uint i = 0; i < (uint) pmt_track_types.size(); i++)
+    {
+        if ((pmt_track_types[i] == trackType) &&
+            (pmt_tracks[i].stream_id == service_num))
+        {
+            ret = pmt_tracks[i].language;
+            if (!iso639_is_key_undefined(ret))
+                return ret;
+        }
+    }
+
+    for (uint i = 0; i < (uint) stream_track_types.size(); i++)
+    {
+        if ((stream_track_types[i] == trackType) &&
+            (stream_tracks[i].stream_id == service_num))
+        {
+            ret = stream_tracks[i].language;
+            if (!iso639_is_key_undefined(ret))
+                return ret;
+        }
+    }
+
+    return ret;
 }
 
 int AvFormatDecoder::GetAudioLanguage(uint audio_index, uint stream_index)
@@ -2635,16 +2667,6 @@ void AvFormatDecoder::UpdateCaptionTracksFromStreams(
     stream_track_types.clear();
     int av_index = selectedTrack[kTrackTypeVideo].av_stream_index;
     int lang = iso639_str3_to_key("und");
-    for (uint i = 0; i < 4; i++)
-    {
-        if (seen_608[i])
-        {
-            StreamInfo si(av_index, lang, 0/*lang_idx*/,
-                          i+1, false/*easy*/, false/*wide*/);
-            stream_tracks.push_back(si);
-            stream_track_types.push_back(kTrackTypeCC608);
-        }
-    }
     for (uint i = 1; i < 64; i++)
     {
         if (seen_708[i] && !ccX08_in_pmt[i+4])
@@ -2653,6 +2675,23 @@ void AvFormatDecoder::UpdateCaptionTracksFromStreams(
                           i, false/*easy*/, true/*wide*/);
             stream_tracks.push_back(si);
             stream_track_types.push_back(kTrackTypeCC708);
+        }
+    }
+    for (uint i = 0; i < 4; i++)
+    {
+        if (seen_608[i] && !ccX08_in_pmt[i])
+        {
+            if (0==i)
+                lang = GetCaptionLanguage(kTrackTypeCC708, 1);
+            else if (2==i)
+                lang = GetCaptionLanguage(kTrackTypeCC708, 2);
+            else
+                lang = iso639_str3_to_key("und");
+
+            StreamInfo si(av_index, lang, 0/*lang_idx*/,
+                          i+1, false/*easy*/, false/*wide*/);
+            stream_tracks.push_back(si);
+            stream_track_types.push_back(kTrackTypeCC608);
         }
     }
     UpdateATSCCaptionTracks();
