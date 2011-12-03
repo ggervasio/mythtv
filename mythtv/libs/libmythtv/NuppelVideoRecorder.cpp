@@ -367,10 +367,10 @@ void NuppelVideoRecorder::SetOptionsFromProfile(RecordingProfile *profile,
                                                 const QString &vbidev)
 {
     SetOption("videodevice", videodev);
-    V4LRecorder::SetOption("vbidevice", vbidev);
+    SetOption("vbidevice", vbidev);
     SetOption("tvformat", gCoreContext->GetSetting("TVFormat"));
-    V4LRecorder::SetOption("vbiformat", gCoreContext->GetSetting("VbiFormat"));
-    V4LRecorder::SetOption("audiodevice", audiodev);
+    SetOption("vbiformat", gCoreContext->GetSetting("VbiFormat"));
+    SetOption("audiodevice", audiodev);
 
     QString setting = QString::null;
     const Setting *tmp = profile->byName("videocodec");
@@ -1926,6 +1926,7 @@ void NuppelVideoRecorder::DoMJPEG(void) {}
 bool NuppelVideoRecorder::SpawnChildren(void)
 {
     childrenLive = true;
+    request_recording = true;
 
     write_thread = new NVRWriteThread(this);
     write_thread->start();
@@ -1942,6 +1943,7 @@ bool NuppelVideoRecorder::SpawnChildren(void)
 void NuppelVideoRecorder::KillChildren(void)
 {
     childrenLive = false;
+    request_recording = false;
     {
         QMutexLocker locker(&pauseLock);
         unpauseWait.wakeAll();
@@ -2664,7 +2666,7 @@ void NuppelVideoRecorder::FormatTT(struct VBIData *vbidata)
 void NuppelVideoRecorder::FormatTT(struct VBIData*) {}
 #endif // USING_V4L2
 
-void NuppelVideoRecorder::FormatCC(uint code1, uint code2)
+void NuppelVideoRecorder::FormatCC(int code1, int code2)
 {
     struct timeval tnow;
     gettimeofday (&tnow, &tzone);

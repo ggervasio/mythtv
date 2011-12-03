@@ -231,11 +231,6 @@ int V4LRecorder::OpenVBIDevice(void)
 #endif
     }
 
-    {
-        QMutexLocker locker(&pauseLock);
-        request_recording = true;
-    }
-
     vbi_fd = fd;
 
     return fd;
@@ -379,6 +374,7 @@ void V4LRecorder::RunVBIDevice(void)
                 LOG(VB_GENERAL, LOG_ERR, LOC + "Reading VBI data" + ENO);
             }
         }
+
     }
 
 #if defined(VBI_EXT_OLD)
@@ -388,8 +384,6 @@ void V4LRecorder::RunVBIDevice(void)
     if (buf)
         delete [] buf;
 #endif
-
-    CloseVBIDevice();
 }
 
 /* vim: set expandtab tabstop=4 shiftwidth=4: */
