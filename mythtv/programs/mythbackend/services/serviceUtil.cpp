@@ -19,11 +19,14 @@
 //
 //////////////////////////////////////////////////////////////////////////////
 
+#include <QUrl>
+
 #include "serviceUtil.h"
 
 #include "programinfo.h"
 #include "recordinginfo.h"
 #include "channelutil.h"
+#include "metadataimagehelper.h"
 
 /////////////////////////////////////////////////////////////////////////////
 //
@@ -109,6 +112,14 @@ void FillProgramInfo( DTC::Program *pProgram,
             pRecording->setProfile( ri.GetProgramRecordingProfile() );
         }
     }
+
+    if (!pInfo->GetInetRef().isEmpty() )
+    {
+        pProgram->setSerializeArtwork( true );
+
+        FillArtworkInfoList( pProgram->Artwork(), pInfo->GetInetRef(),
+                             pInfo->GetSeason());
+    }
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -145,6 +156,10 @@ void FillChannelInfo( DTC::ChannelInfo *pChannel,
     }
 
 }
+
+/////////////////////////////////////////////////////////////////////////////
+//
+/////////////////////////////////////////////////////////////////////////////
 
 void FillRecRuleInfo( DTC::RecRule  *pRecRule,
                       RecordingRule *pRule    )
@@ -201,4 +216,131 @@ void FillRecRuleInfo( DTC::RecRule  *pRecRule,
     pRecRule->setLastRecorded   (  pRule->m_lastRecorded      );
     pRecRule->setLastDeleted    (  pRule->m_lastDeleted       );
     pRecRule->setAverageDelay   (  pRule->m_averageDelay      );
+}
+
+/////////////////////////////////////////////////////////////////////////////
+//
+/////////////////////////////////////////////////////////////////////////////
+
+void FillArtworkInfoList( DTC::ArtworkInfoList *pArtworkInfoList,
+                          const QString        &sInetref,
+                          uint                  nSeason )
+{
+    ArtworkMap map = GetArtwork(sInetref, nSeason);
+
+    for (ArtworkMap::const_iterator i = map.begin();
+         i != map.end(); ++i)
+    {
+        DTC::ArtworkInfo *pArtInfo = pArtworkInfoList->AddNewArtworkInfo();
+        pArtInfo->setFileName(i.value().url);
+        switch (i.key())
+        {
+            case kArtworkFanart:
+                pArtInfo->setStorageGroup("Fanart");
+                pArtInfo->setType("fanart");
+                pArtInfo->setURL(QString("/Content/GetImageFile?StorageGroup=%1"
+                              "&FileName=%2").arg("Fanart")
+                              .arg(QUrl(i.value().url).path()));
+                break;
+            case kArtworkBanner:
+                pArtInfo->setStorageGroup("Banners");
+                pArtInfo->setType("banner");
+                pArtInfo->setURL(QString("/Content/GetImageFile?StorageGroup=%1"
+                              "&FileName=%2").arg("Fanart")
+                              .arg(QUrl(i.value().url).path()));
+                break;
+            case kArtworkCoverart:
+            default:
+                pArtInfo->setStorageGroup("Coverart");
+                pArtInfo->setType("coverart");
+                pArtInfo->setURL(QString("/Content/GetImageFile?StorageGroup=%1"
+                              "&FileName=%2").arg("Fanart")
+                              .arg(QUrl(i.value().url).path()));
+                break;
+        }
+    }
+}
+
+/////////////////////////////////////////////////////////////////////////////
+//
+/////////////////////////////////////////////////////////////////////////////
+
+void FillVideoMetadataInfo (
+                      DTC::VideoMetadataInfo *pVideoMetadataInfo,
+                      VideoMetadataListManager::VideoMetadataPtr pMetadata,
+                      bool          bDetails)
+{
+    pVideoMetadataInfo->setId(pMetadata->GetID());
+    pVideoMetadataInfo->setTitle(pMetadata->GetTitle());
+    pVideoMetadataInfo->setSubTitle(pMetadata->GetSubtitle());
+    pVideoMetadataInfo->setTagline(pMetadata->GetTagline());
+    pVideoMetadataInfo->setDirector(pMetadata->GetDirector());
+    pVideoMetadataInfo->setStudio(pMetadata->GetStudio());
+    pVideoMetadataInfo->setDescription(pMetadata->GetPlot());
+    pVideoMetadataInfo->setCertification(pMetadata->GetRating());
+    pVideoMetadataInfo->setInetref(pMetadata->GetInetRef());
+    pVideoMetadataInfo->setHomePage(pMetadata->GetHomepage());
+    pVideoMetadataInfo->setReleaseDate(QDateTime(pMetadata->GetReleaseDate()));
+    pVideoMetadataInfo->setAddDate(QDateTime(pMetadata->GetInsertdate()));
+    pVideoMetadataInfo->setUserRating(pMetadata->GetUserRating());
+    pVideoMetadataInfo->setLength(pMetadata->GetLength());
+    pVideoMetadataInfo->setSeason(pMetadata->GetSeason());
+    pVideoMetadataInfo->setEpisode(pMetadata->GetEpisode());
+    pVideoMetadataInfo->setParentalLevel(pMetadata->GetShowLevel());
+    pVideoMetadataInfo->setVisible(pMetadata->GetBrowse());
+    pVideoMetadataInfo->setWatched(pMetadata->GetWatched());
+    pVideoMetadataInfo->setProcessed(pMetadata->GetProcessed());
+    pVideoMetadataInfo->setFileName(pMetadata->GetFilename());
+    pVideoMetadataInfo->setHash(pMetadata->GetHash());
+    pVideoMetadataInfo->setHostName(pMetadata->GetHost());
+    pVideoMetadataInfo->setCoverart(pMetadata->GetCoverFile());
+    pVideoMetadataInfo->setFanart(pMetadata->GetFanart());
+    pVideoMetadataInfo->setBanner(pMetadata->GetBanner());
+    pVideoMetadataInfo->setScreenshot(pMetadata->GetScreenshot());
+    pVideoMetadataInfo->setTrailer(pMetadata->GetTrailer());
+    pVideoMetadataInfo->setSerializeArtwork( true );
+
+    if (bDetails)
+    {
+        if (!pMetadata->GetFanart().isEmpty())
+        {
+            DTC::ArtworkInfo *pArtInfo =
+                pVideoMetadataInfo->Artwork()->AddNewArtworkInfo();
+            pArtInfo->setStorageGroup("Fanart");
+            pArtInfo->setType("fanart");
+            pArtInfo->setURL(QString("/Content/GetImageFile?StorageGroup=%1"
+                              "&FileName=%2").arg("Fanart")
+                              .arg(pMetadata->GetFanart()));
+        }
+        if (!pMetadata->GetCoverFile().isEmpty())
+        {
+            DTC::ArtworkInfo *pArtInfo =
+                pVideoMetadataInfo->Artwork()->AddNewArtworkInfo();
+            pArtInfo->setStorageGroup("Coverart");
+            pArtInfo->setType("coverart");
+            pArtInfo->setURL(QString("/Content/GetImageFile?StorageGroup=%1"
+                              "&FileName=%2").arg("Coverart")
+                              .arg(pMetadata->GetCoverFile()));
+        }
+        if (!pMetadata->GetBanner().isEmpty())
+        {
+            DTC::ArtworkInfo *pArtInfo =
+                    pVideoMetadataInfo->Artwork()->AddNewArtworkInfo();
+            pArtInfo->setStorageGroup("Banners");
+            pArtInfo->setType("banner");
+            pArtInfo->setURL(QString("/Content/GetImageFile?StorageGroup=%1"
+                              "&FileName=%2").arg("Banners")
+                              .arg(pMetadata->GetBanner()));
+        }
+        if (!pMetadata->GetScreenshot().isEmpty())
+        {
+            DTC::ArtworkInfo *pArtInfo =
+                    pVideoMetadataInfo->Artwork()->AddNewArtworkInfo();
+            pArtInfo->setStorageGroup("Screenshots");
+            pArtInfo->setType("screenshot");
+            pArtInfo->setURL(QString("/Content/GetImageFile?StorageGroup=%1"
+                              "&FileName=%2").arg("Screenshots")
+                              .arg(pMetadata->GetScreenshot()));
+        }
+    }
 }

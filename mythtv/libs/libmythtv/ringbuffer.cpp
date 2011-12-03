@@ -352,7 +352,6 @@ void RingBuffer::CalcReadAheadThresh(void)
     const uint KB2   =   2*1024;
     const uint KB4   =   4*1024;
     const uint KB8   =   8*1024;
-    const uint KB16  =  16*1024;
     const uint KB32  =  32*1024;
     const uint KB64  =  64*1024;
     const uint KB128 = 128*1024;
@@ -366,8 +365,7 @@ void RingBuffer::CalcReadAheadThresh(void)
                      (estbitrate >  9000) ? KB256 :
                      (estbitrate >  5000) ? KB128 :
                      (estbitrate >  2500) ? KB64  :
-                     (estbitrate >  1000) ? KB32  :
-                     (estbitrate >   500) ? KB16  :
+                     (estbitrate >=  500) ? KB32  :
                      (estbitrate >   250) ? KB8   :
                      (estbitrate >   125) ? KB4   : KB2;
     if (rbs < CHUNK)
@@ -384,7 +382,7 @@ void RingBuffer::CalcReadAheadThresh(void)
     {
         if (low_buffers)
         {
-            LOG(VB_FILE, LOG_INFO, LOC +
+            LOG(VB_GENERAL, LOG_INFO, LOC +
                 "Buffering optimisations disabled.");
         }
         low_buffers = false;
@@ -809,7 +807,7 @@ void RingBuffer::run(void)
 
                 if (readtimeavg < 150 && 
                     (uint)readblocksize < (BUFFER_SIZE_MINIMUM >>2) &&
-                    readblocksize >= CHUNK)
+                    readblocksize >= CHUNK /* low_buffers */)
                 {
                     int old_block_size = readblocksize;
                     readblocksize = 3 * readblocksize / 2;
@@ -1366,6 +1364,9 @@ QString RingBuffer::GetStorageRate(void)
 
 QString RingBuffer::GetAvailableBuffer(void)
 {
+    if (type == kRingBuffer_DVD || type == kRingBuffer_BD)
+        return "N/A";
+
     int avail = (rbwpos >= rbrpos) ? rbwpos - rbrpos : bufferSize - rbrpos + rbwpos;
     return QString("%1%").arg((int)(((float)avail / (float)bufferSize) * 100.0));
 }

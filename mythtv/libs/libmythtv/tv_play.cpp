@@ -595,8 +595,12 @@ void TV::InitKeys(void)
             "Toggle ATSC CC"), "");
     REG_KEY("TV Playback", "TOGGLETTM", QT_TRANSLATE_NOOP("MythControls",
             "Toggle Teletext Menu"), "");
-    REG_KEY("TV Playback", "TOGGLETEXT", QT_TRANSLATE_NOOP("MythControls",
+    REG_KEY("TV Playback", ACTION_TOGGLEEXTTEXT, QT_TRANSLATE_NOOP("MythControls",
             "Toggle External Subtitles"), "");
+    REG_KEY("TV Playback", ACTION_ENABLEEXTTEXT, QT_TRANSLATE_NOOP("MythControls",
+            "Enable External Subtitles"), "");
+    REG_KEY("TV Playback", ACTION_DISABLEEXTTEXT, QT_TRANSLATE_NOOP("MythControls",
+            "Disable External Subtitles"), "");
     REG_KEY("TV Playback", "TOGGLERAWTEXT", QT_TRANSLATE_NOOP("MythControls",
             "Toggle Text Subtitles"), "");
 
@@ -1362,7 +1366,8 @@ void TV::GetStatus(void)
         status.insert("title", ctx->playingInfo->GetTitle());
         status.insert("subtitle", ctx->playingInfo->GetSubtitle());
         status.insert("starttime",
-                           ctx->playingInfo->GetRecordingStartTime().toString(Qt::ISODate));
+                           ctx->playingInfo->GetRecordingStartTime()
+                           .toUTC().toString(Qt::ISODate));
         status.insert("chanid",
                            QString::number(ctx->playingInfo->GetChanID()));
         status.insert("programid", ctx->playingInfo->GetProgramID());
@@ -1370,6 +1375,7 @@ void TV::GetStatus(void)
     ctx->UnlockPlayingInfo(__FILE__, __LINE__);
     osdInfo info;
     ctx->CalcPlayerSliderPosition(info);
+    ctx->LockDeletePlayer(__FILE__, __LINE__);
     if (ctx->player)
     {
         if (!info.text["totalchapters"].isEmpty())
@@ -1381,6 +1387,89 @@ void TV::GetStatus(void)
                 var << QVariant(chapter);
             status.insert("chaptertimes", var);
         }
+
+        uint capmode = ctx->player->GetCaptionMode();
+        QVariantMap tracks;
+
+        QStringList list = ctx->player->GetTracks(kTrackTypeSubtitle);
+        int currenttrack = -1;
+        if (!list.isEmpty() && (kDisplayAVSubtitle == capmode))
+            currenttrack = ctx->player->GetTrack(kTrackTypeSubtitle);
+        for (int i = 0; i < list.size(); i++)
+        {
+            if (i == currenttrack)
+                status.insert("currentsubtitletrack", list[i]);
+            tracks.insert("SELECTSUBTITLE_" + QString::number(i), list[i]);
+        }
+
+        list = ctx->player->GetTracks(kTrackTypeTeletextCaptions);
+        currenttrack = -1;
+        if (!list.isEmpty() && (kDisplayTeletextCaptions == capmode))
+            currenttrack = ctx->player->GetTrack(kTrackTypeTeletextCaptions);
+        for (int i = 0; i < list.size(); i++)
+        {
+            if (i == currenttrack)
+                status.insert("currentsubtitletrack", list[i]);
+            tracks.insert("SELECTTTC_" + QString::number(i), list[i]);
+        }
+
+        list = ctx->player->GetTracks(kTrackTypeCC708);
+        currenttrack = -1;
+        if (!list.isEmpty() && (kDisplayCC708 == capmode))
+            currenttrack = ctx->player->GetTrack(kTrackTypeCC708);
+        for (int i = 0; i < list.size(); i++)
+        {
+            if (i == currenttrack)
+                status.insert("currentsubtitletrack", list[i]);
+            tracks.insert("SELECTCC708_" + QString::number(i), list[i]);
+        }
+
+        list = ctx->player->GetTracks(kTrackTypeCC608);
+        currenttrack = -1;
+        if (!list.isEmpty() && (kDisplayCC608 == capmode))
+            currenttrack = ctx->player->GetTrack(kTrackTypeCC608);
+        for (int i = 0; i < list.size(); i++)
+        {
+            if (i == currenttrack)
+                status.insert("currentsubtitletrack", list[i]);
+            tracks.insert("SELECTCC608_" + QString::number(i), list[i]);
+        }
+
+        list = ctx->player->GetTracks(kTrackTypeRawText);
+        currenttrack = -1;
+        if (!list.isEmpty() && (kDisplayRawTextSubtitle == capmode))
+            currenttrack = ctx->player->GetTrack(kTrackTypeRawText);
+        for (int i = 0; i < list.size(); i++)
+        {
+            if (i == currenttrack)
+                status.insert("currentsubtitletrack", list[i]);
+            tracks.insert("SELECTRAWTEXT_" + QString::number(i), list[i]);
+        }
+
+        if (ctx->player->HasTextSubtitles())
+        {
+            if (kDisplayTextSubtitle == capmode)
+                status.insert("currentsubtitletrack", tr("External Subtitles"));
+            tracks.insert(ACTION_ENABLEEXTTEXT, tr("External Subtitles"));
+        }
+
+        status.insert("totalsubtitletracks", tracks.size());
+        if (!tracks.isEmpty())
+            status.insert("subtitletracks", tracks);
+
+        tracks.clear();
+        list = ctx->player->GetTracks(kTrackTypeAudio);
+        currenttrack = ctx->player->GetTrack(kTrackTypeAudio);
+        for (int i = 0; i < list.size(); i++)
+        {
+            if (i == currenttrack)
+                status.insert("currentaudiotrack", list[i]);
+            tracks.insert("SELECTAUDIO_" + QString::number(i), list[i]);
+        }
+
+        status.insert("totalaudiotracks", tracks.size());
+        if (!tracks.isEmpty())
+            status.insert("audiotracks", tracks);
 
         status.insert("playspeed", ctx->player->GetPlaySpeed());
         status.insert("audiosyncoffset", (long long)ctx->player->GetAudioTimecodeOffset());
@@ -1421,6 +1510,7 @@ void TV::GetStatus(void)
             }
         }
     }
+    ctx->UnlockDeletePlayer(__FILE__, __LINE__);
 
     ReturnPlayerLock(ctx);
 
@@ -2622,7 +2712,7 @@ void TV::timerEvent(QTimerEvent *te)
 
     if (!netCmd.isEmpty())
     {
-        PlayerContext *actx = GetPlayerWriteLock(-1, __FILE__, __LINE__);
+        PlayerContext *actx = GetPlayerReadLock(-1, __FILE__, __LINE__);
         ProcessNetworkControlCommand(actx, netCmd);
         ReturnPlayerLock(actx);
         handled = true;
@@ -3302,11 +3392,12 @@ bool TV::eventFilter(QObject *o, QEvent *e)
 {
     // We want to intercept all resize events sent to the main window
     if ((e->type() == QEvent::Resize))
-        return (GetMythMainWindow()!=o)?false:event(e);
+        return (GetMythMainWindow()!= o) ? false : event(e);
 
-    // We want to intercept all KeyPress events unless ignoreKeyPresses is set
+    // Intercept keypress events unless they need to be handled by a main UI
+    // screen (e.g. GuideGrid, ProgramFinder)
     if (QEvent::KeyPress == e->type())
-        return ignoreKeyPresses?false:event(e);
+        return ignoreKeyPresses ? false : event(e);
 
     if (e->type() == MythEvent::MythEventMessage ||
         e->type() == MythEvent::MythUserMessage  ||
@@ -3347,7 +3438,7 @@ bool TV::event(QEvent *e)
     if (QEvent::KeyPress == e->type())
     {
         bool handled = false;
-        PlayerContext *actx = GetPlayerWriteLock(-1, __FILE__, __LINE__);
+        PlayerContext *actx = GetPlayerReadLock(-1, __FILE__, __LINE__);
         if (actx->HasPlayer())
             handled = ProcessKeypress(actx, (QKeyEvent *)e);
         ReturnPlayerLock(actx);
@@ -3378,36 +3469,24 @@ bool TV::HandleTrackAction(PlayerContext *ctx, const QString &action)
         return false;
     }
 
-    bool handled = false;
+    bool handled = true;
 
-    if (action == "TOGGLETEXT")
-    {
-        handled = true;
+    if (action == ACTION_TOGGLEEXTTEXT)
         ctx->player->ToggleCaptions(kTrackTypeTextSubtitle);
-    }
+    else if (ACTION_ENABLEEXTTEXT == action)
+        ctx->player->EnableCaptions(kDisplayTextSubtitle);
+    else if (ACTION_DISABLEEXTTEXT == action)
+        ctx->player->DisableCaptions(kDisplayTextSubtitle);
     else if (ACTION_ENABLEFORCEDSUBS == action)
-    {
-        handled = true;
         ctx->player->SetAllowForcedSubtitles(true);
-    }
     else if (ACTION_DISABLEFORCEDSUBS == action)
-    {
-        handled = true;
         ctx->player->SetAllowForcedSubtitles(false);
-    }
     else if (action == ACTION_ENABLESUBS)
-    {
-        handled = true;
         ctx->player->SetCaptionsEnabled(true, true);
-    }
     else if (action == ACTION_DISABLESUBS)
-    {
-        handled = true;
         ctx->player->SetCaptionsEnabled(false, true);
-    }
     else if (action == ACTION_TOGGLESUBS && !browsehelper->IsBrowsing())
     {
-        handled = true;
         if (ccInputMode)
         {
             bool valid = false;
@@ -3452,41 +3531,34 @@ bool TV::HandleTrackAction(PlayerContext *ctx, const QString &action)
     {
         int type = to_track_type(action.mid(6));
         if (type == kTrackTypeTeletextMenu)
-        {
-            handled = true;
             ctx->player->EnableTeletext();
-        }
         else if (type >= kTrackTypeSubtitle)
-        {
-            handled = true;
             ctx->player->ToggleCaptions(type);
-        }
+        else
+            handled = false;
     }
     else if (action.left(6) == "SELECT")
     {
         int type = to_track_type(action.mid(6));
         int num = action.section("_", -1).toInt();
         if (type >= kTrackTypeAudio)
-        {
-            handled = true;
             ctx->player->SetTrack(type, num);
-        }
+        else
+            handled = false;
     }
     else if (action.left(4) == "NEXT" || action.left(4) == "PREV")
     {
         int dir = (action.left(4) == "NEXT") ? +1 : -1;
         int type = to_track_type(action.mid(4));
         if (type >= kTrackTypeAudio)
-        {
-            handled = true;
             ctx->player->ChangeTrack(type, dir);
-        }
         else if (action.right(2) == "CC")
-        {
-            handled = true;
             ctx->player->ChangeCaptionTrack(dir);
-        }
+        else
+            handled = false;
     }
+    else
+        handled = false;
 
     ctx->UnlockDeletePlayer(__FILE__, __LINE__);
 
@@ -4156,6 +4228,10 @@ bool TV::ActiveHandleAction(PlayerContext *ctx,
 
         SetActive(ctx, 0, false);
     }
+    else if (has_action(ACTION_ENABLEUPMIX, actions))
+        EnableUpmix(ctx, true);
+    else if (has_action(ACTION_DISABLEUPMIX, actions))
+        EnableUpmix(ctx, false);
     else if (has_action(ACTION_VOLUMEDOWN, actions))
         ChangeVolume(ctx, false);
     else if (has_action(ACTION_VOLUMEUP, actions))
@@ -4257,7 +4333,7 @@ bool TV::ToggleHandleAction(PlayerContext *ctx,
     else if (has_action("TOGGLESTRETCH", actions))
         ToggleTimeStretch(ctx);
     else if (has_action(ACTION_TOGGLEUPMIX, actions))
-        ToggleUpmix(ctx);
+        EnableUpmix(ctx, false, true);
     else if (has_action(ACTION_TOGGLESLEEP, actions))
         ToggleSleepTimer(ctx);
     else if (has_action(ACTION_TOGGLERECORD, actions) && islivetv)
@@ -7056,23 +7132,20 @@ bool TV::ClearOSD(const PlayerContext *ctx)
 void TV::ToggleOSD(PlayerContext *ctx, bool includeStatusOSD)
 {
     OSD *osd = GetOSDLock(ctx);
-    bool hideAll    = false;
-    bool showStatus = false;
-    if (ContextIsPaused(ctx, __FILE__, __LINE__) || !osd)
+    if (!osd)
     {
         ReturnOSDLock(ctx, osd);
         return;
     }
-    bool is_status_disp          = osd->IsWindowVisible("osd_status");
-    bool has_prog_info           = osd->HasWindow("program_info");
-    bool is_prog_info_disp       = osd->IsWindowVisible("program_info");
+
+    bool hideAll    = false;
+    bool showStatus = false;
+    bool paused     = ContextIsPaused(ctx, __FILE__, __LINE__);
+    bool is_status_disp    = osd->IsWindowVisible("osd_status");
+    bool has_prog_info     = osd->HasWindow("program_info");
+    bool is_prog_info_disp = osd->IsWindowVisible("program_info");
 
     ReturnOSDLock(ctx, osd);
-
-    ctx->LockPlayingInfo(__FILE__, __LINE__);
-    QString desc  = ctx->playingInfo->GetDescription();
-    QString title = ctx->playingInfo->GetTitle();
-    ctx->UnlockPlayingInfo(__FILE__, __LINE__);
 
     if (is_status_disp)
     {
@@ -7081,7 +7154,7 @@ void TV::ToggleOSD(PlayerContext *ctx, bool includeStatusOSD)
         else
             hideAll = true;
     }
-    else if (is_prog_info_disp)
+    else if (is_prog_info_disp && !paused)
     {
         hideAll = true;
     }
@@ -7108,9 +7181,9 @@ void TV::ToggleOSD(PlayerContext *ctx, bool includeStatusOSD)
         osdInfo info;
         if (ctx->CalcPlayerSliderPosition(info))
         {
-            info.text["title"] = tr("Position");
+            info.text["title"] = paused ? tr("Paused") : tr("Position");
             UpdateOSDStatus(ctx, info, kOSDFunctionalType_Default,
-                            kOSDTimeout_Med);
+                            paused ? kOSDTimeout_None : kOSDTimeout_Med);
             SetUpdateOSDPosition(true);
         }
         else
@@ -8026,18 +8099,23 @@ void TV::ChangeTimeStretch(PlayerContext *ctx, int dir, bool allowEdit)
     SetSpeedChangeTimer(0, __LINE__);
 }
 
-void TV::ToggleUpmix(PlayerContext *ctx)
+void TV::EnableUpmix(PlayerContext *ctx, bool enable, bool toggle)
 {
     if (!ctx->player || !ctx->player->HasAudioOut())
         return;
     QString text;
-    if (ctx->player->GetAudio()->ToggleUpmix())
-        text = tr("Upmixer On");
+
+    bool enabled = false;
+
+    ctx->LockDeletePlayer(__FILE__, __LINE__);
+    if (toggle)
+        enabled = ctx->player->GetAudio()->EnableUpmix(false, true);
     else
-        text = tr("Upmixer Off");
+        enabled = ctx->player->GetAudio()->EnableUpmix(enable);
+    ctx->UnlockDeletePlayer(__FILE__, __LINE__);
 
     if (!browsehelper->IsBrowsing())
-        SetOSDMessage(ctx, text);
+        SetOSDMessage(ctx, enabled ? tr("Upmixer On") : tr("Upmixer Off"));
 }
 
 // dir in 10ms jumps
@@ -8369,7 +8447,7 @@ void TV::customEvent(QEvent *e)
 
     if (me->ExtraDataCount() == 1)
     {
-        PlayerContext *ctx = GetPlayerWriteLock(0, __FILE__, __LINE__);
+        PlayerContext *ctx = GetPlayerReadLock(0, __FILE__, __LINE__);
         int value = me->ExtraData(0).toInt();
         if (message == ACTION_SETVOLUME)
             ChangeVolume(ctx, false, value);
@@ -8404,7 +8482,7 @@ void TV::customEvent(QEvent *e)
 
     if (message == ACTION_SCREENSHOT)
     {
-        PlayerContext *mctx = GetPlayerWriteLock(0, __FILE__, __LINE__);
+        PlayerContext *mctx = GetPlayerReadLock(0, __FILE__, __LINE__);
         int width = 0;
         int height = 0;
         QString filename;
@@ -9787,8 +9865,10 @@ void TV::OSDDialogEvent(int result, QString text, QString action)
         SetManualZoom(actx, true, tr("Zoom Mode ON"));
     else if (action == "TOGGLESTRETCH")
         ToggleTimeStretch(actx);
-    else if (action == ACTION_TOGGLEUPMIX)
-        ToggleUpmix(actx);
+    else if (action == ACTION_ENABLEUPMIX)
+        EnableUpmix(actx, true);
+    else if (action == ACTION_DISABLEUPMIX)
+        EnableUpmix(actx, false);
     else if (action.left(13) == "ADJUSTSTRETCH")
     {
         bool floatRead;
@@ -10091,6 +10171,8 @@ void TV::FillOSDMenuAudio(const PlayerContext *ctx, OSD *osd,
     bool avsync = true;
     bool visual = false;
     bool active = false;
+    bool upmixing = false;
+    bool canupmix = false;
     ctx->LockDeletePlayer(__FILE__, __LINE__);
     if (ctx->player)
     {
@@ -10101,6 +10183,8 @@ void TV::FillOSDMenuAudio(const PlayerContext *ctx, OSD *osd,
             curtrack = (uint) ctx->player->GetTrack(kTrackTypeAudio);
         avsync = (ctx->player->GetTrackCount(kTrackTypeVideo) > 0) &&
                   !tracks.empty();
+        upmixing = ctx->player->GetAudio()->IsUpmixing();
+        canupmix = ctx->player->GetAudio()->CanUpmix();
     }
     ctx->UnlockDeletePlayer(__FILE__, __LINE__);
 
@@ -10135,7 +10219,20 @@ void TV::FillOSDMenuAudio(const PlayerContext *ctx, OSD *osd,
             osd->DialogAddButton(tr("Disable Visualisation"),
                                  ACTION_DISABLEVISUALISATION);
         }
-        osd->DialogAddButton(tr("Toggle Audio Upmixer"), ACTION_TOGGLEUPMIX);
+        if (canupmix)
+        {
+            if (upmixing)
+            {
+                osd->DialogAddButton(tr("Disable Audio Upmixer"),
+                                     ACTION_DISABLEUPMIX);
+            }
+            else
+            {
+                osd->DialogAddButton(tr("Enable Audio Upmixer"),
+                                     ACTION_ENABLEUPMIX);
+            }
+        }
+
     }
     else if (category == "AUDIOTRACKS")
     {
@@ -10350,7 +10447,7 @@ void TV::FillOSDMenuSubtitles(const PlayerContext *ctx, OSD *osd,
                               QString category, const QString selected,
                               QString &currenttext, QString &backaction)
 {
-    // uint capmode  = 0;
+    uint capmode  = 0;
     QStringList av_tracks;
     QStringList cc708_tracks;
     QStringList cc608_tracks;
@@ -10368,7 +10465,7 @@ void TV::FillOSDMenuSubtitles(const PlayerContext *ctx, OSD *osd,
     ctx->LockDeletePlayer(__FILE__, __LINE__);
     if (ctx->player)
     {
-        // capmode      = ctx->player->GetCaptionMode();
+        capmode      = ctx->player->GetCaptionMode();
         enabled      = ctx->player->GetCaptionsEnabled();
         havetext     = ctx->player->HasTextSubtitles();
         forcedon     = ctx->player->GetAllowForcedSubtitles();
@@ -10409,7 +10506,7 @@ void TV::FillOSDMenuSubtitles(const PlayerContext *ctx, OSD *osd,
         backaction = "MAIN";
         currenttext = tr("Subtitles");
 
-        if (have_subs &&enabled)
+        if (have_subs && enabled)
             osd->DialogAddButton(tr("Disable Subtitles"), ACTION_DISABLESUBS);
         else if (have_subs && !enabled)
             osd->DialogAddButton(tr("Enable Subtitles"), ACTION_ENABLESUBS);
@@ -10472,7 +10569,18 @@ void TV::FillOSDMenuSubtitles(const PlayerContext *ctx, OSD *osd,
         backaction = "SUBTITLES";
         currenttext = tr("Text Subtitles");
         if (havetext)
-            osd->DialogAddButton(tr("Toggle External Subtitles"), "TOGGLETEXT");
+        {
+            if (capmode == kDisplayTextSubtitle)
+            {
+                osd->DialogAddButton(tr("Disable External Subtitles"),
+                                     ACTION_DISABLEEXTTEXT);
+            }
+            else
+            {
+                osd->DialogAddButton(tr("Enable External Subtitles"),
+                                     ACTION_ENABLEEXTTEXT);
+            }
+        }
         if (!text_tracks.empty())
         {
             for (uint i = 0; i < (uint)text_tracks.size(); i++)

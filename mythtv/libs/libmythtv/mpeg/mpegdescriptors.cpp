@@ -62,16 +62,7 @@ desc_list_t MPEGDescriptor::ParseOnlyInclude(
     while (off < len)
     {
         if ((data+off)[0] == excluded_descid)
-        {
-            LOG(VB_GENERAL, LOG_INFO, QString("Including Descriptor %1")
-                .arg(int((data+off)[0]),0,16));
             tmp.push_back(data+off);
-        }
-        else
-        {
-            LOG(VB_GENERAL, LOG_INFO, QString("Excluding Descriptor %1")
-                .arg(int((data+off)[0]),0,16));
-        }
         MPEGDescriptor desc(data+off, len-off);
         if (!desc.IsValid())
         {
@@ -412,8 +403,8 @@ QString MPEGDescriptor::toString() const
         SET_STRING(LinkageDescriptor);
     else if (DescriptorID::adaptation_field_data == DescriptorTag())
         SET_STRING(AdaptationFieldDataDescriptor);
-    else if (DescriptorID::ancillary_data == DescriptorTag())
-        SET_STRING(AncillaryDataDescriptor);
+    //else if (DescriptorID::ancillary_data == DescriptorTag())
+    //    SET_STRING(AncillaryDataDescriptor);
     else if (DescriptorID::cable_delivery_system == DescriptorTag())
         SET_STRING(CableDeliverySystemDescriptor);
     else if (DescriptorID::satellite_delivery_system == DescriptorTag())

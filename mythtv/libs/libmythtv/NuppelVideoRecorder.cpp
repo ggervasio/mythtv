@@ -356,6 +356,11 @@ void NuppelVideoRecorder::SetOption(const QString &opt, int value)
         V4LRecorder::SetOption(opt, value);
 }
 
+void NuppelVideoRecorder::SetOption(const QString &name, const QString &value)
+{
+    V4LRecorder::SetOption(name, value);
+}
+
 void NuppelVideoRecorder::SetOptionsFromProfile(RecordingProfile *profile,
                                                 const QString &videodev,
                                                 const QString &audiodev,
@@ -1961,6 +1966,7 @@ void NuppelVideoRecorder::KillChildren(void)
         vbi_thread->wait();
         delete vbi_thread;
         vbi_thread = NULL;
+        CloseVBIDevice();
     }
 }
 
@@ -2658,7 +2664,7 @@ void NuppelVideoRecorder::FormatTT(struct VBIData *vbidata)
 void NuppelVideoRecorder::FormatTT(struct VBIData*) {}
 #endif // USING_V4L2
 
-void NuppelVideoRecorder::FormatCC(int code1, int code2)
+void NuppelVideoRecorder::FormatCC(uint code1, uint code2)
 {
     struct timeval tnow;
     gettimeofday (&tnow, &tzone);

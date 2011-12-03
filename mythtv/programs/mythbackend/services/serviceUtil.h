@@ -24,8 +24,12 @@
 
 #include "datacontracts/programAndChannel.h"
 #include "datacontracts/recRule.h"
+#include "datacontracts/artworkInfoList.h"
+#include "datacontracts/videoMetadataInfo.h"
+
 #include "programinfo.h"
 #include "recordingrule.h"
+#include "videometadatalistmanager.h"
 
 void FillProgramInfo( DTC::Program *pProgram,
                       ProgramInfo  *pInfo,
@@ -39,4 +43,12 @@ void FillChannelInfo( DTC::ChannelInfo *pChannel,
 void FillRecRuleInfo( DTC::RecRule  *pRecRule,
                       RecordingRule *pRule              );
 
+void FillArtworkInfoList( DTC::ArtworkInfoList *pArtworkInfoList,
+                          const QString        &sInetref,
+                          uint                  nSeason );
+
+void FillVideoMetadataInfo (
+                      DTC::VideoMetadataInfo *pVideoMetadataInfo,
+                      VideoMetadataListManager::VideoMetadataPtr pMetadata,
+                      bool          bDetails);
 #endif

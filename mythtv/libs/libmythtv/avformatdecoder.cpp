@@ -980,7 +980,6 @@ int AvFormatDecoder::OpenFile(RingBuffer *rbuffer, bool novideo,
 
     if (!livetv && !ringBuffer->IsDisc())
     {
-        av_estimate_timings(ic, 0);
         // generate timings based on the video stream to avoid bogus ffmpeg
         // values for duration and bitrate
         av_update_stream_timings_video(ic);
@@ -1597,7 +1596,7 @@ void AvFormatDecoder::ScanTeletextCaptions(int av_index)
 
     for (uint i = 0; i < pmt.StreamCount(); i++)
     {
-        if (pmt.StreamType(i) != 6)
+        if (pmt.StreamType(i) != StreamID::PrivData)
             continue;
 
         const desc_list_t desc_list = MPEGDescriptor::ParseOnlyInclude(
@@ -1773,14 +1772,14 @@ int AvFormatDecoder::ScanStreams(bool novideo)
 
                 codec_is_mpeg = CODEC_IS_FFMPEG_MPEG(enc->codec_id);
 
+                // ffmpeg does not return a bitrate for several codecs and
+                // formats. Forcing it to 500000 ensures the ringbuffer does not
+                // use optimisations for low bitrate (audio and data) streams.
                 if (enc->bit_rate == 0)
-                    unknownbitrate = true;
-
-                // HACK -- begin
-                // ffmpeg is unable to compute H.264 bitrates in mpegts?
-                if (CODEC_IS_H264(enc->codec_id) && enc->bit_rate == 0)
+                {
                     enc->bit_rate = 500000;
-                // HACK -- end
+                    unknownbitrate = true;
+                }
 
                 StreamInfo si(i, 0, 0, 0, 0);
                 tracks[kTrackTypeVideo].push_back(si);
@@ -4006,7 +4005,7 @@ bool AvFormatDecoder::ProcessAudioPacket(AVStream *curstream, AVPacket *pkt,
     int ret             = 0;
     int data_size       = 0;
     bool firstloop      = true;
-    int frames          = -1;
+    int decoded_size    = -1;
 
     avcodeclock->lock();
     int audIdx = selectedTrack[kTrackTypeAudio].av_stream_index;
@@ -4069,9 +4068,7 @@ bool AvFormatDecoder::ProcessAudioPacket(AVStream *curstream, AVPacket *pkt,
             data_size = AVCODEC_MAX_AUDIO_FRAME_SIZE;
             ret = avcodec_decode_audio3(ctx, audioSamples,
                                         &data_size, &tmp_pkt);
-            frames = data_size /
-                (ctx->channels *
-                 av_get_bits_per_sample_fmt(ctx->sample_fmt)>>3);
+            decoded_size = data_size;
             already_decoded = true;
             reselectAudioTrack |= ctx->channels;
         }
@@ -4124,12 +4121,10 @@ bool AvFormatDecoder::ProcessAudioPacket(AVStream *curstream, AVPacket *pkt,
                     data_size = AVCODEC_MAX_AUDIO_FRAME_SIZE;
                     ret = avcodec_decode_audio3(ctx, audioSamples, &data_size,
                                                 &tmp_pkt);
-                    frames = data_size /
-                        (ctx->channels *
-                         av_get_bits_per_sample_fmt(ctx->sample_fmt)>>3);
+                    decoded_size = data_size;
                 }
                 else
-                    frames = -1;
+                    decoded_size = -1;
             }
             memcpy(audioSamples, tmp_pkt.data, tmp_pkt.size);
             data_size = tmp_pkt.size;
@@ -4152,9 +4147,7 @@ bool AvFormatDecoder::ProcessAudioPacket(AVStream *curstream, AVPacket *pkt,
                 data_size = AVCODEC_MAX_AUDIO_FRAME_SIZE;
                 ret = avcodec_decode_audio3(ctx, audioSamples, &data_size,
                                             &tmp_pkt);
-                frames = data_size /
-                    (ctx->channels *
-                     av_get_bits_per_sample_fmt(ctx->sample_fmt)>>3);
+                decoded_size = data_size;
             }
 
             // When decoding some audio streams the number of
@@ -4191,6 +4184,9 @@ bool AvFormatDecoder::ProcessAudioPacket(AVStream *curstream, AVPacket *pkt,
             extract_mono_channel(audSubIdx, &audioOut,
                                  (char *)audioSamples, data_size);
 
+        int frames = (ctx->channels <= 0 || decoded_size < 0) ? -1 :
+            decoded_size / (ctx->channels *
+                            av_get_bits_per_sample_fmt(ctx->sample_fmt)>>3);
         m_audio->AddAudioData((char *)audioSamples, data_size, temppts, frames);
         if (audioOut.do_passthru && !m_audio->NeedDecodingBeforePassthrough())
         {
