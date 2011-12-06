@@ -1926,7 +1926,6 @@ void NuppelVideoRecorder::DoMJPEG(void) {}
 bool NuppelVideoRecorder::SpawnChildren(void)
 {
     childrenLive = true;
-    request_recording = true;
 
     write_thread = new NVRWriteThread(this);
     write_thread->start();
@@ -1943,7 +1942,6 @@ bool NuppelVideoRecorder::SpawnChildren(void)
 void NuppelVideoRecorder::KillChildren(void)
 {
     childrenLive = false;
-    request_recording = false;
     {
         QMutexLocker locker(&pauseLock);
         unpauseWait.wakeAll();
