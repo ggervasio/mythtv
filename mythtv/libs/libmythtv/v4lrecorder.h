@@ -40,7 +40,7 @@ class MTV_PUBLIC V4LRecorder : public DTVRecorder
 
     virtual bool IsHelperRequested(void) const;
     virtual void FormatTT(struct VBIData *vbidata) {}
-    virtual void FormatCC(int code1, int code2) {}
+    virtual void FormatCC(uint code1, uint code2) {}
 
   protected:
     QString          audiodevice;
