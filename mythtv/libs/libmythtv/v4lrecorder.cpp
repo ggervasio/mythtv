@@ -40,16 +40,25 @@ V4LRecorder::V4LRecorder(TVRec *tv) :
     ntsc_vbi_width(0),        ntsc_vbi_start_line(0),
     ntsc_vbi_line_count(0),
     vbi608(NULL),
-    vbi_thread(NULL),         vbi_fd(-1)
+    vbi_thread(NULL),         vbi_fd(-1),
+    request_helper(false)
 {
 }
 
 V4LRecorder::~V4LRecorder()
 {
+    {
+        QMutexLocker locker(&pauseLock);
+        request_helper = false;
+        unpauseWait.wakeAll();
+    }
+
     if (vbi_thread)
     {
+        vbi_thread->wait();
         delete vbi_thread;
         vbi_thread = NULL;
+        CloseVBIDevice();
     }
 }
 
@@ -58,6 +67,12 @@ void V4LRecorder::StopRecording(void)
     DTVRecorder::StopRecording();
     while (vbi_thread && vbi_thread->isRunning())
         vbi_thread->wait();
+}
+
+bool V4LRecorder::IsHelperRequested(void) const
+{
+    QMutexLocker locker(&pauseLock);
+    return request_helper && request_recording;
 }
 
 void V4LRecorder::SetOption(const QString &name, const QString &value)
@@ -292,12 +307,12 @@ void V4LRecorder::RunVBIDevice(void)
         ptr_end   = buf + sz;
     }
 
-    while (IsRecordingRequested() && !IsErrored())
+    while (IsHelperRequested() && !IsErrored())
     {
         if (PauseAndWait())
             continue;
 
-        if (!IsRecordingRequested())
+        if (!IsHelperRequested() || IsErrored())
             break;
 
         struct timeval tv;

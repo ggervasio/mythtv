@@ -38,6 +38,7 @@ class MTV_PUBLIC V4LRecorder : public DTVRecorder
     void CloseVBIDevice(void);
     void RunVBIDevice(void);
 
+    virtual bool IsHelperRequested(void) const;
     virtual void FormatTT(struct VBIData *vbidata) {}
     virtual void FormatCC(int code1, int code2) {}
 
@@ -57,6 +58,7 @@ class MTV_PUBLIC V4LRecorder : public DTVRecorder
     VBIThread       *vbi_thread;
     QList<struct txtbuffertype*> textbuffer;
     int              vbi_fd;
+    volatile bool    request_helper;
 };
 
 class VBIThread : public MThread
