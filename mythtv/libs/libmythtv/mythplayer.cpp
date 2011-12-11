@@ -118,11 +118,11 @@ static const int toTrackType(int type)
     return 0;
 }
 
-MythPlayer::MythPlayer(bool muted)
-    : decoder(NULL),                decoder_change_lock(QMutex::Recursive),
+MythPlayer::MythPlayer(PlayerFlags flags)
+    : playerFlags(flags),
+      decoder(NULL),                decoder_change_lock(QMutex::Recursive),
       videoOutput(NULL),            player_ctx(NULL),
       decoderThread(NULL),          playerThread(NULL),
-      no_hardware_decoders(false),
       // Window stuff
       parentWidget(NULL), embedding(false), embedRect(QRect()),
       // State
@@ -135,7 +135,7 @@ MythPlayer::MythPlayer(bool muted)
       m_double_framerate(false),    m_double_process(false),
       m_deint_possible(true),
       livetv(false),
-      watchingrecording(false),     using_null_videoout(false),
+      watchingrecording(false),
       transcoding(false),
       hasFullPositionMap(false),    limitKeyRepeat(false),
       errorMsg(QString::null),      errorType(kError_None),
@@ -178,7 +178,7 @@ MythPlayer::MythPlayer(bool muted)
       // OSD stuff
       osd(NULL), reinit_osd(false), osdLock(QMutex::Recursive),
       // Audio
-      audio(this, muted),
+      audio(this, (flags & kAudioMuted)),
       // Picture-in-Picture stuff
       pip_active(false),            pip_visible(true),
       // Filters
@@ -350,9 +350,9 @@ bool MythPlayer::Pause(void)
     PauseBuffer();
     allpaused = decoderPaused && videoPaused && bufferPaused;
     {
-        if (using_null_videoout && decoder)
+        if (FlagIsSet(kVideoIsNull) && decoder)
             decoder->UpdateFramesPlayed();
-        else if (videoOutput && !using_null_videoout)
+        else if (videoOutput && !FlagIsSet(kVideoIsNull))
             framesPlayed = videoOutput->GetFramesPlayed();
     }
     pauseLock.unlock();
@@ -452,7 +452,7 @@ bool MythPlayer::InitVideo(void)
 
     PIPState pipState = player_ctx->GetPIPState();
 
-    if (using_null_videoout && decoder)
+    if (FlagIsSet(kVideoIsNull) && decoder)
     {
         MythCodecID codec = decoder->GetVideoCodecID();
         videoOutput = new VideoOutputNull();
@@ -531,7 +531,7 @@ bool MythPlayer::InitVideo(void)
 
 void MythPlayer::CheckExtraAudioDecode(void)
 {
-    if (using_null_videoout)
+    if (FlagIsSet(kVideoIsNull))
         return;
 
     bool force = false;
@@ -548,7 +548,7 @@ void MythPlayer::CheckExtraAudioDecode(void)
 
 void MythPlayer::ReinitOSD(void)
 {
-    if (videoOutput && !using_null_videoout)
+    if (videoOutput && !FlagIsSet(kVideoIsNull))
     {
         osdLock.lock();
         if (!is_current_thread(playerThread))
@@ -894,8 +894,7 @@ void MythPlayer::OpenDummy(void)
     SetDecoder(dec);
 }
 
-void MythPlayer::CreateDecoder(char *testbuf, int testreadsize,
-                               bool allow_libmpeg2, bool no_accel)
+void MythPlayer::CreateDecoder(char *testbuf, int testreadsize)
 {
     if (NuppelDecoder::CanHandle(testbuf, testreadsize))
         SetDecoder(new NuppelDecoder(this, *player_ctx->playingInfo));
@@ -904,14 +903,19 @@ void MythPlayer::CreateDecoder(char *testbuf, int testreadsize,
                                         testreadsize))
     {
         SetDecoder(new AvFormatDecoder(this, *player_ctx->playingInfo,
-                                       using_null_videoout,
-                                       allow_libmpeg2, no_accel,
-                                       player_ctx->GetSpecialDecode()));
+                                       playerFlags));
     }
 }
 
-int MythPlayer::OpenFile(uint retries, bool allow_libmpeg2)
+int MythPlayer::OpenFile(uint retries)
 {
+    // Disable hardware acceleration for second PBP
+    if ((player_ctx->IsPBP() && !player_ctx->IsPrimaryPBP()) &&
+        FlagIsSet(kDecodeAllowGPU))
+    {
+        playerFlags = (PlayerFlags)(playerFlags - kDecodeAllowGPU);
+    }
+
     isDummy = false;
 
     assert(player_ctx);
@@ -958,9 +962,7 @@ int MythPlayer::OpenFile(uint retries, bool allow_libmpeg2)
         }
 
         player_ctx->LockPlayingInfo(__FILE__, __LINE__);
-        bool noaccel = no_hardware_decoders ||
-                       (player_ctx->IsPBP() && !player_ctx->IsPrimaryPBP());
-        CreateDecoder(testbuf, testreadsize, allow_libmpeg2, noaccel);
+        CreateDecoder(testbuf, testreadsize);
         player_ctx->UnlockPlayingInfo(__FILE__, __LINE__);
         if (decoder || (bigTimer.elapsed() > timeout))
             break;
@@ -999,6 +1001,8 @@ int MythPlayer::OpenFile(uint retries, bool allow_libmpeg2)
     int ret = decoder->OpenFile(
         player_ctx->buffer, no_video_decode, testbuf, testreadsize);
     delete[] testbuf;
+
+    video_aspect = decoder->GetVideoAspect();
 
     if (ret < 0)
     {
@@ -1044,7 +1048,7 @@ void MythPlayer::SetVideoFilters(const QString &override)
     videoFiltersOverride.detach();
 
     videoFiltersForProgram = player_ctx->GetFilters(
-                             (using_null_videoout) ? "onefield" : "");
+                             (FlagIsSet(kVideoIsNull)) ? "onefield" : "");
 }
 
 void MythPlayer::InitFilters(void)
@@ -1750,7 +1754,7 @@ void MythPlayer::InitAVSync(void)
 
     refreshrate = MythDisplay::GetDisplayInfo(frame_interval).Rate();
 
-    if (!using_null_videoout)
+    if (!FlagIsSet(kVideoIsNull))
     {
         QString timing_type = videosync->getName();
 
@@ -1861,7 +1865,7 @@ void MythPlayer::AVSync(VideoFrame *buffer, bool limit_delay)
             avsync_audiopaused = true;
         }
     }
-    else if (!using_null_videoout)
+    else if (!FlagIsSet(kVideoIsNull))
     {
         // if we get here, we're actually going to do video output
         osdLock.lock();
@@ -2230,7 +2234,7 @@ void MythPlayer::EnableFrameRateMonitor(bool enable)
 
 void MythPlayer::VideoStart(void)
 {
-    if (!using_null_videoout && !player_ctx->IsPIP())
+    if (!FlagIsSet(kVideoIsNull) && !player_ctx->IsPIP())
     {
         QRect visible, total;
         float aspect, scaling;
@@ -2280,11 +2284,11 @@ void MythPlayer::VideoStart(void)
     m_double_framerate = false;
     m_scan_tracker     = 2;
 
-    if (player_ctx->IsPIP() && using_null_videoout)
+    if (player_ctx->IsPIP() && FlagIsSet(kVideoIsNull))
     {
         videosync = new DummyVideoSync(videoOutput, fr_int, 0, false);
     }
-    else if (using_null_videoout)
+    else if (FlagIsSet(kVideoIsNull))
     {
         videosync = new USleepVideoSync(videoOutput, fr_int, 0, false);
     }
@@ -2335,7 +2339,7 @@ bool MythPlayer::VideoLoop(void)
     else
         DisplayNormalFrame();
 
-    if (using_null_videoout && decoder)
+    if (FlagIsSet(kVideoIsNull) && decoder)
         decoder->UpdateFramesPlayed();
     else
         framesPlayed = videoOutput->GetFramesPlayed();
@@ -4105,9 +4109,7 @@ char *MythPlayer::GetScreenGrabAtFrame(uint64_t frameNum, bool absolute,
     memset(&orig,   0, sizeof(AVPicture));
     memset(&retbuf, 0, sizeof(AVPicture));
 
-    using_null_videoout = true;
-
-    if (OpenFile(0, false) < 0)
+    if (OpenFile(0) < 0)
     {
         LOG(VB_GENERAL, LOG_ERR, LOC + "Could not open file for preview.");
         return NULL;
