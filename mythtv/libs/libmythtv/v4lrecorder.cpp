@@ -329,10 +329,8 @@ void V4LRecorder::RunVBIDevice(void)
 
         if (nr <= 0)
         {
-#if 0
             if (nr==0)
-                LOG(VB_GENERAL, LOG_ERR, LOC + "vbi select timed out");
-#endif
+                LOG(VB_GENERAL, LOG_DEBUG, LOC + "vbi select timed out");
             continue; // either failed or timed out..
         }
         if (VBIMode::PAL_TT == vbimode)
@@ -389,7 +387,6 @@ void V4LRecorder::RunVBIDevice(void)
                 LOG(VB_GENERAL, LOG_ERR, LOC + "Reading VBI data" + ENO);
             }
         }
-
     }
 
 #if defined(VBI_EXT_OLD)

@@ -2846,6 +2846,8 @@ void NuppelVideoRecorder::ResetForNewFile(void)
 
     seektable->clear();
 
+    ClearStatistics();
+
     positionMapLock.lock();
     positionMap.clear();
     positionMapDelta.clear();

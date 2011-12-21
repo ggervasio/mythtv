@@ -150,9 +150,7 @@ bool TVRec::Init(void)
     if (!GetDevices(cardid, genOpt, dvbOpt, fwOpt))
         return false;
 
-    pendingRecLock.lock();
-    m_recStatus = rsUnknown;
-    pendingRecLock.unlock();
+    SetRecordingStatus(rsUnknown, __LINE__);
 
     // configure the Channel instance
     QString startchannel = GetStartChannel(cardid, genOpt.defaultinput);
@@ -220,7 +218,7 @@ void TVRec::TeardownAll(void)
         channel = NULL;
     }
 
-    TeardownRecorder(true);
+    TeardownRecorder(kFlagKillRec);
 
     SetRingBuffer(NULL);
 }
@@ -419,9 +417,7 @@ RecStatusType TVRec::StartRecording(const ProgramInfo *rcinfo)
     QMutexLocker lock(&stateChangeLock);
     QString msg("");
 
-    pendingRecLock.lock();
-    m_recStatus = rsAborted;
-    pendingRecLock.unlock();
+    SetRecordingStatus(rsAborted, __LINE__);
 
     // Flush out any pending state changes
     WaitForEventThreadSleep();
@@ -450,8 +446,7 @@ RecStatusType TVRec::StartRecording(const ProgramInfo *rcinfo)
 
         ClearFlags(kFlagCancelNextRecording);
 
-        QMutexLocker locker(&pendingRecLock);
-        m_recStatus = rsRecording;
+        SetRecordingStatus(rsRecording, __LINE__);
         return rsRecording;
     }
 
@@ -576,9 +571,7 @@ RecStatusType TVRec::StartRecording(const ProgramInfo *rcinfo)
             // Make sure scheduler is allowed to end this recording
             ClearFlags(kFlagCancelNextRecording);
 
-            pendingRecLock.lock();
-            m_recStatus = rsRecording;
-            pendingRecLock.unlock();
+            SetRecordingStatus(rsRecording, __LINE__);
         }
         else
         {
@@ -609,18 +602,14 @@ RecStatusType TVRec::StartRecording(const ProgramInfo *rcinfo)
         // Make sure scheduler is allowed to end this recording
         ClearFlags(kFlagCancelNextRecording);
 
-        pendingRecLock.lock();
-        m_recStatus = rsTuning;
-        pendingRecLock.unlock();
+        SetRecordingStatus(rsTuning, __LINE__);
         ChangeState(kState_RecordingOnly);
     }
     else if (!cancelNext && (GetState() == kState_WatchingLiveTV))
     {
         SetPseudoLiveTVRecording(new ProgramInfo(*rcinfo));
         recordEndTime = GetRecordEndTime(rcinfo);
-        pendingRecLock.lock();
-        m_recStatus = rsRecording;
-        pendingRecLock.unlock();
+        SetRecordingStatus(rsRecording, __LINE__);
 
         // We want the frontend to change channel for recording
         // and disable the UI for channel change, PiP, etc.
@@ -641,17 +630,13 @@ RecStatusType TVRec::StartRecording(const ProgramInfo *rcinfo)
         if (cancelNext)
         {
             msg += "But a user has canceled this recording";
-            pendingRecLock.lock();
-            m_recStatus = rsCancelled;
-            pendingRecLock.unlock();
+            SetRecordingStatus(rsCancelled, __LINE__);
         }
         else
         {
             msg += QString("But the current state is: %1")
                 .arg(StateToString(internalState));
-            pendingRecLock.lock();
-            m_recStatus = rsTunerBusy;
-            pendingRecLock.unlock();
+            SetRecordingStatus(rsTunerBusy, __LINE__);
         }
 
         if (curRecording && internalState == kState_RecordingOnly)
@@ -676,11 +661,12 @@ RecStatusType TVRec::StartRecording(const ProgramInfo *rcinfo)
             (curRecording->GetRecordingStatus() == rsFailed) &&
             (m_recStatus == rsRecording || m_recStatus == rsTuning))
         {
-            m_recStatus = rsFailed;
+            SetRecordingStatus(rsFailed, __LINE__, true);
         }
+        return m_recStatus;
     }
 
-    return m_recStatus;
+    return GetRecordingStatus();
 }
 
 RecStatusType TVRec::GetRecordingStatus(void) const
@@ -689,6 +675,29 @@ RecStatusType TVRec::GetRecordingStatus(void) const
     return m_recStatus;
 }
 
+void TVRec::SetRecordingStatus(
+    RecStatusType new_status, int line, bool have_lock)
+{
+    RecStatusType old_status;
+    if (have_lock)
+    {
+        old_status = m_recStatus;
+        m_recStatus = new_status;
+    }
+    else
+    {
+        pendingRecLock.lock();
+        old_status = m_recStatus;
+        m_recStatus = new_status;
+        pendingRecLock.unlock();
+    }
+
+    LOG(VB_RECORD, LOG_DEBUG, LOC +
+        QString("SetRecordingStatus(%1->%2) on line %3")
+        .arg(toString(old_status, kSingleRecord))
+        .arg(toString(new_status, kSingleRecord))
+        .arg(line));
+}
 
 /** \fn TVRec::StopRecording(bool killFile)
  *  \brief Changes from a recording state to kState_None.
@@ -706,9 +715,7 @@ void TVRec::StopRecording(bool killFile)
         WaitForEventThreadSleep();
         ClearFlags(kFlagCancelNextRecording|kFlagKillRec);
 
-        pendingRecLock.lock();
-        m_recStatus = rsUnknown;
-        pendingRecLock.unlock();
+        SetRecordingStatus(rsUnknown, __LINE__);
     }
 }
 
@@ -788,14 +795,13 @@ void TVRec::StartedRecording(RecordingInfo *curRec)
     SendMythSystemRecEvent("REC_STARTED", curRec);
 }
 
-/** \fn TVRec::FinishedRecording(RecordingInfo *curRec)
- *  \brief If not a premature stop, adds program to history of recorded
+/** \brief If not a premature stop, adds program to history of recorded
  *         programs. If the recording type is kFindOneRecord this find
  *         is removed.
  *  \sa ProgramInfo::FinishedRecording(bool prematurestop)
  *  \param curRec ProgramInfo or recording to mark as done
  */
-void TVRec::FinishedRecording(RecordingInfo *curRec)
+void TVRec::FinishedRecording(RecordingInfo *curRec, RecordingQuality *recq)
 {
     if (!curRec)
         return;
@@ -804,6 +810,19 @@ void TVRec::FinishedRecording(RecordingInfo *curRec)
     const QString recgrp = curRec->QueryRecordingGroup();
     curRec->SetRecordingGroup(recgrp);
 
+    bool is_good = true;
+    if (recq)
+    {
+        LOG((recq->IsDamaged()) ? VB_RECORD : VB_GENERAL, LOG_INFO,
+            QString("TVRec::FinishedRecording(%1) %2 recq:%3\n")
+            .arg(curRec->GetTitle())
+            .arg((recq->IsDamaged()) ? "damaged" : "good")
+            .arg(recq->toStringXML()));
+        is_good = !recq->IsDamaged();
+        delete recq;
+        recq = NULL;
+    }
+
     RecStatusTypes ors = curRec->GetRecordingStatus();
     // Set the final recording status
     if (curRec->GetRecordingStatus() == rsRecording)
@@ -811,6 +830,7 @@ void TVRec::FinishedRecording(RecordingInfo *curRec)
     else if (curRec->GetRecordingStatus() != rsRecorded)
         curRec->SetRecordingStatus(rsFailed);
     curRec->SetRecordingEndTime(mythCurrentDateTime());
+    is_good &= (curRec->GetRecordingStatus() == rsRecorded);
 
     // Figure out if this was already done for this recording
     bool was_finished = false;
@@ -866,9 +886,10 @@ void TVRec::FinishedRecording(RecordingInfo *curRec)
 
     // Get the width and set the videoprops
     uint avg_height = curRec->QueryAverageHeight();
-    curRec->SaveResolutionProperty(
-        (avg_height > 1000) ? VID_1080 :
-        ((avg_height > 700) ? VID_720 : VID_UNKNOWN));
+    curRec->SaveVideoProperties(
+        VID_1080 | VID_720 | VID_DAMAGED,
+        ((avg_height > 1000) ? VID_1080 : ((avg_height > 700) ? VID_720 : 0)) |
+        ((is_good) ? 0 : VID_DAMAGED));
 
     // Make sure really short recordings have positive run time.
     if (curRec->GetRecordingEndTime() <= curRec->GetRecordingStartTime())
@@ -900,7 +921,7 @@ void TVRec::FinishedRecording(RecordingInfo *curRec)
 
     // store recording in recorded table
     if (recgrp != "LiveTV")
-        curRec->FinishedRecording(curRec->GetRecordingStatus() != rsRecorded);
+        curRec->FinishedRecording(is_good);
 
     // send out REC_FINISHED message
     SendMythSystemRecEvent("REC_FINISHED", curRecording);
@@ -1025,24 +1046,21 @@ void TVRec::ChangeState(TVState nextState)
     WakeEventLoop();
 }
 
-/** \fn TVRec::TeardownRecorder(bool)
- *  \brief Tears down the recorder.
+/** \brief Tears down the recorder.
  *
  *   If a "recorder" exists, RecorderBase::StopRecording() is called.
  *   We then wait for "recorder_thread" to exit, and finally we delete
  *   "recorder".
  *
- *   If a RingBuffer instance exists, RingBuffer::StopReads() is called,
- *   and then we delete the RingBuffer instance.
+ *   If a RingBuffer instance exists, RingBuffer::StopReads() is called.
  *
- *   If killfile is true, the recording is deleted.
+ *   If request_flags include kFlagKillRec we mark the recording as
+ *   being damaged.
  *
- *   Finally, if there was a recording and it was not deleted,
+ *   Finally, if there was a recording and it was not damaged,
  *   schedule any post-processing jobs.
- *
- *  \param killFile if true the recorded file is deleted.
  */
-void TVRec::TeardownRecorder(bool killFile)
+void TVRec::TeardownRecorder(uint request_flags)
 {
     pauseNotify = false;
     ispip = false;
@@ -1056,10 +1074,13 @@ void TVRec::TeardownRecorder(bool killFile)
     }
     ClearFlags(kFlagRecorderRunning);
 
+    RecordingQuality *recq = NULL;
     if (recorder)
     {
         if (GetV4LChannel())
             channel->SetFd(-1);
+
+        recq = recorder->GetRecordingQuality();
 
         QMutexLocker locker(&stateChangeLock);
         delete recorder;
@@ -1079,6 +1100,11 @@ void TVRec::TeardownRecorder(bool killFile)
 
     if (curRecording)
     {
+        if (!!(request_flags & kFlagKillRec))
+            curRecording->SetRecordingStatus(rsFailed);
+
+        FinishedRecording(curRecording, recq);
+
         curRecording->MarkAsInUse(false, kRecorderInUseID);
         delete curRecording;
         curRecording = NULL;
@@ -3244,7 +3270,8 @@ void TVRec::SetRingBuffer(RingBuffer *rb)
     switchingBuffer = false;
 }
 
-void TVRec::RingBufferChanged(RingBuffer *rb, ProgramInfo *pginfo)
+void TVRec::RingBufferChanged(
+    RingBuffer *rb, ProgramInfo *pginfo, RecordingQuality *recq)
 {
     LOG(VB_GENERAL, LOG_INFO, LOC + "RingBufferChanged()");
 
@@ -3252,7 +3279,7 @@ void TVRec::RingBufferChanged(RingBuffer *rb, ProgramInfo *pginfo)
     {
         if (curRecording)
         {
-            FinishedRecording(curRecording);
+            FinishedRecording(curRecording, recq);
             curRecording->MarkAsInUse(false, kRecorderInUseID);
             delete curRecording;
         }
@@ -3513,35 +3540,18 @@ void TVRec::TuningShutdowns(const TuningRequest &request)
 
     if (newCardID || (request.flags & kFlagNoRec))
     {
-        bool finrun = false;
         if (HasFlags(kFlagDummyRecorderRunning))
         {
-            finrun = true;
-            FinishedRecording(curRecording);
+            FinishedRecording(curRecording, NULL);
             ClearFlags(kFlagDummyRecorderRunning);
-            curRecording->MarkAsInUse(false, kRecorderInUseID);
-        }
-
-        if (!!(request.flags & kFlagCloseRec) && curRecording)
-        {
-            if (!finrun)
-            {
-                finrun = true;
-                FinishedRecording(curRecording);
-            }
             curRecording->MarkAsInUse(false, kRecorderInUseID);
         }
 
         if (HasFlags(kFlagRecorderRunning) ||
             (curRecording && curRecording->GetRecordingStatus() == rsFailed))
         {
-            if (!finrun)
-            {
-                FinishedRecording(curRecording);
-                curRecording->MarkAsInUse(false, kRecorderInUseID);
-            }
             stateChangeLock.unlock();
-            TeardownRecorder(request.flags & kFlagKillRec);
+            TeardownRecorder(request.flags);
             stateChangeLock.lock();
             ClearFlags(kFlagRecorderRunning);
         }
@@ -3802,9 +3812,7 @@ MPEGStreamData *TVRec::TuningSignalCheck(void)
         return NULL;
     }
 
-    pendingRecLock.lock();
-    m_recStatus = newRecStatus;
-    pendingRecLock.unlock();
+    SetRecordingStatus(newRecStatus, __LINE__);
 
     if (curRecording)
     {
@@ -3813,7 +3821,7 @@ MPEGStreamData *TVRec::TuningSignalCheck(void)
                     .arg(curRecording->GetCardID())
                     .arg(curRecording->GetChanID())
                     .arg(curRecording->GetScheduledStartTime(ISODate))
-                    .arg(m_recStatus)
+                    .arg(newRecStatus)
                     .arg(curRecording->GetRecordingEndTime(ISODate)));
         gCoreContext->dispatch(me);
     }
@@ -3939,7 +3947,7 @@ void TVRec::TuningNewRecorder(MPEGStreamData *streamData)
     bool had_dummyrec = false;
     if (HasFlags(kFlagDummyRecorderRunning))
     {
-        FinishedRecording(curRecording);
+        FinishedRecording(curRecording, NULL);
         ClearFlags(kFlagDummyRecorderRunning);
         curRecording->MarkAsInUse(false, kRecorderInUseID);
         had_dummyrec = true;
@@ -4049,7 +4057,7 @@ void TVRec::TuningNewRecorder(MPEGStreamData *streamData)
             MythEvent me(message);
             gCoreContext->dispatch(me);
         }
-        TeardownRecorder(true);
+        TeardownRecorder(kFlagKillRec);
         goto err_ret;
     }
 
@@ -4120,7 +4128,7 @@ void TVRec::TuningRestartRecorder(void)
 
     if (curRecording)
     {
-        FinishedRecording(curRecording);
+        FinishedRecording(curRecording, NULL);
         curRecording->MarkAsInUse(false, kRecorderInUseID);
     }
 
@@ -4477,7 +4485,7 @@ bool TVRec::SwitchLiveTVRingBuffer(const QString & channum,
     {
         RecordingInfo *oldinfo = new RecordingInfo(*pi);
         delete pi;
-        FinishedRecording(oldinfo);
+        FinishedRecording(oldinfo, NULL);
         delete oldinfo;
     }
 
@@ -4531,7 +4539,7 @@ RecordingInfo *TVRec::SwitchRecordingRingBuffer(const RecordingInfo &rcinfo)
     if (!rb->IsOpen())
     {
         ri->SetRecordingStatus(rsFailed);
-        FinishedRecording(ri);
+        FinishedRecording(ri, NULL);
         ri->MarkAsInUse(false, kRecorderInUseID);
         delete ri;
         LOG(VB_RECORD, LOG_ERR, LOC + "SwitchRecordingRingBuffer() -> false 2");

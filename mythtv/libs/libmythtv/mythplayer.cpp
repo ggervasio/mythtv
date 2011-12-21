@@ -6,7 +6,6 @@
 #include <stdint.h>
 #include <cstdio>
 #include <cstdlib>
-#include <cassert>
 #include <cerrno>
 #include <ctime>
 #include <cmath>
@@ -446,72 +445,25 @@ bool MythPlayer::IsPlaying(uint wait_in_msec, bool wait_for) const
 
 bool MythPlayer::InitVideo(void)
 {
-    assert(player_ctx);
     if (!player_ctx)
         return false;
 
     PIPState pipState = player_ctx->GetPIPState();
 
-    if (FlagIsSet(kVideoIsNull) && decoder)
+    if (!decoder)
     {
-        MythCodecID codec = decoder->GetVideoCodecID();
-        videoOutput = new VideoOutputNull();
-        if (!videoOutput->Init(video_disp_dim.width(), video_disp_dim.height(),
-                               video_aspect, 0, QRect(), codec))
-        {
-            LOG(VB_GENERAL, LOG_ERR, LOC + "Unable to create null video out");
-            SetErrored(QObject::tr("Unable to create null video out"));
-            return false;
-        }
+        LOG(VB_GENERAL, LOG_ERR, LOC +
+            "Cannot create a video renderer without a decoder.");
+        return false;
     }
-    else
-    {
-        QWidget *widget = parentWidget;
 
-        if (!widget)
-        {
-            MythMainWindow *window = GetMythMainWindow();
-
-            widget = window->findChild<QWidget*>("video playback window");
-
-            if (!widget)
-            {
-                LOG(VB_GENERAL, LOG_ERR, "Couldn't find 'tv playback' widget");
-                widget = window->currentWidget();
-            }
-        }
-
-        if (!widget)
-        {
-            LOG(VB_GENERAL, LOG_ERR, "Couldn't find 'tv playback' widget. "
-                                     "Current widget doesn't exist. Exiting..");
-            SetErrored(QObject::tr("'tv playback' widget missing."));
-            return false;
-        }
-
-        QRect display_rect;
-        if (pipState == kPIPStandAlone)
-            display_rect = embedRect;
-        else
-            display_rect = QRect(0, 0, widget->width(), widget->height());
-
-        if (decoder)
-        {
-            videoOutput = VideoOutput::Create(
-                decoder->GetCodecDecoderName(),
-                decoder->GetVideoCodecID(),
-                decoder->GetVideoCodecPrivate(),
-                pipState,
-                video_disp_dim, video_aspect,
-                widget->winId(), display_rect, video_frame_rate);
-        }
-
-        if (videoOutput)
-        {
-            videoOutput->SetVideoScalingAllowed(true);
-            CheckExtraAudioDecode();
-        }
-    }
+    videoOutput = VideoOutput::Create(
+                    decoder->GetCodecDecoderName(),
+                    decoder->GetVideoCodecID(),
+                    decoder->GetVideoCodecPrivate(),
+                    pipState, video_disp_dim, video_aspect,
+                    parentWidget, embedRect,
+                    video_frame_rate, (uint)playerFlags);
 
     if (!videoOutput)
     {
@@ -520,6 +472,8 @@ bool MythPlayer::InitVideo(void)
         SetErrored(QObject::tr("Failed to initialize video output"));
         return false;
     }
+
+    CheckExtraAudioDecode();
 
     if (embedding && pipState == kPIPOff)
         videoOutput->EmbedInWidget(embedRect);
@@ -918,7 +872,6 @@ int MythPlayer::OpenFile(uint retries)
 
     isDummy = false;
 
-    assert(player_ctx);
     if (!player_ctx || !player_ctx->buffer)
         return -1;
 

@@ -6022,6 +6022,53 @@ NULL
             return false;
     }
 
+    if (dbver == "1288")
+    {
+        const char *updates[] = {
+"ALTER TABLE recordedprogram CHANGE COLUMN videoprop videoprop "
+"    SET('HDTV', 'WIDESCREEN', 'AVC', '720', '1080', 'DAMAGED') NOT NULL; ",
+NULL
+};
+        if (!performActualUpdate(updates, "1289", dbver))
+            return false;
+    }
+
+    if (dbver == "1289")
+    {
+        const char *updates[] = {
+"DROP TABLE IF EXISTS netvisionrssitems;",
+"DROP TABLE IF EXISTS netvisionsearchgrabbers;",
+"DROP TABLE IF EXISTS netvisionsites;",
+"DROP TABLE IF EXISTS netvisiontreegrabbers;",
+"DROP TABLE IF EXISTS netvisiontreeitems;",
+NULL
+};
+
+        if (!performActualUpdate(updates, "1290", dbver))
+            return false;
+    }
+
+    if (dbver == "1290")
+    {
+        const char *updates[] = {
+"ALTER TABLE logging "
+" ALTER COLUMN host SET DEFAULT '', "
+" ALTER COLUMN application SET DEFAULT '', "
+" ALTER COLUMN pid SET DEFAULT '0', "
+" ALTER COLUMN thread SET DEFAULT '', "
+" ALTER COLUMN level SET DEFAULT '0';",
+"ALTER TABLE logging "
+" ADD COLUMN tid INT(11) NOT NULL DEFAULT '0' AFTER pid, "
+" ADD COLUMN filename VARCHAR(255) NOT NULL DEFAULT '' AFTER thread, "
+" ADD COLUMN line INT(11) NOT NULL DEFAULT '0' AFTER filename, "
+" ADD COLUMN function VARCHAR(255) NOT NULL DEFAULT '' AFTER line;",
+NULL
+};
+
+        if (!performActualUpdate(updates, "1291", dbver))
+            return false;
+    }
+
     return true;
 }
 
