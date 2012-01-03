@@ -3985,6 +3985,28 @@ bool TV::DiscMenuHandleAction(PlayerContext *ctx, const QStringList &actions)
     return ctx->buffer->HandleAction(actions, pts);
 }
 
+bool TV::Handle3D(PlayerContext *ctx, const QString &action)
+{
+    ctx->LockDeletePlayer(__FILE__, __LINE__);
+    if (ctx->player && ctx->player->GetVideoOutput() &&
+        ctx->player->GetVideoOutput()->StereoscopicModesAllowed())
+    {
+        StereoscopicMode mode = kStereoscopicModeNone;
+        if (ACTION_3DSIDEBYSIDE == action)
+            mode = kStereoscopicModeSideBySide;
+        else if (ACTION_3DSIDEBYSIDEDISCARD == action)
+            mode = kStereoscopicModeSideBySideDiscard;
+        else if (ACTION_3DTOPANDBOTTOM == action)
+            mode = kStereoscopicModeTopAndBottom;
+        else if (ACTION_3DTOPANDBOTTOMDISCARD == action)
+            mode = kStereoscopicModeTopAndBottomDiscard;
+        ctx->player->GetVideoOutput()->SetStereoscopicMode(mode);
+        SetOSDMessage(ctx, StereoscopictoString(mode));
+    }
+    ctx->UnlockDeletePlayer(__FILE__, __LINE__);
+    return true;
+}
+
 bool TV::ActiveHandleAction(PlayerContext *ctx,
                             const QStringList &actions,
                             bool isDVD, bool isDVDStill)
@@ -4371,16 +4393,21 @@ bool TV::ToggleHandleAction(PlayerContext *ctx,
     return handled;
 }
 
-void TV::EnableVisualisation(const PlayerContext *ctx, bool enable, bool toggle)
+void TV::EnableVisualisation(const PlayerContext *ctx, bool enable,
+                            bool toggle, const QString &action)
 {
+    QString visualiser = QString("");
+    if (action.startsWith("VISUALISER"))
+        visualiser = action.mid(11);
+
     ctx->LockDeletePlayer(__FILE__, __LINE__);
     if (ctx->player && ctx->player->CanVisualise())
     {
-        bool want = enable;
-        if (toggle)
+        bool want = enable || !visualiser.isEmpty();
+        if (toggle && visualiser.isEmpty())
             want = !ctx->player->IsVisualising();
-        bool on = ctx->player->EnableVisualisation(want);
-        SetOSDMessage(ctx, on ? tr("Visualisation On") :
+        bool on = ctx->player->EnableVisualisation(want, visualiser);
+        SetOSDMessage(ctx, on ? ctx->player->GetVisualiserName() :
                                 tr("Visualisation Off"));
     }
     ctx->UnlockDeletePlayer(__FILE__, __LINE__);
@@ -10007,6 +10034,10 @@ void TV::OSDDialogEvent(int result, QString text, QString action)
         EditSchedule(actx, kScheduledRecording);
     else if (action == ACTION_VIEWSCHEDULED)
         EditSchedule(actx, kViewSchedule);
+    else if (action.startsWith("VISUALISER"))
+        EnableVisualisation(actx, true, false, action);
+    else if (action.startsWith("3D"))
+        Handle3D(actx, action);
     else if (HandleJumpToProgramAction(actx, QStringList(action)))
     {
     }
@@ -10172,14 +10203,14 @@ void TV::FillOSDMenuAudio(const PlayerContext *ctx, OSD *osd,
     uint curtrack = ~0;
     bool avsync = true;
     bool visual = false;
-    bool active = false;
+    QString active = QString("");
     bool upmixing = false;
     bool canupmix = false;
     ctx->LockDeletePlayer(__FILE__, __LINE__);
     if (ctx->player)
     {
         visual = ctx->player->CanVisualise();
-        active = ctx->player->IsVisualising();
+        active = ctx->player->GetVisualiserName();
         tracks = ctx->player->GetTracks(kTrackTypeAudio);
         if (!tracks.empty())
             curtrack = (uint) ctx->player->GetTrack(kTrackTypeAudio);
@@ -10211,16 +10242,13 @@ void TV::FillOSDMenuAudio(const PlayerContext *ctx, OSD *osd,
         }
         if (avsync)
             osd->DialogAddButton(tr("Adjust Audio Sync"), ACTION_TOGGELAUDIOSYNC);
-        if (visual && !active)
+        if (visual)
         {
-            osd->DialogAddButton(tr("Enable Visualisation"),
-                                 ACTION_ENABLEVISUALISATION);
+            osd->DialogAddButton(tr("Visualisation"),
+                                 "DIALOG_MENU_VISUALISATIONS_0", true,
+                                 selected == "VISUALISATIONS");
         }
-        if (visual && active)
-        {
-            osd->DialogAddButton(tr("Disable Visualisation"),
-                                 ACTION_DISABLEVISUALISATION);
-        }
+
         if (canupmix)
         {
             if (upmixing)
@@ -10247,6 +10275,25 @@ void TV::FillOSDMenuAudio(const PlayerContext *ctx, OSD *osd,
                                  false, i == curtrack);
         }
     }
+    else if (category == "VISUALISATIONS")
+    {
+        backaction = "AUDIO";
+        currenttext = tr("Visualisation");
+        osd->DialogAddButton(tr("None"),
+                             ACTION_DISABLEVISUALISATION, false,
+                             active.isEmpty());
+        QStringList visualisers;
+        ctx->LockDeletePlayer(__FILE__, __LINE__);
+        if (ctx->player)
+            visualisers = ctx->player->GetVisualiserList();
+        ctx->UnlockDeletePlayer(__FILE__, __LINE__);
+        for (int i = 0; i < visualisers.size(); i++)
+        {
+            osd->DialogAddButton(visualisers[i],
+                "VISUALISER_" + visualisers[i], false,
+                active == visualisers[i]);
+        }
+    }
 }
 
 void TV::FillOSDMenuVideo(const PlayerContext *ctx, OSD *osd,
@@ -10262,6 +10309,8 @@ void TV::FillOSDMenuVideo(const PlayerContext *ctx, OSD *osd,
     AspectOverrideMode aspectoverride = kAspect_Off;
     FrameScanType scan_type           = kScan_Ignore;
     bool scan_type_locked             = false;
+    bool stereoallowed                = false;
+    StereoscopicMode stereomode       = kStereoscopicModeNone;
 
     ctx->LockDeletePlayer(__FILE__, __LINE__);
     if (ctx->player)
@@ -10279,6 +10328,8 @@ void TV::FillOSDMenuVideo(const PlayerContext *ctx, OSD *osd,
             sup = vo->GetSupportedPictureAttributes();
             studio_levels = vo->GetPictureAttribute(kPictureAttribute_StudioLevels) > 0;
             autodetect = !vo->hasHWAcceleration();
+            stereoallowed = vo->StereoscopicModesAllowed();
+            stereomode = vo->GetStereoscopicMode();
         }
     }
     ctx->UnlockDeletePlayer(__FILE__, __LINE__);
@@ -10311,6 +10362,11 @@ void TV::FillOSDMenuVideo(const PlayerContext *ctx, OSD *osd,
                                      "DIALOG_MENU_ADJUSTPICTURE_0", true,
                                      selected == "ADJUSTPICTURE");
             }
+        }
+        if (stereoallowed)
+        {
+            osd->DialogAddButton(tr("3D"), "DIALOG_MENU_3D_0",
+                                 true, selected == "3D");
         }
         osd->DialogAddButton(tr("Advanced"), "DIALOG_MENU_ADVANCEDVIDEO_0",
                              true, selected == "ADVANCEDVIDEO");
@@ -10370,19 +10426,37 @@ void TV::FillOSDMenuVideo(const PlayerContext *ctx, OSD *osd,
             }
         }
     }
+    else if (category == "3D")
+    {
+        backaction = "VIDEO";
+        currenttext = tr("3D");
+        osd->DialogAddButton(tr("None"),
+                             ACTION_3DNONE, false,
+                             stereomode == kStereoscopicModeNone);
+        osd->DialogAddButton(tr("Side by Side"),
+                             ACTION_3DSIDEBYSIDE, false,
+                             stereomode == kStereoscopicModeSideBySide);
+        osd->DialogAddButton(tr("Discard Side by Side"),
+                             ACTION_3DSIDEBYSIDEDISCARD, false,
+                             stereomode == kStereoscopicModeSideBySideDiscard);
+        osd->DialogAddButton(tr("Top and Bottom"),
+                             ACTION_3DTOPANDBOTTOM, false,
+                             stereomode == kStereoscopicModeTopAndBottom);
+        osd->DialogAddButton(tr("Discard Top and Bottom"),
+                             ACTION_3DTOPANDBOTTOMDISCARD, false,
+                             stereomode == kStereoscopicModeTopAndBottomDiscard);
+    }
     else if (category == "ADVANCEDVIDEO")
     {
         osd->DialogAddButton(tr("Video Scan"),
                              "DIALOG_MENU_VIDEOSCAN_0", true,
                              selected == "VIDEOSCAN");
-        /*
         if (kScan_Progressive != scan_type)
         {
             osd->DialogAddButton(tr("Deinterlacer"),
                                  "DIALOG_MENU_DEINTERLACER_0", true,
                                  selected == "DEINTERLACER");
         }
-        */
         backaction = "VIDEO";
         currenttext = tr("Advanced");
     }
@@ -11308,8 +11382,8 @@ void TV::HandleDeinterlacer(PlayerContext *ctx, const QString &action)
 
     QString deint = action.mid(13);
     ctx->LockDeletePlayer(__FILE__, __LINE__);
-    if (ctx->player && ctx->player->GetVideoOutput())
-        ctx->player->GetVideoOutput()->SetupDeinterlace(true, deint);
+    if (ctx->player)
+        ctx->player->ForceDeinterlacer(deint);
     ctx->UnlockDeletePlayer(__FILE__, __LINE__);
 }
 

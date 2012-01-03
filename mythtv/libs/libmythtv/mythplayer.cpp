@@ -2185,6 +2185,25 @@ void MythPlayer::EnableFrameRateMonitor(bool enable)
     output_jmeter->SetNumCycles(rate);
 }
 
+void MythPlayer::ForceDeinterlacer(const QString &override)
+{
+    if (!videoOutput)
+        return;
+
+    bool normal = play_speed > 0.99f && play_speed < 1.01f && normal_speed;
+    videofiltersLock.lock();
+
+    m_double_framerate =
+         videoOutput->SetupDeinterlace(true, override) &&
+         videoOutput->NeedsDoubleFramerate();
+    m_double_process = videoOutput->IsExtraProcessingRequired();
+
+    if ((m_double_framerate && !CanSupportDoubleRate()) || !normal)
+        FallbackDeint();
+
+    videofiltersLock.unlock();
+}
+
 void MythPlayer::VideoStart(void)
 {
     if (!FlagIsSet(kVideoIsNull) && !player_ctx->IsPIP())
@@ -4887,10 +4906,24 @@ bool MythPlayer::IsVisualising(void)
     return false;
 }
 
-bool MythPlayer::EnableVisualisation(bool enable)
+QString MythPlayer::GetVisualiserName(void)
 {
     if (videoOutput)
-        return videoOutput->EnableVisualisation(&audio, enable);
+        return videoOutput->GetVisualiserName();
+    return QString("");
+}
+
+QStringList MythPlayer::GetVisualiserList(void)
+{
+    if (videoOutput)
+        return videoOutput->GetVisualiserList();
+    return QStringList();
+}
+
+bool MythPlayer::EnableVisualisation(bool enable, const QString &name)
+{
+    if (videoOutput)
+        return videoOutput->EnableVisualisation(&audio, enable, name);
     return false;
 }
 

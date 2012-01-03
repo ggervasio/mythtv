@@ -493,7 +493,7 @@ void SubtitleScreen::DisplayTextSubtitles(void)
         if (oldsafe != m_safeArea)
         {
             changed = true;
-            int height = (m_safeArea.height() * m_textFontZoom) / 1800;
+            int height = (m_safeArea.height() * m_textFontZoom) / 2000;
             gTextSubFont->GetFace()->setPixelSize(height);
             gTextSubFont->GetFace()->setItalic(false);
             gTextSubFont->GetFace()->setUnderline(false);
@@ -580,7 +580,7 @@ void SubtitleScreen::DisplayRawTextSubtitles(void)
         m_safeArea = m_player->GetVideoOutput()->GetSafeRect();
         if (oldsafe != m_safeArea)
         {
-            int height = (m_safeArea.height() * m_textFontZoom) / 1800;
+            int height = (m_safeArea.height() * m_textFontZoom) / 2000;
             gTextSubFont->GetFace()->setPixelSize(height);
             gTextSubFont->GetFace()->setItalic(false);
             gTextSubFont->GetFace()->setUnderline(false);
@@ -737,7 +737,7 @@ void SubtitleScreen::SetFontParams(void)
     //int xscale = m_teletextmode ? 40 : 36;
     int yscale = m_teletextmode ? 25 : 17;
     gTextSubFont->GetFace()->setPixelSize(m_safeArea.height() * m_608fontZoom
-                                          / (yscale * 1.2 * 100));
+                                          / (yscale * 1.1765f * 100));
     m_xmid = m_safeArea.width()/2;
     m_yoffset = 0;
 
