@@ -204,6 +204,8 @@ bool MusicCommon::CreateCommon(void)
         updateUIPlaylist();
     }
 
+    m_visualModes = MainVisual::Visualizations(true);
+
     if (m_visualizerVideo && m_visualModes.count() == 0)
     {
         LOG(VB_GENERAL, LOG_WARNING, QString("MusicCommon: Theme has a visualiser but none found - disabling"));
@@ -216,8 +218,6 @@ bool MusicCommon::CreateCommon(void)
         m_mainvisual = new MainVisual(m_visualizerVideo);
 
         m_fullscreenBlank = false;
-
-        m_visualModes = MainVisual::visualizers;
 
         m_randomVisualizer = gCoreContext->GetNumSetting("VisualRandomize", 0);
 
@@ -2125,7 +2125,7 @@ MythMenu* MusicCommon::createShuffleMenu(void)
     MythMenu *menu = new MythMenu(label, this, "shufflemenu");
 
     menu->AddItem(tr("None"),   qVariantFromValue((int)MusicPlayer::SHUFFLE_OFF));
-    menu->AddItem(tr("Randon"), qVariantFromValue((int)MusicPlayer::SHUFFLE_RANDOM));
+    menu->AddItem(tr("Random"), qVariantFromValue((int)MusicPlayer::SHUFFLE_RANDOM));
     menu->AddItem(tr("Smart"),  qVariantFromValue((int)MusicPlayer::SHUFFLE_INTELLIGENT));
     menu->AddItem(tr("Album"),  qVariantFromValue((int)MusicPlayer::SHUFFLE_ALBUM));
     menu->AddItem(tr("Artist"), qVariantFromValue((int)MusicPlayer::SHUFFLE_ARTIST));
