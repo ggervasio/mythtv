@@ -2267,18 +2267,6 @@ static HostComboBox *LongChannelFormat()
     return gc;
 }
 
-static GlobalCheckBox *LastFreeCard()
-{
-    GlobalCheckBox *bc = new GlobalCheckBox("LastFreeCard");
-    bc->setLabel(QObject::tr("Avoid conflicts between Live TV and "
-                 "scheduled shows"));
-    bc->setValue(false);
-    bc->setHelpText(QObject::tr("If enabled, Live TV will choose a tuner card "
-                    "that is less likely to have scheduled recordings "
-                    "rather than the best card available."));
-    return bc;
-}
-
 static GlobalCheckBox *LiveTVPriority()
 {
     GlobalCheckBox *bc = new GlobalCheckBox("LiveTVPriority");
@@ -3506,7 +3494,6 @@ GeneralSettings::GeneralSettings()
     general->addChild(ChannelOrdering());
     general->addChild(ChannelFormat());
     general->addChild(LongChannelFormat());
-    general->addChild(LastFreeCard());
     general->addChild(LiveTVPriority());
     addChild(general);
 

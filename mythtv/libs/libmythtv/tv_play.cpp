@@ -10932,7 +10932,8 @@ void TV::FillOSDMenuSource(const PlayerContext *ctx, OSD *osd,
                     InputInfo info;
                     info.inputid = currentinputs[i];
                     if (CardUtil::GetInputInfo(info))
-                        if (!sources.contains(info.sourceid))
+                        if (!sources.contains(info.sourceid) &&
+                            info.livetvorder)
                             sources[info.sourceid] = info;
                 }
             }
