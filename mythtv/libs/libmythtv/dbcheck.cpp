@@ -133,13 +133,6 @@ as the Plextor ConvertX.
 The 'hostname' field is another important field for all cards
 as it specifies which backend the capture card is connected to.
 
-The 'defaultinput' field is a another important field for all
-cards except "FIREWIRE", "FREEBOX", "HDHOMERUN", and "IMPORT" cards.
-It specifies which
-input of the card to use. This does not have to mean a specific
-physical input, but may also indicate a different use for the
-same physical input.
-
 The 'signal_timeout' and 'channel_timeout' indicate in
 milliseconds how long it should take to get a signal and
 channel lock respectively.
@@ -5470,6 +5463,16 @@ NULL
     if (dbver == "1261")
     {
         const char *updates[] = {
+"UPDATE program SET description = '' WHERE description IS NULL;",
+"UPDATE record SET description = '' WHERE description IS NULL;",
+"UPDATE recorded SET description = '' WHERE description IS NULL;",
+"UPDATE recordedprogram SET description = '' WHERE description IS NULL;",
+"UPDATE oldrecorded SET description = '' WHERE description IS NULL;",
+"UPDATE mythlog SET details = '' WHERE details IS NULL;",
+"UPDATE settings SET data = '' WHERE data IS NULL;",
+"UPDATE powerpriority SET selectclause = '' WHERE selectclause IS NULL;",
+"UPDATE customexample SET fromclause = '' WHERE fromclause IS NULL;",
+"UPDATE customexample SET whereclause = '' WHERE whereclause IS NULL;",
 "ALTER TABLE program MODIFY COLUMN description VARCHAR(16000) "
 "    NOT NULL default '';",
 "ALTER TABLE record MODIFY COLUMN description VARCHAR(16000) "
