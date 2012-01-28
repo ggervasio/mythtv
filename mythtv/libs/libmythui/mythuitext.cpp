@@ -346,6 +346,7 @@ void MythUIText::DrawSelf(MythPainter *p, int xoffset, int yoffset,
     FormatVector formats;
     QRect drawrect = m_drawRect.toQRect();
     drawrect.translate(xoffset, yoffset);
+    QRect canvas = m_Canvas.toQRect();
 
     int alpha = CalcAlpha(alphaMod);
 
@@ -360,23 +361,56 @@ void MythUIText::DrawSelf(MythPainter *p, int xoffset, int yoffset,
                                         outlineAlpha);
         outlineColor.setAlpha(outlineAlpha);
 
+        MythPoint  outline(outlineSize, outlineSize);
+        outline.NormPoint(); // scale it to screen resolution
+
         QPen pen;
         pen.setBrush(outlineColor);
-        pen.setWidth(outlineSize);
+        pen.setWidth(outline.x());
 
         range.start = 0;
         range.length = m_CutMessage.size();
         range.format.setTextOutline(pen);
         formats.push_back(range);
+
+        drawrect.setX(drawrect.x() - outline.x());
+        drawrect.setWidth(drawrect.width() + outline.x());
+        drawrect.setY(drawrect.y() - outline.y());
+        drawrect.setHeight(drawrect.height() + outline.y());
+
+        /* Canvas pos is where the view port (drawrect) pulls from, so
+         * it needs moved to the right for the left edge to be picked up*/
+        canvas.setX(canvas.x() + outline.x());
+        canvas.setWidth(canvas.width() + (outline.x() * 2));
+        canvas.setY(canvas.y() + outline.y());
+        canvas.setHeight(canvas.height() + (outline.y() * 2));
     }
 
-    p->DrawTextLayout(m_Canvas, m_Layouts, formats,
+    if (GetFontProperties()->hasShadow())
+    {
+        QPoint shadowOffset;
+        QColor shadowColor;
+        int    shadowAlpha;
+
+        GetFontProperties()->GetShadow(shadowOffset, shadowColor, shadowAlpha);
+
+        MythPoint  shadow(shadowOffset);
+        shadow.NormPoint(); // scale it to screen resolution
+
+        drawrect.setWidth(drawrect.width() + shadow.x());
+        drawrect.setHeight(drawrect.height() + shadow.y());
+
+        canvas.setWidth(canvas.width() + shadow.x());
+        canvas.setHeight(canvas.height() + shadow.y());
+    }
+
+    p->DrawTextLayout(canvas, m_Layouts, formats,
                       *GetFontProperties(), alpha, drawrect);
 }
 
 bool MythUIText::Layout(QString & paragraph, QTextLayout *layout,
                         bool & overflow, qreal width, qreal & height,
-                        qreal & last_line_width,
+                        bool force, qreal & last_line_width,
                         QRectF & min_rect, int & num_lines)
 {
     int last_line = 0;
@@ -392,12 +426,13 @@ bool MythUIText::Layout(QString & paragraph, QTextLayout *layout,
         // Try "visible" width first, so alignment works
         line.setLineWidth(width);
 
-        if (!m_MultiLine && line.textLength() < paragraph.size())
+        if (!force && !m_MultiLine && line.textLength() < paragraph.size())
         {
             if (m_Cutdown != Qt::ElideNone)
             {
                 QFontMetrics fm(GetFontProperties()->face());
-                paragraph = fm.elidedText(paragraph, m_Cutdown, width);
+                paragraph = fm.elidedText(paragraph, m_Cutdown,
+                                          width - fm.averageCharWidth());
                 return false;
             }
             // If text does not fit, then expand so canvas size is correct
@@ -424,8 +459,10 @@ bool MythUIText::Layout(QString & paragraph, QTextLayout *layout,
                 if (m_Cutdown != Qt::ElideNone)
                 {
                     QFontMetrics fm(GetFontProperties()->face());
-                    QString cut_line = fm.elidedText(paragraph.mid(last_line),
-                                                     Qt::ElideRight, width);
+                    QString cut_line = fm.elidedText
+                                       (paragraph.mid(last_line),
+                                        Qt::ElideRight,
+                                        width - fm.averageCharWidth());
                     paragraph = paragraph.left(last_line) + cut_line;
                     if (last_line == 0)
                         min_rect |= line.naturalTextRect();
@@ -477,13 +514,13 @@ bool MythUIText::LayoutParagraphs(const QStringList & paragraphs,
         para = *Ipara;
         saved_height = height;
         saved_rect = min_rect;
-        if (!Layout(para, layout, overflow, width, height,
+        if (!Layout(para, layout, overflow, width, height, false,
                     last_line_width, min_rect, num_lines))
         {
             // Again, with cut down
             min_rect = saved_rect;
             height = saved_height;
-            Layout(para, layout, overflow, width, height,
+            Layout(para, layout, overflow, width, height, true,
                    last_line_width, min_rect, num_lines);
             break;
         }
@@ -642,9 +679,6 @@ void MythUIText::FillCutMessage(void)
     }
     else
     {
-        LOG(VB_GUI, LOG_DEBUG, QString("FillCutmessage '%1'")
-            .arg(m_CutMessage));
-
         QStringList templist;
         QStringList::iterator it;
 

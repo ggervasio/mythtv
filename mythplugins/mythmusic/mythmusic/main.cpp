@@ -29,12 +29,17 @@
 #include "playlisteditorview.h"
 #include "playlistview.h"
 #include "playlistcontainer.h"
-#include "globalsettings.h"
 #include "dbcheck.h"
 #include "filescanner.h"
 #include "musicplayer.h"
 #include "config.h"
 #include "mainvisual.h"
+#include "generalsettings.h"
+#include "playersettings.h"
+#include "visualizationsettings.h"
+#include "importsettings.h"
+#include "ratingsettings.h"
+
 #ifndef USING_MINGW
 #include "cdrip.h"
 #include "importmusic.h"
@@ -190,14 +195,14 @@ static void loadMusic()
     if (!startdir.isEmpty() && !startdir.endsWith("/"))
         startdir += "/";
 
-    Metadata::SetStartdir(startdir);
+    gMusicData->musicDir = startdir;
 
     Decoder::SetLocationFormatUseTags();
 
     // Only search music files if a directory was specified & there
     // is no data in the database yet (first run).  Otherwise, user
     // can choose "Setup" option from the menu to force it.
-    if (!startdir.isEmpty() && !musicdata_exists)
+    if (!gMusicData->musicDir.isEmpty() && !musicdata_exists)
     {
         FileScanner *fscan = new FileScanner();
         fscan->SearchDir(startdir);
@@ -217,13 +222,12 @@ static void loadMusic()
     // Set the various track formatting modes
     Metadata::setArtistAndTrackFormats();
 
-    AllMusic *all_music = new AllMusic(startdir);
+    AllMusic *all_music = new AllMusic();
 
     //  Load all playlists into RAM (once!)
     PlaylistContainer *all_playlists = new PlaylistContainer(
             all_music, gCoreContext->GetHostName());
 
-    gMusicData->startdir = startdir;
     gMusicData->all_playlists = all_playlists;
     gMusicData->all_music = all_music;
     gMusicData->initialized = true;
@@ -332,43 +336,69 @@ static void MusicCallback(void *data, QString &selection)
     }
     else if (sel == "settings_scan")
     {
-        if ("" != gMusicData->startdir)
+        if ("" != gMusicData->musicDir)
         {
             loadMusic();
             FileScanner *fscan = new FileScanner();
-            fscan->SearchDir(gMusicData->startdir);
+            fscan->SearchDir(gMusicData->musicDir);
             gMusicData->reloadMusic();
             delete fscan;
         }
     }
-    else if (sel == "music_set_general")
-    {
-        gCoreContext->ActivateSettingsCache(false);
-        MusicGeneralSettings settings;
-        settings.exec();
-        gCoreContext->ActivateSettingsCache(true);
+    else if (sel == "settings_general")
+     {
+        MythScreenStack *mainStack = GetMythMainWindow()->GetMainStack();
+        GeneralSettings *gs = new GeneralSettings(mainStack, "general settings");
 
-        gCoreContext->dispatch(MythEvent(QString("MUSIC_SETTINGS_CHANGED")));
+        if (gs->Create())
+            mainStack->AddScreen(gs);
+        else
+            delete gs;
     }
-    else if (sel == "music_set_player")
+    else if (sel == "settings_player")
     {
-        gCoreContext->ActivateSettingsCache(false);
-        MusicPlayerSettings settings;
-        settings.exec();
+        MythScreenStack *mainStack = GetMythMainWindow()->GetMainStack();
+        PlayerSettings *ps = new PlayerSettings(mainStack, "player settings");
 
-        gCoreContext->ActivateSettingsCache(true);
-
-        gCoreContext->dispatch(MythEvent(QString("MUSIC_SETTINGS_CHANGED")));
+        if (ps->Create())
+            mainStack->AddScreen(ps);
+        else
+            delete ps;
     }
-    else if (sel == "music_set_ripper")
+    else if (sel == "settings_rating")
     {
-        gCoreContext->ActivateSettingsCache(false);
-        MusicRipperSettings settings;
-        settings.exec();
-        gCoreContext->ActivateSettingsCache(true);
+        MythScreenStack *mainStack = GetMythMainWindow()->GetMainStack();
+        RatingSettings *rs = new RatingSettings(mainStack, "rating settings");
 
-        gCoreContext->dispatch(MythEvent(QString("MUSIC_SETTINGS_CHANGED")));
+        if (rs->Create())
+            mainStack->AddScreen(rs);
+        else
+            delete rs;
     }
+    else if (sel == "settings_visualization")
+    {
+
+       MythScreenStack *mainStack = GetMythMainWindow()->GetMainStack();
+       VisualizationSettings *vs = new VisualizationSettings(mainStack, "visualization settings");
+
+       if (vs->Create())
+           mainStack->AddScreen(vs);
+        else
+            delete vs;
+    }
+    else if (sel == "settings_import")
+    {
+        MythScreenStack *mainStack = GetMythMainWindow()->GetMainStack();
+        ImportSettings *is = new ImportSettings(mainStack, "import settings");
+
+        if (is->Create())
+            mainStack->AddScreen(is);
+        else
+            delete is;
+    }
+
+    if (sel.startsWith("settings_"))
+        gCoreContext->dispatch(MythEvent(QString("MUSIC_SETTINGS_CHANGED")));
 }
 
 static int runMenu(QString which_menu)
@@ -438,10 +468,10 @@ static void runScan(void)
 {
     loadMusic();
 
-    if ("" != gMusicData->startdir)
+    if ("" != gMusicData->musicDir)
     {
         FileScanner *fscan = new FileScanner();
-        fscan->SearchDir(gMusicData->startdir);
+        fscan->SearchDir(gMusicData->musicDir);
         gMusicData->reloadMusic();
         delete fscan;
     }
@@ -612,18 +642,6 @@ int mythplugin_init(const char *libversion)
         return -1;
     }
 
-    MusicGeneralSettings general;
-    general.Load();
-    general.Save();
-
-    MusicPlayerSettings settings;
-    settings.Load();
-    settings.Save();
-
-    MusicRipperSettings ripper;
-    ripper.Load();
-    ripper.Save();
-
     setupKeys();
 
     Decoder::SetLocationFormatUseTags();
@@ -642,14 +660,6 @@ int mythplugin_run(void)
 
 int mythplugin_config(void)
 {
-    gMusicData->startdir = gCoreContext->GetSetting("MusicLocation");
-    gMusicData->startdir = QDir::cleanPath(gMusicData->startdir);
-
-    if (!gMusicData->startdir.isEmpty() && !gMusicData->startdir.endsWith("/"))
-        gMusicData->startdir += "/";
-
-    Metadata::SetStartdir(gMusicData->startdir);
-
     Decoder::SetLocationFormatUseTags();
 
     return runMenu("music_settings.xml");

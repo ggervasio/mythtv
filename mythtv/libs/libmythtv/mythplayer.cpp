@@ -955,8 +955,6 @@ int MythPlayer::OpenFile(uint retries)
         player_ctx->buffer, no_video_decode, testbuf, testreadsize);
     delete[] testbuf;
 
-    video_aspect = decoder->GetVideoAspect();
-
     if (ret < 0)
     {
         LOG(VB_GENERAL, LOG_ERR, QString("Couldn't open decoder for: %1")
@@ -4412,7 +4410,7 @@ bool MythPlayer::TranscodeGetNextFrame(
     }
     if (GetEof())
       return false;
-    is_key = decoder->isLastFrameKey();
+    is_key = decoder->IsLastFrameKey();
 
     videofiltersLock.lock();
     if (videoFilters)
@@ -4525,7 +4523,7 @@ int MythPlayer::GetSecondsBehind(void) const
 
 int64_t MythPlayer::GetSecondsPlayed(void)
 {
-    return decoder->isCodecMPEG() ?
+    return decoder->IsCodecMPEG() ?
                 (disp_timecode / 1000.f) :
                 (framesPlayed / video_frame_rate);
 }

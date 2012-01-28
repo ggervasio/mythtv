@@ -1,5 +1,8 @@
 #include <QSocketNotifier>
 #include <QtEndian>
+
+#include <stdlib.h>
+
 #include "mythlogging.h"
 #include "bonjourregister.h"
 
@@ -8,6 +11,7 @@
 BonjourRegister::BonjourRegister(QObject *parent)
   : QObject(parent), m_dnssref(0), m_socket(NULL)
 {
+    setenv("AVAHI_COMPAT_NOWARN", "1", 1);
 }
 
 BonjourRegister::~BonjourRegister()

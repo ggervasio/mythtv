@@ -104,13 +104,15 @@ using_libdns_sd {
     DEFINES += USING_LIBDNS_SD
     HEADERS += bonjourregister.h
     SOURCES += bonjourregister.cpp
-    LIBS += -ldns_sd
+    !macx: LIBS += -ldns_sd
 }
 
 using_libudf {
     DEFINES += USING_LIBUDF
     LIBS += -ludf
 }
+
+using_x11:DEFINES += USING_X11
 
 mingw:LIBS += -lws2_32
 
