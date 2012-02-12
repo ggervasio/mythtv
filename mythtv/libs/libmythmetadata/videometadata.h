@@ -78,7 +78,7 @@ class META_PUBLIC VideoMetadata
              const QString &rating = QString(),
              int length = 0,
              int season = 0,
-             int episode = 0, 
+             int episode = 0,
              const QDate &insertdate = QDate(),
              int id = 0,
              ParentalLevel::Level showlevel = ParentalLevel::plLowest,
@@ -99,6 +99,8 @@ class META_PUBLIC VideoMetadata
     VideoMetadata &operator=(const VideoMetadata &rhs);
 
     void toMap(MetadataMap &metadataMap);
+    void GetStateMap(MetadataMap &stateMap);
+    void GetImageMap(MetadataMap &imageMap);
 
     // returns a string to use when sorting
     bool HasSortKey() const;
@@ -234,7 +236,6 @@ class META_PUBLIC VideoMetadata
   private:
     class VideoMetadataImp *m_imp;
 };
-Q_DECLARE_METATYPE(VideoMetadata*)
 
 META_PUBLIC void ClearMap(MetadataMap &metadataMap);
 
@@ -242,5 +243,7 @@ META_PUBLIC bool operator==(const VideoMetadata &a, const VideoMetadata &b);
 META_PUBLIC bool operator!=(const VideoMetadata &a, const VideoMetadata &b);
 
 META_PUBLIC bool operator<(const VideoMetadata::SortKey &lhs, const VideoMetadata::SortKey &rhs);
+
+Q_DECLARE_METATYPE(VideoMetadata*)
 
 #endif

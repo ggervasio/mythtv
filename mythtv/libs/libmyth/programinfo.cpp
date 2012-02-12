@@ -44,6 +44,7 @@ int pginfo_init_statics() { return ProgramInfo::InitStatics(); }
 QMutex ProgramInfo::staticDataLock;
 ProgramInfoUpdater *ProgramInfo::updater;
 int dummy = pginfo_init_statics();
+bool ProgramInfo::usingProgIDAuth = true;
 
 
 const QString ProgramInfo::kFromRecordedQuery =
@@ -1503,6 +1504,8 @@ void ProgramInfo::ToMap(InfoMap &progMap,
     progMap["rectypestatus"] = tmp_rec;
 
     progMap["card"] = ::toString(GetRecordingStatus(), cardid);
+    progMap["input"] = ::toString(GetRecordingStatus(), inputid);
+    progMap["inputname"] = QueryInputDisplayName();
 
     progMap["recpriority"] = recpriority;
     progMap["recpriority2"] = recpriority2;
@@ -1883,13 +1886,10 @@ bool ProgramInfo::IsSameProgram(const ProgramInfo& other) const
         (recordid == other.recordid || recordid == other.parentid))
            return true;
 
-    if (title.toLower() != other.title.toLower())
+    if (dupmethod & kDupCheckNone)
         return false;
 
-    if (findid && findid == other.findid)
-        return true;
-
-    if (dupmethod & kDupCheckNone)
+    if (title.toLower() != other.title.toLower())
         return false;
 
     if (catType == "series")
@@ -1899,7 +1899,20 @@ bool ProgramInfo::IsSameProgram(const ProgramInfo& other) const
     }
 
     if (!programid.isEmpty() && !other.programid.isEmpty())
-        return programid == other.programid;
+    {
+        if (usingProgIDAuth)
+        {
+            int index = programid.indexOf('/');
+            int oindex = other.programid.indexOf('/');
+            if (index == oindex && (index < 0 ||
+                programid.leftRef(index) == other.programid.leftRef(oindex)))
+                return programid == other.programid;
+        }
+        else
+        {
+            return programid == other.programid;
+        }
+    }
 
     if ((dupmethod & kDupCheckSub) &&
         ((subtitle.isEmpty()) ||
@@ -1961,6 +1974,37 @@ bool ProgramInfo::IsSameProgramTimeslot(const ProgramInfo &other) const
         return true;
 
     return false;
+}
+
+void ProgramInfo::CheckProgramIDAuthorities(void)
+{
+    QMap<QString, int> authMap;
+    QString tables[] = { "program", "recorded", "oldrecorded", "" };
+    MSqlQuery query(MSqlQuery::InitCon());
+
+    int tableIndex = 0;
+    QString table = tables[tableIndex];
+    while (!table.isEmpty())
+    {
+        query.prepare(QString(
+            "SELECT DISTINCT LEFT(programid, LOCATE('/', programid)) "
+            "FROM %1 WHERE programid <> ''").arg(table));
+        if (!query.exec())
+            MythDB::DBError("CheckProgramIDAuthorities", query);
+        else
+        {
+            while (query.next())
+                authMap[query.value(0).toString()] = 1;
+        }
+        ++tableIndex;
+        table = tables[tableIndex];
+    }
+
+    int numAuths = authMap.count();
+    LOG(VB_GENERAL, LOG_INFO, 
+        QString("Found %1 distinct programid authorities").arg(numAuths));
+
+    usingProgIDAuth = (numAuths > 1);
 }
 
 /** \fn ProgramInfo::CreateRecordBasename(const QString &ext) const
@@ -4152,6 +4196,36 @@ bool ProgramInfo::QueryTuningInfo(QString &channum, QString &input) const
         MythDB::DBError("GetChannel(ProgInfo...)", query);
         return false;
     }
+}
+
+/** \brief Returns the display name of the card input for this program.
+ *  \note Ideally this would call CardUtil::GetDisplayName(), but
+ *        that's in libmythtv.  Dupliacte code for now until a better
+ *        solution can be found.
+ */
+QString ProgramInfo::QueryInputDisplayName(void) const
+{
+    if (!inputid)
+        return QString::null;
+
+    MSqlQuery query(MSqlQuery::InitCon());
+    query.prepare("SELECT displayname, cardid, inputname "
+                  "FROM cardinput "
+                  "WHERE cardinputid = :INPUTID");
+    query.bindValue(":INPUTID", inputid);
+
+    if (!query.exec())
+        MythDB::DBError("ProgramInfo::GetInputDisplayName(uint)", query);
+    else if (query.next())
+    {
+        QString result = query.value(0).toString();
+        if (result.isEmpty())
+            result = QString("%1: %2").arg(query.value(1).toInt())
+                                      .arg(query.value(2).toString());
+        return result;
+    }
+
+    return QString::null;
 }
 
 static int init_tr(void)

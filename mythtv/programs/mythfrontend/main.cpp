@@ -89,6 +89,12 @@ using namespace std;
 #include "mythraopdevice.h"
 #endif
 
+#ifdef USING_LIBDNS_SD
+#include <QScopedPointer>
+#include "bonjourregister.h"
+#include "mythairplayserver.h"
+#endif
+
 static ExitPrompter   *exitPopup = NULL;
 static MythThemedMenu *menu;
 
@@ -221,6 +227,10 @@ namespace
     {
 #ifdef USING_RAOP
         MythRAOPDevice::Cleanup();
+#endif
+
+#ifdef USING_LIBDNS_SD
+        MythAirplayServer::Cleanup();
 #endif
 
         delete exitPopup;
@@ -1546,6 +1556,24 @@ int main(int argc, char **argv)
     }
 
     setuid(getuid());
+
+#ifdef USING_LIBDNS_SD
+    // this needs to come after gCoreContext has been initialised
+    // (for hostname) - hence it is not in MediaRenderer
+    QScopedPointer<BonjourRegister> bonjour(new BonjourRegister());
+    if (bonjour.data())
+    {
+        QByteArray dummy;
+        int port = gCoreContext->GetNumSetting("UPnP/MythFrontend/ServicePort", 6547);
+        QByteArray name("Mythfrontend on ");
+        name.append(gCoreContext->GetHostName());
+        bonjour->Register(port, "_mythfrontend._tcp",
+                                 name, dummy);
+    }
+
+    if (getenv("MYTHTV_AIRPLAY"))
+        MythAirplayServer::Create();
+#endif
 
 #ifdef USING_RAOP
     MythRAOPDevice::Create();

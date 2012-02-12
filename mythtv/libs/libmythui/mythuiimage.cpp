@@ -33,7 +33,7 @@ class ImageLoadThread;
 
 /////////////////////////////////////////////////////
 
-ImageProperties::ImageProperties::ImageProperties()
+ImageProperties::ImageProperties()
 {
     Init();
 }
@@ -372,9 +372,8 @@ class ImageLoader
             ImageProperties frameProps = imProps;
             frameProps.filename = frameFilename;
 
-            MythImage *im = ImageLoader::LoadImage(painter, frameProps,
-                                                   cacheMode, parent, aborted,
-                                                   imageReader);
+            MythImage *im = LoadImage(painter, frameProps, cacheMode, parent,
+                                      aborted, imageReader);
 
             if (!im)
                 aborted = true;
@@ -1396,7 +1395,10 @@ void MythUIImage::CopyFrom(MythUIType *base)
 
     if (!im)
     {
-        LOG(VB_GENERAL, LOG_ERR, LOC + "bad parsing");
+        LOG(VB_GENERAL, LOG_ERR,
+            QString("'%1' (%2) ERROR, bad parsing '%3' (%4)")
+            .arg(objectName()).arg(GetXMLLocation())
+            .arg(base->objectName()).arg(base->GetXMLLocation()));
         d->m_UpdateLock.unlock();
         return;
     }

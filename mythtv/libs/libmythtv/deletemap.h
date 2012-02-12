@@ -1,8 +1,10 @@
 #ifndef DELETEMAP_H
 #define DELETEMAP_H
 
+#include "osd.h"
 #include "programinfo.h"
 #include "playercontext.h"
+#include "mythtvexp.h"
 
 class DeleteMap;
 
@@ -14,7 +16,7 @@ typedef struct DeleteMapUndoEntry
     DeleteMapUndoEntry(void);
 } DeleteMapUndoEntry;
 
-class DeleteMap
+class MTV_PUBLIC DeleteMap
 {
   public:
     DeleteMap(): m_editing(false),   m_nextCutStart(0), m_changed(true),
@@ -28,22 +30,20 @@ class DeleteMap
     void UpdateSeekAmount(int change, double framerate);
     void SetSeekAmount(int amount) { m_seekamount = amount; }
 
-    void UpdateOSD(uint64_t frame, uint64_t total, double frame_rate,
-                   PlayerContext *ctx, OSD *osd);
+    void UpdateOSD(uint64_t frame, uint64_t total, double frame_rate, OSD *osd);
 
     bool IsEditing(void) const { return m_editing; }
     void SetEditing(bool edit, OSD *osd = NULL);
-    void SetFileEditing(PlayerContext *ctx, bool edit);
-    static bool IsFileEditing(const PlayerContext *ctx);
+    void SetFileEditing(bool edit);
+    bool IsFileEditing(void);
     bool IsEmpty(void) const;
-    bool IsSaved(const PlayerContext *ctx) const;
+    bool IsSaved(void) const;
 
     void SetMap(const frm_dir_map_t &map);
     void LoadCommBreakMap(uint64_t total, frm_dir_map_t &map);
-    void SaveMap(uint64_t total, PlayerContext *ctx, bool isAutoSave = false);
-    void LoadMap(uint64_t total, const PlayerContext *ctx,
-                 QString undoMessage = "");
-    bool LoadAutoSaveMap(uint64_t total, const PlayerContext *ctx);
+    void SaveMap(uint64_t total, bool isAutoSave = false);
+    void LoadMap(uint64_t total, QString undoMessage = "");
+    bool LoadAutoSaveMap(uint64_t total);
     void CleanMap(uint64_t total);
 
     void Clear(QString undoMessage = "");

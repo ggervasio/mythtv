@@ -270,11 +270,11 @@ void MythUIText::SetCutDown(Qt::TextElideMode mode)
     if (mode != m_Cutdown)
     {
         m_Cutdown = mode;
-        if (m_scrolling && m_Cutdown)
+        if (m_scrolling && m_Cutdown != Qt::ElideNone)
         {
-            LOG(VB_GENERAL, LOG_ERR, QString("'%1': <scroll> and <cutdown> are "
-                                             "not combinable.")
-                .arg(objectName()));
+            LOG(VB_GENERAL, LOG_ERR, QString("'%1' (%2): <scroll> and "
+                                             "<cutdown> are not combinable.")
+                .arg(objectName()).arg(GetXMLLocation()));
             m_Cutdown = Qt::ElideNone;
         }
         if (!m_Message.isEmpty())
@@ -417,6 +417,7 @@ bool MythUIText::Layout(QString & paragraph, QTextLayout *layout,
 
     layout->setText(paragraph);
     layout->beginLayout();
+    num_lines = 0;
     for (;;)
     {
         QTextLine line = layout->createLine();
@@ -426,9 +427,9 @@ bool MythUIText::Layout(QString & paragraph, QTextLayout *layout,
         // Try "visible" width first, so alignment works
         line.setLineWidth(width);
 
-        if (!force && !m_MultiLine && line.textLength() < paragraph.size())
+        if (!m_MultiLine && line.textLength() < paragraph.size())
         {
-            if (m_Cutdown != Qt::ElideNone)
+            if (!force && m_Cutdown != Qt::ElideNone)
             {
                 QFontMetrics fm(GetFontProperties()->face());
                 paragraph = fm.elidedText(paragraph, m_Cutdown,
@@ -446,10 +447,11 @@ bool MythUIText::Layout(QString & paragraph, QTextLayout *layout,
         {
             if (height > m_Area.height())
             {
-                LOG(VB_GUI, m_MultiLine ? LOG_DEBUG : LOG_NOTICE,
-                    QString("'%1': height overflow. line height %2 "
-                            "paragraph height %3, area height %4")
+                LOG(VB_GUI, num_lines ? LOG_DEBUG : LOG_NOTICE,
+                    QString("'%1' (%2): height overflow. line height %3 "
+                            "paragraph height %4, area height %5")
                     .arg(objectName())
+                    .arg(GetXMLLocation())
                     .arg(line.height())
                     .arg(height)
                     .arg(m_Area.height()));
@@ -552,7 +554,6 @@ bool MythUIText::GetNarrowWidth(const QStringList & paragraphs,
 
         m_drawRect.setWidth(0);
         height = 0;
-        num_lines = 0;
 
         LayoutParagraphs(paragraphs, textoption, width, height,
                          min_rect, last_line_width, num_lines);
@@ -598,6 +599,8 @@ bool MythUIText::GetNarrowWidth(const QStringList & paragraphs,
             {
                 // Is the last line fully used?
                 width -= (1.0 - last_line_width / width) / num_lines;
+                if (width > last_line_width)
+                    width = last_line_width;
                 if (static_cast<int>(width) == last_width)
                 {
                     m_Cutdown = cutdown;
@@ -610,8 +613,10 @@ bool MythUIText::GetNarrowWidth(const QStringList & paragraphs,
         last_width = width;
     }
 
-    LOG(VB_GENERAL, LOG_ERR, QString("GetNarrowWidth: Gave up while trying "
-                                     "to find optimal width."));
+    LOG(VB_GENERAL, LOG_ERR, QString("'%1' (%2) GetNarrowWidth: Gave up "
+                                     "while trying to find optimal width "
+                                     "for '%3'.")
+        .arg(objectName()).arg(GetXMLLocation()).arg(m_CutMessage));
 
     width = best_width;
     m_Cutdown = cutdown;
@@ -766,26 +771,70 @@ void MythUIText::FillCutMessage(void)
         m_drawRect.moveCenter(m_Area.center());
         min_rect.moveCenter(m_Area.center());
     }
+
     // Adjust horizontal
     if (m_Justification & Qt::AlignLeft)
     {
-        m_drawRect.moveLeft(m_Area.x());
+        // If text size is less than allowed min size, center it
+        if (m_ShrinkNarrow && m_MinSize.isValid() && min_rect.isValid() &&
+            min_rect.width() < m_MinSize.x())
+        {
+            m_drawRect.moveLeft(m_Area.x() +
+                                (((m_MinSize.x() - min_rect.width() +
+                                   fm.averageCharWidth()) / 2)));
+            min_rect.setWidth(m_MinSize.x());
+        }
+        else
+            m_drawRect.moveLeft(m_Area.x());
+
         min_rect.moveLeft(m_Area.x());
     }
     else if (m_Justification & Qt::AlignRight)
     {
-        m_drawRect.moveRight(m_Area.x() + m_Area.width());
+        // If text size is less than allowed min size, center it
+        if (m_ShrinkNarrow && m_MinSize.isValid() && min_rect.isValid() &&
+            min_rect.width() < m_MinSize.x())
+        {
+            m_drawRect.moveRight(m_Area.x() + m_Area.width() -
+                                (((m_MinSize.x() - min_rect.width() +
+                                   fm.averageCharWidth()) / 2)));
+            min_rect.setWidth(m_MinSize.x());
+        }
+        else
+            m_drawRect.moveRight(m_Area.x() + m_Area.width());
+
         min_rect.moveRight(m_Area.x() + m_Area.width());
     }
+
     // Adjust vertical
     if (m_Justification & Qt::AlignTop)
     {
-        m_drawRect.moveTop(m_Area.y());
+        // If text size is less than allowed min size, center it
+        if (!m_ShrinkNarrow && m_MinSize.isValid() && min_rect.isValid() &&
+            min_rect.height() < m_MinSize.y())
+        {
+            m_drawRect.moveTop(m_Area.y() +
+                               ((m_MinSize.y() - min_rect.height()) / 2));
+            min_rect.setHeight(m_MinSize.y());
+        }
+        else
+            m_drawRect.moveTop(m_Area.y());
+
         min_rect.moveTop(m_Area.y());
     }
     else if (m_Justification & Qt::AlignBottom)
     {
-        m_drawRect.moveBottom(m_Area.y() + m_Area.height());
+        // If text size is less than allowed min size, center it
+        if (!m_ShrinkNarrow && m_MinSize.isValid() && min_rect.isValid() &&
+            min_rect.height() < m_MinSize.y())
+        {
+            m_drawRect.moveBottom(m_Area.y() + m_Area.height() -
+                                  ((m_MinSize.y() - min_rect.height()) / 2));
+            min_rect.setHeight(m_MinSize.y());
+        }
+        else
+            m_drawRect.moveBottom(m_Area.y() + m_Area.height());
+
         min_rect.moveBottom(m_Area.y() + m_Area.height());
     }
 
@@ -826,8 +875,9 @@ QPoint MythUIText::CursorPosition(int text_offset)
     if (Ipara == m_Layouts.constEnd())
     {
         LOG(VB_GENERAL, LOG_ERR,
-            QString("CursorPosition offset %1 not found in ANY paragraph!")
-            .arg(text_offset));
+            QString("'%1' (%2) CursorPosition offset %3 not found in "
+                    "ANY paragraph!")
+            .arg(objectName()).arg(GetXMLLocation()).arg(text_offset));
         return m_Area.topLeft().toQPoint();
     }
 
@@ -1182,7 +1232,9 @@ bool MythUIText::ParseElement(
                 else
                 {
                     m_scrollDirection = ScrollNone;
-                    LOG(VB_GENERAL, LOG_ERR, "Invalid scroll attribute");
+                    LOG(VB_GENERAL, LOG_ERR,
+                        QString("'%1' (%2) Invalid scroll attribute")
+                        .arg(objectName()).arg(GetXMLLocation()));
                 }
             }
 
@@ -1226,7 +1278,10 @@ void MythUIText::CopyFrom(MythUIType *base)
 
     if (!text)
     {
-        LOG(VB_GENERAL, LOG_ERR, "ERROR, bad parsing");
+        LOG(VB_GENERAL, LOG_ERR,
+            QString("'%1' (%2) ERROR, bad parsing '%3' (%4)")
+            .arg(objectName()).arg(GetXMLLocation())
+            .arg(base->objectName()).arg(base->GetXMLLocation()));
         return;
     }
 
@@ -1290,8 +1345,9 @@ void MythUIText::Finalize(void)
 {
     if (m_scrolling && m_Cutdown != Qt::ElideNone)
     {
-        LOG(VB_GENERAL, LOG_ERR, QString("'%1': <scroll> and <cutdown> are "
-                                         "not combinable.").arg(objectName()));
+        LOG(VB_GENERAL, LOG_ERR,
+            QString("'%1' (%2): <scroll> and <cutdown> are not combinable.")
+            .arg(objectName()).arg(GetXMLLocation()));
         m_Cutdown = Qt::ElideNone;
     }
     FillCutMessage();

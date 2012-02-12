@@ -1565,6 +1565,13 @@ QVariant MythUIButtonList::GetDataValue() const
     return QVariant();
 }
 
+MythRect MythUIButtonList::GetButtonArea(void) const
+{
+    if (m_contentsRect.isValid())
+        return m_contentsRect;
+    return m_Area;
+}
+
 MythUIButtonListItem *MythUIButtonList::GetItemFirst() const
 {
     if (!m_itemList.empty())
@@ -2170,9 +2177,9 @@ void MythUIButtonList::Init()
 
     if (!m_buttontemplate)
     {
-        LOG(VB_GENERAL, LOG_ERR, QString("Statetype buttonitem is required in "
-                                         "mythuibuttonlist: %1")
-            .arg(objectName()));
+        LOG(VB_GENERAL, LOG_ERR, QString("(%1) Statetype buttonitem is "
+                                         "required in mythuibuttonlist: %2")
+            .arg(GetXMLLocation()).arg(objectName()));
         return;
     }
 
@@ -2500,6 +2507,21 @@ void MythUIButtonList::CalculateVisibleItems(void)
     m_itemsVisible = m_columns * m_rows;
 }
 
+void MythUIButtonList::SetButtonArea(const MythRect &rect)
+{
+    if (rect == m_contentsRect)
+        return;
+
+    m_contentsRect = rect;
+
+    if (m_Area.isValid())
+        m_contentsRect.CalculateArea(m_Area);
+    else if (m_Parent)
+        m_contentsRect.CalculateArea(m_Parent->GetFullArea());
+    else
+        m_contentsRect.CalculateArea(GetMythMainWindow()->GetUIScreenRect());
+}
+
 /**
  *  \copydoc MythUIType::ParseElement()
  */
@@ -2507,7 +2529,7 @@ bool MythUIButtonList::ParseElement(
     const QString &filename, QDomElement &element, bool showWarnings)
 {
     if (element.tagName() == "buttonarea")
-        m_contentsRect = parseRect(element);
+        SetButtonArea(parseRect(element));
     else if (element.tagName() == "layout")
     {
         QString layout = getFirstText(element).toLower();
@@ -2950,7 +2972,7 @@ void MythUIButtonListItem::SetText(const QString &text, const QString &name,
         m_parent->Update();
 }
 
-void MythUIButtonListItem::SetTextFromMap(QHash<QString, QString> &infoMap,
+void MythUIButtonListItem::SetTextFromMap(InfoMap &infoMap,
                                           const QString &state)
 {
     QHash<QString, QString>::iterator map_it = infoMap.begin();
@@ -3101,7 +3123,7 @@ void MythUIButtonListItem::setImage(MythImage *image, const QString &name)
         m_parent->Update();
 }
 
-void MythUIButtonListItem::SetImageFromMap(const QMap<QString, QString> &imageMap)
+void MythUIButtonListItem::SetImageFromMap(const InfoMap &imageMap)
 {
     m_imageFilenames.clear();
     m_imageFilenames = imageMap;
@@ -3129,7 +3151,7 @@ void MythUIButtonListItem::SetImage(
 
     if (!name.isEmpty())
     {
-        QMap<QString, QString>::iterator it = m_imageFilenames.find(name);
+        InfoMap::iterator it = m_imageFilenames.find(name);
 
         if (it == m_imageFilenames.end())
         {
@@ -3157,7 +3179,7 @@ QString MythUIButtonListItem::GetImage(const QString &name) const
     if (name.isEmpty())
         return m_imageFilename;
 
-    QMap<QString, QString>::const_iterator it = m_imageFilenames.find(name);
+    InfoMap::const_iterator it = m_imageFilenames.find(name);
 
     if (it != m_imageFilenames.end())
         return *it;
@@ -3172,7 +3194,7 @@ void MythUIButtonListItem::DisplayState(const QString &state,
         return;
 
     bool do_update = false;
-    QMap<QString, QString>::iterator it = m_states.find(name);
+    InfoMap::iterator it = m_states.find(name);
 
     if (it == m_states.end())
     {
@@ -3187,6 +3209,12 @@ void MythUIButtonListItem::DisplayState(const QString &state,
 
     if (m_parent && do_update)
         m_parent->Update();
+}
+
+void MythUIButtonListItem::SetStatesFromMap(const InfoMap &stateMap)
+{
+    m_states.clear();
+    m_states = stateMap;
 }
 
 bool MythUIButtonListItem::checkable() const
@@ -3382,7 +3410,7 @@ void MythUIButtonListItem::SetToRealButton(MythUIStateType *button, bool selecte
     }
 
     MythUIImage *image;
-    QMap<QString, QString>::iterator imagefile_it = m_imageFilenames.begin();
+    InfoMap::iterator imagefile_it = m_imageFilenames.begin();
 
     while (imagefile_it != m_imageFilenames.end())
     {
@@ -3412,7 +3440,7 @@ void MythUIButtonListItem::SetToRealButton(MythUIStateType *button, bool selecte
     }
 
     MythUIStateType *statetype;
-    QMap<QString, QString>::iterator state_it = m_states.begin();
+    InfoMap::iterator state_it = m_states.begin();
 
     while (state_it != m_states.end())
     {

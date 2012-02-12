@@ -235,16 +235,53 @@ static void multi_lock(QMutex *mutex0, ...)
     }
 }
 
+QMutex* TV::gTVLock = new QMutex();
+TV*     TV::gTV     = NULL;
+
+bool TV::IsTVRunning(void)
+{
+    QMutexLocker locker(gTVLock);
+    return gTV;
+}
+
+TV* TV::GetTV(void)
+{
+    QMutexLocker locker(gTVLock);
+    if (gTV)
+    {
+        LOG(VB_GENERAL, LOG_WARNING, LOC + "Already have a TV object.");
+        return NULL;
+    }
+    gTV = new TV();
+    return gTV;
+}
+
+void TV::ReleaseTV(TV* tv)
+{
+    QMutexLocker locker(gTVLock);
+    if (!tv || !gTV || (gTV != tv))
+    {
+        LOG(VB_GENERAL, LOG_ERR, LOC + "ReleaseTV - programmer error.");
+        return;
+    }
+
+    delete gTV;
+    gTV = NULL;
+}
+
 /**
  * \brief returns true if the recording completed when exiting.
  */
 bool TV::StartTV(ProgramInfo *tvrec, uint flags)
 {
+    TV *tv = GetTV();
+    if (!tv)
+        return false;
+
     LOG(VB_PLAYBACK, LOG_INFO, LOC + "StartTV() -- begin");
     bool startInGuide = flags & kStartTVInGuide;
     bool inPlaylist = flags & kStartTVInPlayList;
     bool initByNetworkCommand = flags & kStartTVByNetworkCommand;
-    TV *tv = new TV();
     bool quitAll = false;
     bool showDialogs = true;
     bool playCompleted = false;
@@ -258,11 +295,16 @@ bool TV::StartTV(ProgramInfo *tvrec, uint flags)
         curProgram->SetIgnoreBookmark(flags & kStartTVIgnoreBookmark);
     }
 
+    // Must be before Init() otherwise we swallow the PLAYBACK_START event
+    // with the event filter
+    sendPlaybackStart();
+
     // Initialize TV
     if (!tv->Init())
     {
         LOG(VB_GENERAL, LOG_ERR, LOC + "Failed initializing TV");
-        delete tv;
+        ReleaseTV(tv);
+        sendPlaybackEnd();
         delete curProgram;
         return false;
     }
@@ -273,8 +315,6 @@ bool TV::StartTV(ProgramInfo *tvrec, uint flags)
         if (pginfo.HasPathname() || pginfo.GetChanID())
             tv->SetLastProgram(&pginfo);
     }
-
-    sendPlaybackStart();
 
     if (curProgram)
     {
@@ -375,7 +415,7 @@ bool TV::StartTV(ProgramInfo *tvrec, uint flags)
     bool allowrerecord = tv->getAllowRerecord();
     bool deleterecording = tv->requestDelete;
 
-    delete tv;
+    ReleaseTV(tv);
 
     if (curProgram)
     {
@@ -683,6 +723,8 @@ void TV::InitKeys(void)
     REG_KEY("TV Playback", "TOGGLEPICCONTROLS",
             QT_TRANSLATE_NOOP("MythControls", "Playback picture adjustments"),
              "F");
+    REG_KEY("TV Playback", ACTION_TOGGLENIGHTMODE,
+            QT_TRANSLATE_NOOP("MythControls", "Toggle night mode"), "Ctrl+F");
     REG_KEY("TV Playback", ACTION_SETBRIGHTNESS,
             QT_TRANSLATE_NOOP("MythControls", "Set the picture brightness"), "");
     REG_KEY("TV Playback", ACTION_SETCONTRAST,
@@ -856,7 +898,6 @@ void TV::ReloadKeys(void)
     mainWindow->ClearKeyContext("Teletext Menu");
     InitKeys();
 }
-
 
 /** \fn TV::TV(void)
  *  \sa Init(void)
@@ -3094,7 +3135,7 @@ void TV::HandleLCDVolumeTimerEvent()
     KillTimer(lcdVolumeTimerId);
 }
 
-int  TV::StartTimer(int interval, int line)
+int TV::StartTimer(int interval, int line)
 {
     int x = QObject::startTimer(interval);
     if (!x)
@@ -3159,19 +3200,19 @@ void TV::PrepareToExitPlayer(PlayerContext *ctx, int line, bool bookmark)
     ctx->UnlockDeletePlayer(__FILE__, line);
 }
 
-void TV::SetExitPlayer(bool set_it, bool wants_to) const
+void TV::SetExitPlayer(bool set_it, bool wants_to)
 {
     QMutexLocker locker(&timerIdLock);
     if (set_it)
     {
         wantsToQuit = wants_to;
         if (!exitPlayerTimerId)
-            exitPlayerTimerId = ((TV*)this)->StartTimer(1, __LINE__);
+            exitPlayerTimerId = StartTimer(1, __LINE__);
     }
     else
     {
         if (exitPlayerTimerId)
-            ((TV*)this)->KillTimer(exitPlayerTimerId);
+            KillTimer(exitPlayerTimerId);
         exitPlayerTimerId = 0;
         wantsToQuit = wants_to;
     }
@@ -3644,7 +3685,7 @@ bool TV::ProcessKeypress(PlayerContext *actx, QKeyEvent *e)
             }
             if (has_action("ESCAPE", actions))
             {
-                if (!actx->player->IsCutListSaved(actx))
+                if (!actx->player->IsCutListSaved())
                     ShowOSDCutpoint(actx, "EXIT_EDIT_MODE");
                 else
                 {
@@ -4364,6 +4405,8 @@ bool TV::ToggleHandleAction(PlayerContext *ctx,
         DoTogglePictureAttribute(ctx, kAdjustingPicture_Playback);
     else if (has_action(ACTION_TOGGLESTUDIOLEVELS, actions))
         DoToggleStudioLevels(ctx);
+    else if (has_action(ACTION_TOGGLENIGHTMODE, actions))
+        DoToggleNightMode(ctx);
     else if (has_action("TOGGLESTRETCH", actions))
         ToggleTimeStretch(ctx);
     else if (has_action(ACTION_TOGGLEUPMIX, actions))
@@ -7282,6 +7325,10 @@ void TV::UpdateOSDProgInfo(const PlayerContext *ctx, const char *whichInfo)
     InfoMap infoMap;
     ctx->GetPlayingInfoMap(infoMap);
 
+    QString nightmode = gCoreContext->GetNumSetting("NightModeEnabled", 0)
+                            ? "yes" : "no";
+    infoMap["nightmode"] = nightmode;
+
     // Clear previous osd and add new info
     OSD *osd = GetOSDLock(ctx);
     if (osd)
@@ -7299,6 +7346,9 @@ void TV::UpdateOSDStatus(const PlayerContext *ctx, osdInfo &info,
     if (osd)
     {
         osd->ResetWindow("osd_status");
+        QString nightmode = gCoreContext->GetNumSetting("NightModeEnabled", 0)
+                                ? "yes" : "no";
+        info.text.insert("nightmode", nightmode);
         osd->SetValues("osd_status", info.values, timeout);
         osd->SetText("osd_status",   info.text, timeout);
         if (type != kOSDFunctionalType_Default)
@@ -7373,7 +7423,8 @@ void TV::UpdateOSDSignal(const PlayerContext *ctx, const QStringList &strlist)
         ReturnOSDLock(ctx, osd);
 
         QMutexLocker locker(&timerIdLock);
-        signalMonitorTimerId[StartTimer(1, __LINE__)] = (PlayerContext*)(ctx);
+        signalMonitorTimerId[StartTimer(1, __LINE__)] =
+            const_cast<PlayerContext*>(ctx);
         return;
     }
     ReturnOSDLock(ctx, osd);
@@ -8427,7 +8478,7 @@ void TV::customEvent(QEvent *e)
 
     if (e->type() == MythEvent::MythUserMessage)
     {
-        MythEvent *me = (MythEvent *)e;
+        MythEvent *me = reinterpret_cast<MythEvent*>(e);
         QString message = me->Message();
 
         if (message.isEmpty())
@@ -8456,7 +8507,8 @@ void TV::customEvent(QEvent *e)
 
     if (e->type() == MythEvent::kUpdateBrowseInfoEventType)
     {
-        UpdateBrowseInfoEvent *b = (UpdateBrowseInfoEvent*)e;
+        UpdateBrowseInfoEvent *b =
+            reinterpret_cast<UpdateBrowseInfoEvent*>(e);
         PlayerContext *mctx = GetPlayerReadLock(0, __FILE__, __LINE__);
         OSD *osd = GetOSDLock(mctx);
         if (osd)
@@ -8471,7 +8523,8 @@ void TV::customEvent(QEvent *e)
 
     if (e->type() == DialogCompletionEvent::kEventType)
     {
-        DialogCompletionEvent *dce = (DialogCompletionEvent *)e;
+        DialogCompletionEvent *dce =
+            reinterpret_cast<DialogCompletionEvent*>(e);
         OSDDialogEvent(dce->GetResult(), dce->GetResultText(),
                        dce->GetData().toString());
         return;
@@ -8479,7 +8532,7 @@ void TV::customEvent(QEvent *e)
 
     if (e->type() == OSDHideEvent::kEventType)
     {
-        OSDHideEvent *ce = (OSDHideEvent *)e;
+        OSDHideEvent *ce = reinterpret_cast<OSDHideEvent*>(e);
         HandleOSDClosed(ce->GetFunctionalType());
         return;
     }
@@ -8488,7 +8541,7 @@ void TV::customEvent(QEvent *e)
         return;
 
     uint cardnum   = 0;
-    MythEvent *me = (MythEvent *)e;
+    MythEvent *me = reinterpret_cast<MythEvent*>(e);
     QString message = me->Message();
 
     // TODO Go through these and make sure they make sense...
@@ -9071,6 +9124,13 @@ void TV::DoToggleStudioLevels(const PlayerContext *ctx)
 {
     ctx->LockDeletePlayer(__FILE__, __LINE__);
     ctx->player->ToggleStudioLevels();
+    ctx->UnlockDeletePlayer(__FILE__, __LINE__);
+}
+
+void TV::DoToggleNightMode(const PlayerContext *ctx)
+{
+    ctx->LockDeletePlayer(__FILE__, __LINE__);
+    ctx->player->ToggleNightMode();
     ctx->UnlockDeletePlayer(__FILE__, __LINE__);
 }
 
@@ -9971,6 +10031,10 @@ void TV::OSDDialogEvent(int result, QString text, QString action)
     {
         DoToggleStudioLevels(actx);
     }
+    else if (action == ACTION_TOGGLENIGHTMODE)
+    {
+        DoToggleNightMode(actx);
+    }
     else if (action.left(12) == "TOGGLEASPECT")
     {
         ToggleAspectOverride(actx,
@@ -10447,6 +10511,10 @@ void TV::FillOSDMenuVideo(const PlayerContext *ctx, OSD *osd,
                 }
             }
         }
+        osd->DialogAddButton(
+            gCoreContext->GetNumSetting("NightModeEnabled", 0) ?
+            tr("Disable Night Mode") : tr("Enable Night Mode"),
+            ACTION_TOGGLENIGHTMODE);
     }
     else if (category == "3D")
     {

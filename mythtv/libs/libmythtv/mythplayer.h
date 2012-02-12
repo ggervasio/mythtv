@@ -324,6 +324,7 @@ class MTV_PUBLIC MythPlayer
 
     // Public picture controls
     void ToggleStudioLevels(void);
+    void ToggleNightMode(void);
 
     // Visualisations
     bool CanVisualise(void);
@@ -334,6 +335,9 @@ class MTV_PUBLIC MythPlayer
 
     void SaveTotalDuration(void);
     void ResetTotalDuration(void);
+
+    static const int kNightModeBrightenssAdjustment;
+    static const int kNightModeContrastAdjustment;
 
   protected:
     // Initialization
@@ -441,7 +445,7 @@ class MTV_PUBLIC MythPlayer
     uint64_t GetNearestMark(uint64_t frame, bool right);
     bool IsTemporaryMark(uint64_t frame);
     bool HasTemporaryMark(void);
-    bool IsCutListSaved(PlayerContext *ctx) { return deleteMap.IsSaved(ctx); }
+    bool IsCutListSaved(void) { return deleteMap.IsSaved(); }
     bool DeleteMapHasUndo(void) { return deleteMap.HasUndo(); }
     bool DeleteMapHasRedo(void) { return deleteMap.HasRedo(); }
     QString DeleteMapGetUndoMessage(void) { return deleteMap.GetUndoMessage(); }

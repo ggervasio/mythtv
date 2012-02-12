@@ -674,6 +674,10 @@ void MainServer::ProcessRequestWork(MythSocket *sock)
         else
             HandleFreeTuner(tokens[1].toInt(), pbs);
     }
+    else if (command == "QUERY_ACTIVE_BACKENDS")
+    {
+        HandleActiveBackendsQuery(pbs);
+    }
     else if (command == "QUERY_IS_ACTIVE_BACKEND")
     {
         if (tokens.size() != 1)
@@ -3198,7 +3202,7 @@ void MainServer::HandleGetScheduledRecordings(PlaybackSock *pbs)
     QStringList strList;
 
     if (m_sched)
-        m_sched->getAllScheduled(strList);
+        Scheduler::GetAllScheduled(strList);
     else
         strList << QString::number(0);
 
@@ -4246,6 +4250,33 @@ void MainServer::HandleRemoteEncoder(QStringList &slist, QStringList &commands,
     SendResponse(pbssock, retlist);
 }
 
+void MainServer::GetActiveBackends(QStringList &hosts)
+{
+    hosts.clear();
+    hosts << gCoreContext->GetHostName();
+
+    QString hostname;
+    QReadLocker rlock(&sockListLock);
+    vector<PlaybackSock*>::iterator it;
+    for (it = playbackList.begin(); it != playbackList.end(); ++it)
+    {
+        if ((*it)->isSlaveBackend())
+        {
+            hostname = (*it)->getHostname();
+            if (!hosts.contains(hostname))
+                hosts << hostname;
+        }
+    }
+}
+
+void MainServer::HandleActiveBackendsQuery(PlaybackSock *pbs)
+{
+    QStringList retlist;
+    GetActiveBackends(retlist);
+    retlist.push_front(QString::number(retlist.size()));
+    SendResponse(pbs->getSocket(), retlist);
+}
+
 void MainServer::HandleIsActiveBackendQuery(QStringList &slist,
                                             PlaybackSock *pbs)
 {
@@ -4964,7 +4995,9 @@ void MainServer::HandleScanVideos(PlaybackSock *pbs)
 
     if (metadatafactory)
     {
-        metadatafactory->VideoScan();
+        QStringList hosts;
+        GetActiveBackends(hosts);
+        metadatafactory->VideoScan(hosts);
         retlist << "OK";
     }
     else

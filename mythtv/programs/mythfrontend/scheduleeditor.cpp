@@ -15,6 +15,7 @@
 #include "playgroup.h"
 #include "tv_play.h"
 #include "recordingprofile.h"
+#include "cardutil.h"
 
 // Libmythui
 #include "mythmainwindow.h"
@@ -46,10 +47,11 @@
 static QString fs0(QT_TRANSLATE_NOOP("SchedFilterEditor", "New episode"));
 static QString fs1(QT_TRANSLATE_NOOP("SchedFilterEditor", "Identifiable episode"));
 static QString fs2(QT_TRANSLATE_NOOP("SchedFilterEditor", "First showing"));
-static QString fs3(QT_TRANSLATE_NOOP("SchedFilterEditor", "Primetime"));
+static QString fs3(QT_TRANSLATE_NOOP("SchedFilterEditor", "Prime time"));
 static QString fs4(QT_TRANSLATE_NOOP("SchedFilterEditor", "Commercial free"));
 static QString fs5(QT_TRANSLATE_NOOP("SchedFilterEditor", "High definition"));
-static QString fs6(QT_TRANSLATE_NOOP("SchedFilterEditor", "This Episode"));
+static QString fs6(QT_TRANSLATE_NOOP("SchedFilterEditor", "This episode"));
+static QString fs7(QT_TRANSLATE_NOOP("SchedFilterEditor", "This series"));
 
 void *ScheduleEditor::RunScheduleEditor(ProgramInfo *proginfo, void *player)
 {
@@ -443,7 +445,7 @@ void ScheduleEditor::showUpcomingByTitle(void)
     if (m_recordingRule->m_searchType != kNoSearch)
         title.remove(QRegExp(" \\(.*\\)$"));
 
-    ShowUpcoming(title);
+    ShowUpcoming(title, m_recordingRule->m_seriesid);
 }
 
 void ScheduleEditor::ShowPreview(void)
@@ -560,20 +562,12 @@ void SchedOptEditor::Load()
     new MythUIButtonListItem(m_inputList, tr("Use any available input"),
                              qVariantFromValue(0));
 
-    query.prepare("SELECT cardinputid, cardid, inputname, displayname "
-                  "FROM cardinput ORDER BY cardinputid");
-
-    if (query.exec())
+    vector<uint> inputids = CardUtil::GetInputIDs(0);
+    for (uint i = 0; i < inputids.size(); ++i)
     {
-        while (query.next())
-        {
-            QString input_name = query.value(3).toString();
-            if (input_name.isEmpty())
-                input_name = QString("%1: %2").arg(query.value(1).toInt())
-                                              .arg(query.value(2).toString());
-            new MythUIButtonListItem(m_inputList, tr("Prefer input %1")
-                                        .arg(input_name), query.value(0));
-        }
+        new MythUIButtonListItem(m_inputList, tr("Prefer input %1")
+                                 .arg(CardUtil::GetDisplayName(inputids[i])),
+                                 inputids[i]);
     }
 
     m_inputList->SetValueByData(m_recordingRule->m_prefInput);
@@ -764,7 +758,7 @@ void SchedFilterEditor::Load()
             uint32_t filterid       = query.value(0).toInt();
             QString  description    = tr(query.value(1).toString()
                                          .toUtf8().constData());
-            bool     filter_default = query.value(2).toInt();
+            // bool     filter_default = query.value(2).toInt();
 
             // Fill in list of possible filters
             button = new MythUIButtonListItem(m_filtersList, description,
