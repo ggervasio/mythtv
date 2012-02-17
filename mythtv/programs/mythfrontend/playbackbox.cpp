@@ -1146,6 +1146,13 @@ void PlaybackBox::updateIcons(const ProgramInfo *pginfo)
 
     if (iconState && !haveIcon)
         iconState->Reset();
+
+    iconState = dynamic_cast<MythUIStateType *>(GetChild("categorytype"));
+    if (iconState)
+    {
+        if (!(pginfo && iconState->DisplayState(pginfo->GetCategoryType())))
+            iconState->Reset();
+    }
 }
 
 bool PlaybackBox::IsUsageUIVisible(void) const
@@ -1376,6 +1383,8 @@ void PlaybackBox::updateRecList(MythUIButtonListItem *sel_item)
             if ((*it)->GetSubtitleType() & sit.key())
                 item->DisplayState(sit.value(), "subtitletypes");
         }
+
+        item->DisplayState((*it)->GetCategoryType(), "categorytype");
     }
 
     if (m_noRecordingsText)

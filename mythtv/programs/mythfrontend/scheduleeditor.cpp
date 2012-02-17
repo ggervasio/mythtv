@@ -249,29 +249,11 @@ void ScheduleEditor::Load()
     m_rulesList->SetValueByData(ENUM_TO_QVARIANT(type));
 
     InfoMap progMap;
+
+    m_recordingRule->ToMap(progMap);
+
     if (m_recInfo)
         m_recInfo->ToMap(progMap);
-    else
-        m_recordingRule->ToMap(progMap);
-
-    switch (m_recordingRule->m_searchType)
-    {
-        case kPowerSearch:
-            progMap["searchType"] = tr("Power Search");
-            break;
-        case kTitleSearch:
-            progMap["searchType"] = tr("Title Search");
-            break;
-        case kKeywordSearch:
-            progMap["searchType"] = tr("Keyword Search");
-            break;
-        case kPeopleSearch:
-            progMap["searchType"] = tr("People Search");
-            break;
-        default:
-            progMap["searchType"] = tr("Unknown Search");
-            break;
-    }
 
     SetTextFromMap(progMap);
 }
@@ -1376,16 +1358,28 @@ bool MetadataOptions::Create()
     connect(m_seasonSpin, SIGNAL(itemSelected(MythUIButtonListItem*)),
                           SLOT(ValuesChanged()));
 
-    // InetRef
-    m_inetrefEdit->SetText(m_recordingRule->m_inetref);
-
-    // Season
     m_seasonSpin->SetRange(0,9999,1,1);
-    m_seasonSpin->SetValue(m_recordingRule->m_season);
-
-    // Episode
     m_episodeSpin->SetRange(0,9999,1,1);
-    m_episodeSpin->SetValue(m_recordingRule->m_episode);
+
+    // InetRef/Seas/Ep (needs to be built from original rule, not pginfo)
+    if (m_recInfo)
+    {
+        RecordingRule *rule = new RecordingRule();
+        rule->m_recordID = m_recInfo->GetRecordingRuleID();
+        rule->Load();
+        m_inetrefEdit->SetText(rule->m_inetref);
+        m_seasonSpin->SetValue(rule->m_season);
+        m_episodeSpin->SetValue(rule->m_episode);
+
+        delete rule;
+        rule = NULL;
+    }
+    else
+    {
+        m_inetrefEdit->SetText(m_recordingRule->m_inetref);
+        m_seasonSpin->SetValue(m_recordingRule->m_season);
+        m_episodeSpin->SetValue(m_recordingRule->m_episode);
+    }
 
     if (m_coverart)
     {

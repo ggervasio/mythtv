@@ -2570,8 +2570,9 @@ void TVRec::SpawnLiveTV(LiveTVChain *newchain, bool pip, QString startchan)
     tvchain = newchain;
     tvchain->ReloadAll();
 
-    QString hostprefix = gCoreContext->GenMythURL(gCoreContext->GetSetting("BackendServerIP"),
-                                                  gCoreContext->GetSetting("BackendServerPort").toInt());
+    QString hostprefix = gCoreContext->GenMythURL(
+                    gCoreContext->GetBackendServerIP(),
+                    gCoreContext->GetSetting("BackendServerPort").toInt());
 
     tvchain->SetHostPrefix(hostprefix);
     tvchain->SetCardType(genOpt.cardtype);

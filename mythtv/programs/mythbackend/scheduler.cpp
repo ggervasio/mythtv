@@ -278,12 +278,15 @@ static bool comp_redundant(RecordingInfo *a, RecordingInfo *b)
         return a->GetScheduledEndTime() < b->GetScheduledEndTime();
 
     // Note: the PruneRedundants logic depends on the following
-    if (a->GetTitle() != b->GetTitle())
-        return a->GetTitle() < b->GetTitle();
+    int cmp = a->GetTitle().compare(b->GetTitle(), Qt::CaseInsensitive);
+    if (cmp != 0)
+        return cmp < 0;
     if (a->GetRecordingRuleID() != b->GetRecordingRuleID())
         return a->GetRecordingRuleID() < b->GetRecordingRuleID();
-    if (a->GetChannelSchedulingID() != b->GetChannelSchedulingID())
-        return a->GetChannelSchedulingID() < b->GetChannelSchedulingID();
+    cmp = a->GetChannelSchedulingID().compare(b->GetChannelSchedulingID(), 
+                                              Qt::CaseInsensitive);
+    if (cmp != 0)
+        return cmp < 0;
     return a->GetRecordingStatus() < b->GetRecordingStatus();
 }
 
@@ -293,8 +296,10 @@ static bool comp_recstart(RecordingInfo *a, RecordingInfo *b)
         return a->GetRecordingStartTime() < b->GetRecordingStartTime();
     if (a->GetRecordingEndTime() != b->GetRecordingEndTime())
         return a->GetRecordingEndTime() < b->GetRecordingEndTime();
-    if (a->GetChannelSchedulingID() != b->GetChannelSchedulingID())
-        return a->GetChannelSchedulingID() < b->GetChannelSchedulingID();
+    int cmp = a->GetChannelSchedulingID().compare(b->GetChannelSchedulingID(), 
+                                                  Qt::CaseInsensitive);
+    if (cmp != 0)
+        return cmp < 0;
     if (a->GetRecordingStatus() != b->GetRecordingStatus())
         return a->GetRecordingStatus() < b->GetRecordingStatus();
     if (a->GetChanNum() != b->GetChanNum())
@@ -711,8 +716,10 @@ void Scheduler::SlaveConnected(RecordingList &slavelist)
 
             if (sp->GetInputID() &&
                 sp->GetScheduledStartTime() == rp->GetScheduledStartTime() &&
-                sp->GetChannelSchedulingID() == rp->GetChannelSchedulingID() &&
-                sp->GetTitle() == rp->GetTitle())
+                sp->GetChannelSchedulingID().compare(
+                    rp->GetChannelSchedulingID(), Qt::CaseInsensitive) == 0 &&
+                sp->GetTitle().compare(rp->GetTitle(), 
+                                       Qt::CaseInsensitive) == 0)
             {
                 if (sp->GetCardID() == rp->GetCardID())
                 {
@@ -887,7 +894,7 @@ void Scheduler::BuildListMaps(void)
             p->GetRecordingStatus() == rsUnknown)
         {
             conflictlist.push_back(p);
-            titlelistmap[p->GetTitle()].push_back(p);
+            titlelistmap[p->GetTitle().toLower()].push_back(p);
             recordidlistmap[p->GetRecordingRuleID()].push_back(p);
         }
     }
@@ -1014,7 +1021,7 @@ void Scheduler::MarkOtherShowings(RecordingInfo *p)
 {
     RecList *showinglist;
 
-    showinglist = &titlelistmap[p->GetTitle()];
+    showinglist = &titlelistmap[p->GetTitle().toLower()];
     MarkShowingsList(*showinglist, p);
 
     if (p->GetRecordingRuleType() == kFindOneRecord ||

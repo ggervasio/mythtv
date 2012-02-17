@@ -386,7 +386,7 @@ bool AudioOutputBase::ToggleUpmix(void)
     const AudioSettings settings(format, source_channels, codec,
                                  source_samplerate, passthru);
     Reconfigure(settings);
-    return configured_channels == max_channels;
+    return IsUpmixing();
 }
 
 /**
@@ -394,8 +394,7 @@ bool AudioOutputBase::ToggleUpmix(void)
  */
 bool AudioOutputBase::CanUpmix(void)
 {
-    return needs_upmix && IS_VALID_UPMIX_CHANNEL(source_channels) &&
-           configured_channels > 2;
+    return !passthru && source_channels <= 2 && max_channels > 2;
 }
 
 /*
@@ -688,7 +687,7 @@ void AudioOutputBase::Reconfigure(const AudioSettings &orig_settings)
             src_out = new float[kAudioSRCOutputSize];
         }
         src_data.data_out       = src_out;
-        src_data.output_frames  = kAudioSRCOutputSize;
+        src_data.output_frames  = kAudioSRCOutputSize / chans;
         src_data.end_of_input = 0;
     }
 
@@ -742,7 +741,8 @@ void AudioOutputBase::Reconfigure(const AudioSettings &orig_settings)
             output_format = output_settings->BestSupportedFormat();
     }
 
-    bytes_per_frame =  processing ? 4 : output_settings->SampleSize(format);
+    bytes_per_frame =  processing ?
+        sizeof(float) : output_settings->SampleSize(format);
     bytes_per_frame *= channels;
 
     if (enc)
@@ -1201,7 +1201,7 @@ int AudioOutputBase::CopyWithUpmix(char *buffer, int frames, uint &org_waud)
         {
             AudioOutputUtil::MonoToStereo(WPOS, buffer, bdFrames);
             frames -= bdFrames;
-            off = bdFrames * source_bytes_per_frame;
+            off = bdFrames * sizeof(float); // 1 channel of floats
             org_waud = 0;
         }
         if (frames > 0)
@@ -1213,7 +1213,7 @@ int AudioOutputBase::CopyWithUpmix(char *buffer, int frames, uint &org_waud)
 
     // Upmix to 6ch via FreeSurround
     // Calculate frame size of input
-    off =  processing ? 4 : output_settings->SampleSize(format);
+    off =  processing ? sizeof(float) : output_settings->SampleSize(format);
     off *= source_channels;
 
     int i = 0;
@@ -1689,8 +1689,8 @@ int AudioOutputBase::GetAudioData(uchar *buffer, int size, bool full_buffer,
     bool fromFloats = processing && !enc && output_format != FORMAT_FLT;
 
     // Scale if necessary
-    if (fromFloats && obytes != 4)
-        frag_size *= 4 / obytes;
+    if (fromFloats && obytes != sizeof(float))
+        frag_size *= sizeof(float) / obytes;
 
     int off = 0;
 
