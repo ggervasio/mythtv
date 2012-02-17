@@ -515,7 +515,7 @@ bool MythUIText::Layout(QString & paragraph, QTextLayout *layout, bool final,
         min_rect |= line.naturalTextRect();
         ++num_lines;
 
-        if (final)
+        if (final && line.textLength())
         {
         /**
          * FontMetrics::width() returns a value that is good for spacing
