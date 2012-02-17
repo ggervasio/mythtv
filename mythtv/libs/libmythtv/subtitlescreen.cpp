@@ -1183,13 +1183,13 @@ void FormattedTextSubtitle::InitFromCC608(vector<CC608Text*> &buffers, int textF
     int yscale = teletextmode ? 25 : 17;
     m_pixelSize = m_safeArea.height() * textFontZoom
                   / (yscale * 1.1765f * 100);
-    int xmid = m_safeArea.width()/2;
-    int yoffset = 0;
-
     QFont *font = gTextSubFont->GetFace();
     font->setPixelSize(m_pixelSize);
     QFontMetrics fm(*font);
     int fontwidth = fm.averageCharWidth();
+
+    int xmid = m_safeArea.width()/2;
+    int yoffset = 0;
     LOG(VB_PLAYBACK, LOG_INFO, LOC + QString("xmid = %1, fontwidth = %4").
                                              arg(xmid).arg(fontwidth));
 
