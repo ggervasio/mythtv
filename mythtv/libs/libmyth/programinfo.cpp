@@ -1407,11 +1407,13 @@ void ProgramInfo::ToMap(InfoMap &progMap,
         progMap["starttime"] = MythDateTimeToString(startts, kTime);
         progMap["startdate"] = MythDateTimeToString(startts, kDateFull | kSimplify);
         progMap["shortstartdate"] = MythDateTimeToString(startts, kDateShort);
-        progMap["startyear"] = startts.toString("yyyy");
+        if (timeNow.date().year() != startts.date().year())
+            progMap["startyear"] = startts.toString("yyyy");
         progMap["endtime"] = MythDateTimeToString(endts, kTime);
         progMap["enddate"] = MythDateTimeToString(endts, kDateFull | kSimplify);
         progMap["shortenddate"] = MythDateTimeToString(endts, kDateShort);
-        progMap["endyear"] = endts.toString("yyyy");
+        if (timeNow.date().year() != endts.date().year())
+            progMap["endyear"] = endts.toString("yyyy");
         progMap["recstarttime"] = MythDateTimeToString(recstartts, kTime);
         progMap["recstartdate"] = MythDateTimeToString(recstartts, kDateShort);
         progMap["recendtime"] = MythDateTimeToString(recendts, kTime);
@@ -2775,6 +2777,10 @@ bool ProgramInfo::QueryIsDeleteCandidate(bool one_playback_allowed) const
 {
     if (!IsRecording())
         return false;
+
+    if (gCoreContext->GetNumSetting("AutoExpireInsteadOfDelete", 0) &&
+        GetRecordingGroup() != "Deleted" && GetRecordingGroup() != "LiveTV")
+        return true;
 
     bool ok = true;
     QStringList byWho;

@@ -2504,9 +2504,7 @@ void MainServer::DoHandleDeleteRecording(
     {
         recinfo.ApplyRecordRecGroupChange("Deleted");
         recinfo.SaveAutoExpire(kDeletedAutoExpire, true);
-        if (recinfo.GetRecordingStatus() == rsRecording ||
-            recinfo.GetRecordingStatus() == rsTuning)
-            DoHandleStopRecording(recinfo, NULL);
+        DoHandleStopRecording(recinfo, NULL);
         if (forgetHistory)
             recinfo.ForgetHistory();
         QStringList outputlist( QString::number(0) );
