@@ -762,7 +762,7 @@ ProgramInfo::ProgramInfo(const QString &_pathname) :
     QString basename = _pathname.section('/', -1);
     if (_pathname == basename)
         SetPathname(QDir::currentPath() + '/' + _pathname);
-    else if (_pathname.contains("./"))
+    else if (_pathname.contains("./") && !_pathname.contains(":"))
         SetPathname(QFileInfo(_pathname).absoluteFilePath());
     else
         SetPathname(_pathname);
@@ -1611,7 +1611,7 @@ void ProgramInfo::ToMap(InfoMap &progMap,
             break;
         case kProgramInfoTypeVideoBD :
             mediaType = "bluraydisc";
-            mediaTypeString = QObject::tr("Blu-Ray Disc");
+            mediaTypeString = QObject::tr("Blu-ray Disc");
             break;
         case kProgramInfoTypeRecording : // Fall through
         default :
@@ -2209,6 +2209,10 @@ QString ProgramInfo::QueryBasename(void) const
 QString ProgramInfo::GetPlaybackURL(
     bool checkMaster, bool forceCheckLocal) const
 {
+        // return the original path if BD or DVD URI
+    if (IsVideoBD() || IsVideoDVD())
+        return GetPathname();
+
     QString basename = QueryBasename();
     if (basename.isEmpty())
         return "";
