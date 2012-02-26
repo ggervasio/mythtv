@@ -103,7 +103,7 @@ bool SubtitleScreen::Create(void)
     m_608fontZoom   = gCoreContext->GetNumSetting("OSDCC608TextZoom", 100);
     m_textFontZoom  = gCoreContext->GetNumSetting("OSDCC708TextZoom", 100);
 
-    QString defaultFont = "FreeMono";
+    QString defaultFont = "Lucida Sans Typewriter";
     m_fontNames.append(defaultFont);       // default
     m_fontNames.append("FreeMono");        // mono serif
     m_fontNames.append("DejaVu Serif");    // prop serif
