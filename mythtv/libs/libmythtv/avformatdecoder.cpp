@@ -4341,6 +4341,8 @@ bool AvFormatDecoder::GetFrame(DecodeType decodetype)
 
                 SetEof(true);
                 delete pkt;
+                errno = -retval;
+                LOG(VB_GENERAL, LOG_ERR, QString("decoding error") + ENO);
                 return false;
             }
 
