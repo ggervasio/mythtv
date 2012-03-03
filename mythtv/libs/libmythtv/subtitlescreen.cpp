@@ -449,10 +449,10 @@ int SubtitleScreen::DisplayScaledAVSubtitles(const AVSubtitleRect *rect, QRect &
 
     scaled.moveLeft(((100-zoom)*hsize/2 + zoom*scaled.left())/100);
     if (top)
-        // clamp up
+        // anchor up
         scaled.moveTop(scaled.top() * zoom/100);
     else
-        // clamp down
+        // anchor down
         scaled.moveTop(((100-zoom)*vsize + zoom*scaled.top())/100);
 
 
@@ -1049,11 +1049,11 @@ void FormattedTextSubtitle::InitFromCC608(vector<CC608Text*> &buffers, int textF
         int orig_y = teletextmode ? cc->x : cc->y;
         int y;
         if (orig_y < rows/2)
-            // top half -- clamp up
+            // top half -- anchor up
             y = yoffset + (orig_y * m_safeArea.height() * textFontZoom
                            / (rows * 100));
         else
-            // bottom half -- clamp down
+            // bottom half -- anchor down
             y = yoffset + m_safeArea.height()
                     - ((rows - orig_y) * m_safeArea.height() * textFontZoom
                        / (rows * 100));
