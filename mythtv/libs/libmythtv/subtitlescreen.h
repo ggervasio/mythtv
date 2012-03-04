@@ -58,6 +58,9 @@ class SubtitleScreen : public MythScreenType
   private:
     void OptimiseDisplayedArea(void);
     void DisplayAVSubtitles(void);
+    int  DisplayScaledAVSubtitles(const AVSubtitleRect *rect, QRect &bbox,
+                                  bool top, QRect &display, int forced,
+                                  long long displayuntil, long long late);
     void DisplayTextSubtitles(void);
     void DisplayRawTextSubtitles(void);
     void DrawTextSubtitles(QStringList &wrappedsubs, uint64_t start,
