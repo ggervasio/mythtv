@@ -284,6 +284,7 @@ AvFormatDecoder::AvFormatDecoder(MythPlayer *parent,
       pts_detected(false),
       reordered_pts_detected(false),
       pts_selected(true),
+      force_dts_timestamps(false),
       playerFlags(flags),
       video_codec_id(kCodec_NONE),
       maxkeyframedist(-1),
@@ -1108,6 +1109,9 @@ int AvFormatDecoder::OpenFile(RingBuffer *rbuffer, bool novideo,
                 .arg(QString().sprintf("%06.3f", secs))
                 .arg(framenum));
     }
+
+    if (getenv("FORCE_DTS_TIMESTAMPS"))
+        force_dts_timestamps = true;
 
     // Return true if recording has position map
     return recordingHasPositionMap;
@@ -3106,7 +3110,13 @@ bool AvFormatDecoder::ProcessVideoPacket(AVStream *curstream, AVPacket *pkt)
     // the DTS timestamp is missing. Also use fixups for missing PTS instead of
     // DTS to avoid oscillating between PTS and DTS. Only select DTS if PTS is
     // more faulty or never detected.
-    if (ringBuffer->IsDVD())
+    if (force_dts_timestamps)
+    {
+        if (pkt->dts != (int64_t)AV_NOPTS_VALUE)
+            pts = pkt->dts;
+        pts_selected = false;
+    }
+    else if (ringBuffer->IsDVD())
     {
         if (pkt->dts != (int64_t)AV_NOPTS_VALUE)
             pts = pkt->dts;
@@ -3131,10 +3141,10 @@ bool AvFormatDecoder::ProcessVideoPacket(AVStream *curstream, AVPacket *pkt)
     }
 
     LOG(VB_PLAYBACK | VB_TIMESTAMP, LOG_DEBUG, LOC +
-        QString("video packet timestamps reordered %1 pts %2 dts %3 (%4 "
-                "active)")
+        QString("video packet timestamps reordered %1 pts %2 dts %3 (%4)")
             .arg(mpa_pic.reordered_opaque).arg(pkt->pts).arg(pkt->dts)
-            .arg((pts_selected) ? "reordered" : "dts"));
+            .arg((force_dts_timestamps) ? "dts forced" :
+                 (pts_selected) ? "reordered" : "dts"));
 
     mpa_pic.reordered_opaque = pts;
 
@@ -4013,7 +4023,6 @@ bool AvFormatDecoder::ProcessAudioPacket(AVStream *curstream, AVPacket *pkt,
                                          DecodeType decodetype)
 {
     AVCodecContext *ctx = curstream->codec;
-    long long pts       = 0;
     int ret             = 0;
     int data_size       = 0;
     bool firstloop      = true;
@@ -4023,9 +4032,6 @@ bool AvFormatDecoder::ProcessAudioPacket(AVStream *curstream, AVPacket *pkt,
     int audIdx = selectedTrack[kTrackTypeAudio].av_stream_index;
     int audSubIdx = selectedTrack[kTrackTypeAudio].av_substream_index;
     avcodeclock->unlock();
-
-    if (pkt->dts != (int64_t)AV_NOPTS_VALUE)
-        pts = (long long)(av_q2d(curstream->time_base) * pkt->dts * 1000);
 
     AVPacket tmp_pkt;
     tmp_pkt.data = pkt->data;

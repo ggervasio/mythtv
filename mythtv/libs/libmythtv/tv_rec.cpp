@@ -35,7 +35,7 @@
 #include "jobqueue.h"
 #include "mythdb.h"
 #include "tv_rec.h"
-#include "util.h"
+#include "mythmiscutil.h"
 #include "osd.h"
 
 #define DEBUG_CHANNEL_PREFIX 0 /**< set to 1 to channel prefixing */
