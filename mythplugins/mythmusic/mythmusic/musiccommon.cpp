@@ -7,6 +7,7 @@ using namespace std;
 
 // Qt includes
 #include <QApplication>
+#include <QLocale>
 
 // mythtv
 #include <mythuitextedit.h>
@@ -45,7 +46,6 @@ MusicCommon::MusicCommon(MythScreenStack *parent, const QString &name)
             : MythScreenType(parent, name)
 {
     m_mainvisual = NULL;
-    m_visualModeTimer = NULL;
     m_moveTrackMode = false;
     m_movingTrack = false;
     m_currentTime = 0;
@@ -70,12 +70,6 @@ MusicCommon::MusicCommon(MythScreenStack *parent, const QString &name)
 MusicCommon::~MusicCommon(void)
 {
     gPlayer->removeListener(this);
-
-    if (m_visualModeTimer)
-    {
-        delete m_visualModeTimer;
-        m_visualModeTimer = NULL;
-    }
 
     if (m_mainvisual)
     {
@@ -129,8 +123,6 @@ bool MusicCommon::CreateCommon(void)
     UIUtilW::Assign(this, m_muteState,         "mutestate", &err);
 
     UIUtilW::Assign(this, m_playlistProgress,     "playlistprogress", &err);
-    UIUtilW::Assign(this, m_playlistProgressText, "playlistposition", &err);
-    UIUtilW::Assign(this, m_playlistLengthText,   "playlisttime", &err);
 
     UIUtilW::Assign(this, m_prevButton,    "prev", &err);
     UIUtilW::Assign(this, m_rewButton,     "rew", &err);
@@ -217,18 +209,6 @@ bool MusicCommon::CreateCommon(void)
         {
             LOG(VB_GENERAL, LOG_ERR, QString("MusicCommon: Got a bad saved visualizer: %1").arg(m_currentVisual));
             m_currentVisual = 0;
-        }
-
-        QString visual_delay = gCoreContext->GetSetting("VisualModeDelay");
-        bool delayOK;
-        m_visualModeDelay = visual_delay.toInt(&delayOK);
-        if (!delayOK)
-            m_visualModeDelay = 0;
-        if (m_visualModeDelay > 0)
-        {
-            m_visualModeTimer = new QTimer(this);
-            m_visualModeTimer->start(m_visualModeDelay * 1000);
-            connect(m_visualModeTimer, SIGNAL(timeout()), this, SLOT(visEnable()));
         }
 
         switchVisualizer(m_currentVisual);
@@ -473,8 +453,6 @@ bool MusicCommon::onMediaEvent(MythMediaDevice*)
 bool MusicCommon::keyPressEvent(QKeyEvent *e)
 {
     bool handled = false;
-
-    resetVisualiserTimer();
 
     QStringList actions;
     handled = GetMythMainWindow()->TranslateKeyPress("Music", e, actions, true);
@@ -815,14 +793,6 @@ void MusicCommon::showSpeed(bool show)
 #endif
 }
 
-
-void MusicCommon::resetVisualiserTimer()
-{
-    //FIXME do we still need the timer?
-    if (m_visualModeDelay > 0 && m_visualModeTimer)
-        m_visualModeTimer->start(m_visualModeDelay * 1000);
-}
-
 void MusicCommon::switchVisualizer(const QString &visual)
 {
     switchVisualizer(m_visualModes.indexOf(visual));
@@ -837,8 +807,6 @@ void MusicCommon::switchVisualizer(int visual)
         visual = 0;
 
     m_currentVisual = visual;
-
-    resetVisualiserTimer();
 
     m_mainvisual->setVisual(m_visualModes[m_currentVisual]);
 
@@ -1022,8 +990,8 @@ void MusicCommon::changeRating(bool increase)
     // Rationale here is that if you can't get visual feedback on ratings
     // adjustments, you probably should not be changing them
     // TODO: should check if the rating is visible in the playlist buttontlist
-    if (!m_ratingState)
-        return;
+    //if (!m_ratingState)
+    //    return;
 
     Metadata *curMeta = gPlayer->getCurrentMetadata();
     if (!curMeta)
@@ -1640,9 +1608,15 @@ void MusicCommon::customEvent(QEvent *event)
                     {
                         QString artFile = mdata->getAlbumArtFile();
                         if (artFile.isEmpty())
-                            item->SetImage("mm_nothumb.png");
+                        {
+                            item->SetImage("");
+                            item->SetImage("", "coverart");
+                        }
                         else
+                        {
                             item->SetImage(mdata->getAlbumArtFile());
+                            item->SetImage(mdata->getAlbumArtFile(), "coverart");
+                        }
                     }
                 }
             }
@@ -1808,12 +1782,18 @@ void MusicCommon::playlistItemVisible(MythUIButtonListItem *item)
         {
             QString artFile = mdata->getAlbumArtFile();
             if (artFile.isEmpty())
-                item->SetImage("mm_nothumb.png");
+            {
+                item->SetImage("");
+                item->SetImage("", "coverart");
+            }
             else
+            {
                 item->SetImage(mdata->getAlbumArtFile());
+                item->SetImage(mdata->getAlbumArtFile(), "coverart");
+            }
         }
         else
-            item->SetImage("mm_nothumb.png");
+            item->SetImage("");
     }
 }
 
@@ -1901,12 +1881,17 @@ void MusicCommon::updatePlaylistStats(void)
     QHash<QString, QString> map;
     if (gPlayer->isPlaying() && trackCount > 0)
     {
-        map["playlistposition"] = QString("%1 of %2").arg(m_currentTrack + 1).arg(trackCount);
-        map["playlistcurrent"] = QString("%1").arg(m_currentTrack + 1);
-        map["playlistcount"] = QString("%1").arg(trackCount);
+        QString playlistcurrent = QLocale::system().toString(m_currentTrack + 1);
+        QString playlisttotal = QLocale::system().toString(trackCount);
+
+        map["playlistposition"] = QString("%1 of %2").arg(playlistcurrent)
+                                                     .arg(playlisttotal);
+        map["playlistcurrent"] = playlistcurrent;
+        map["playlistcount"] = playlisttotal;
         map["playlisttime"] = getTimeString(m_playlistPlayedTime + m_currentTime, m_playlistMaxTime);
         map["playlistplayedtime"] = getTimeString(m_playlistPlayedTime + m_currentTime, 0);
         map["playlisttotaltime"] = getTimeString(m_playlistMaxTime, 0);
+        map["playlistname"] = gPlayer->getPlaylist()->getName();
     }
     else
     {
@@ -1916,13 +1901,10 @@ void MusicCommon::updatePlaylistStats(void)
         map["playlisttime"] = "";
         map["playlistplayedtime"] = "";
         map["playlisttotaltime"] = "";
+        map["playlistname"] = "";
     }
 
-    if (m_playlistProgressText)
-        m_playlistProgressText->SetTextFromMap(map);
-
-    if (m_playlistLengthText)
-        m_playlistLengthText->SetTextFromMap(map);
+    SetTextFromMap(map);
 
     if (m_playlistProgress)
         m_playlistProgress->SetUsed(m_playlistPlayedTime + m_currentTime);

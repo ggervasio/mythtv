@@ -4157,6 +4157,10 @@ void PlaybackBox::customEvent(QEvent *event)
                 m_artTimer[(uint)type]->start(s_artDelay[(uint)type]);
             }
         }
+        else if (message == "EXIT_TO_MENU")
+        {
+            m_playListPlay.clear();
+        }
     }
     else
         ScheduleCommon::customEvent(event);

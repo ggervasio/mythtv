@@ -32,7 +32,7 @@ void PrivTcpServer::incomingConnection(int socket)
 
 ServerPool::ServerPool(QObject *parent) : QObject(parent),
     m_listening(false), m_maxPendingConn(30), m_port(0),
-    m_proxy(QNetworkProxy::DefaultProxy)
+    m_proxy(QNetworkProxy::DefaultProxy), m_udpSend(NULL)
 {
 }
 
@@ -139,7 +139,7 @@ void ServerPool::SelectDefaultListen(bool force)
             {
                 // IPv6 address is not defined, populate one
                 // put in additional block filtering here?
-                if (ip.isInSubnet(QHostAddress::parseSubnet("fe80::/10")))
+                if (!ip.isInSubnet(QHostAddress::parseSubnet("fe80::/10")))
                 {
                     LOG(VB_GENERAL, LOG_DEBUG,
                             QString("Adding '%1' to address list.")
@@ -159,7 +159,8 @@ void ServerPool::SelectDefaultListen(bool force)
         }
     }
 
-    if (!v4IsSet && !naList_4.isEmpty())
+    if (!v4IsSet && (config_v4 != QHostAddress::LocalHost)
+                 && !naList_4.isEmpty())
     {
         LOG(VB_GENERAL, LOG_CRIT, LOC + QString("Host is configured to listen "
                 "on %1, but address is not used on any local network "
@@ -167,13 +168,19 @@ void ServerPool::SelectDefaultListen(bool force)
     }
 
 #if !defined(QT_NO_IPV6)
-    if (!v6IsSet && !naList_6.isEmpty())
+    if (!v6IsSet && (config_v6 != QHostAddress::LocalHostIPv6)
+                 && !naList_6.isEmpty())
     {
         LOG(VB_GENERAL, LOG_CRIT, LOC + QString("Host is configured to listen "
                 "on %1, but address is not used on any local network "
                 "interfaces.").arg(PRETTYIP_(config_v6)));
     }
 #endif
+
+    // NOTE: there is no warning for the case where both defined addresses
+    //       are localhost, and neither are found. however this would also
+    //       mean there is no configured network at all, and should be
+    //       sufficiently rare a case as to not worry about it.
 }
 
 void ServerPool::RefreshDefaultListen(void)
@@ -267,6 +274,12 @@ void ServerPool::close(void)
         socket->disconnect();
         socket->close();
         socket->deleteLater();
+    }
+
+    if (m_udpSend)
+    {
+        delete m_udpSend;
+        m_udpSend = NULL;
     }
 
     m_listening = false;
@@ -373,6 +386,9 @@ bool ServerPool::bind(QList<QHostAddress> addrs, quint16 port,
     if (m_udpSockets.size() == 0)
         return false;
 
+    if (!m_udpSend)
+        m_udpSend = new QUdpSocket();
+
     m_listening = true;
     return true;
 }
@@ -394,15 +410,14 @@ bool ServerPool::bind(quint16 port, bool requireall)
 qint64 ServerPool::writeDatagram(const char * data, qint64 size,
                                  const QHostAddress &addr, quint16 port)
 {
-    if (!m_listening || m_udpSockets.isEmpty())
+    if (!m_listening || !m_udpSend)
     {
         LOG(VB_GENERAL, LOG_ERR, "Trying to write datagram to disconnected "
                             "ServerPool instance.");
         return -1;
     }
 
-    QUdpSocket *socket = m_udpSockets.first();
-    return socket->writeDatagram(data, size, addr, port);
+    return m_udpSend->writeDatagram(data, size, addr, port);
 }
 
 qint64 ServerPool::writeDatagram(const QByteArray &datagram,

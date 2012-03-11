@@ -509,7 +509,7 @@ MythMainWindow::MythMainWindow(const bool useDB)
         idletime = STANDBY_TIMEOUT;
 
     d->idleTimer = new QTimer(this);
-    d->idleTimer->setSingleShot(true);
+    d->idleTimer->setSingleShot(false);
     d->idleTimer->setInterval(1000 * 60 * idletime); // 30 minutes
     connect(d->idleTimer, SIGNAL(timeout()), SLOT(IdleTimeout()));
     d->idleTimer->start();
@@ -1218,10 +1218,10 @@ void MythMainWindow::InitKeys()
     RegisterKey("Browser", "HISTORYFORWARD",  QT_TRANSLATE_NOOP("MythControls",
         "Go forward to previous page"),     "F");
 
-    RegisterKey("Main Menu",    "EXIT",       QT_TRANSLATE_NOOP("MythControls",
-        "System Exit"),                     "");
     RegisterKey("Main Menu",    "EXITPROMPT", QT_TRANSLATE_NOOP("MythControls",
         "Display System Exit Prompt"),      "Esc");
+    RegisterKey("Main Menu",    "EXIT",       QT_TRANSLATE_NOOP("MythControls",
+        "System Exit"),                     "");
 }
 
 void MythMainWindow::ReloadKeys()
@@ -2592,25 +2592,26 @@ void MythMainWindow::PauseIdleTimer(bool pause)
 
 void MythMainWindow::IdleTimeout(void)
 {
-    if (!d->standby)
+
+    int idletimeout = gCoreContext->GetNumSetting("FrontendIdleTimeout",
+                                                   STANDBY_TIMEOUT);
+
+    if (idletimeout > 0 && !d->standby)
     {
-        int idletimeout = gCoreContext->GetNumSetting("FrontendIdleTimeout",
-                                                       STANDBY_TIMEOUT);
         LOG(VB_GENERAL, LOG_NOTICE, QString("Entering standby mode after "
                                         "%1 minutes of inactivity")
                                         .arg(idletimeout));
+        EnterStandby(false);
 
         // HACK Prevent faked keypresses interrupting the transition to standby
         PauseIdleTimer(true);
         // HACK end
 
-        JumpTo("Main Menu");
+        JumpTo("Standby Mode");
 
         // HACK
         PauseIdleTimer(false);
         // HACK end
-
-        EnterStandby(false);
     }
 }
 
@@ -2635,6 +2636,8 @@ void MythMainWindow::ExitStandby(bool manual)
 {
     if (manual)
         PauseIdleTimer(false);
+    else
+        JumpTo("Main Menu");
 
     if (!d->standby)
         return;
