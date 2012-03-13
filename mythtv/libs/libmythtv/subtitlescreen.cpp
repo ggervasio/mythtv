@@ -978,7 +978,8 @@ static QString srtColorString(QColor color)
         .arg(color.blue(),  2, 16, QLatin1Char('0'));
 }
 
-void FormattedTextSubtitle::InitFromCC608(vector<CC608Text*> &buffers, int textFontZoom)
+void FormattedTextSubtitle::InitFromCC608(vector<CC608Text*> &buffers,
+                                          int textFontZoom)
 {
     static const QColor clr[8] =
     {
@@ -998,32 +999,18 @@ void FormattedTextSubtitle::InitFromCC608(vector<CC608Text*> &buffers, int textF
                     / (yscale * LINE_SPACING * 100);
     int fontwidth = 0;
     int xmid = 0;
-    int yoffset = 0;
     if (parent)
     {
         parent->SetFontSizes(pixelSize, pixelSize, pixelSize);
-        CC708CharacterAttribute def_attr(false, false, false, clr[0], useBackground);
+        CC708CharacterAttribute def_attr(false, false, false, clr[0],
+                                         useBackground);
         QFont *font = parent->Get708Font(def_attr)->GetFace();
         QFontMetrics fm(*font);
         fontwidth = fm.averageCharWidth();
-        xmid = m_safeArea.width()/2;
-    }
-    LOG(VB_PLAYBACK, LOG_INFO, LOC + QString("xmid = %1, fontwidth = %4").
-                                             arg(xmid).arg(fontwidth));
-
-    int rows, cols;
-    if (teletextmode)
-    {
-        // teletext expects a 24 row / 40 char grid
-        rows = 24+1;
-        cols = 40;
-    }
-    else
-    {
-        // CC has 15 rows, 32 columns
-        // - add one row top and bottom for margin
-        rows = 15+2;
-        cols = 32;
+        xmid = m_safeArea.width() / 2;
+        // Disable centering for zoom factor >= 100%
+        if (textFontZoom >= 100)
+            xscale = m_safeArea.width() / fontwidth;
     }
 
     for (; i != buffers.end(); ++i)
@@ -1041,22 +1028,21 @@ void FormattedTextSubtitle::InitFromCC608(vector<CC608Text*> &buffers, int textF
         int x;
         if (xmid)
             // center horizontally
-            x = xmid + (orig_x - cols/2) * fontwidth;
+            x = xmid + (orig_x - xscale / 2) * fontwidth;
         else
             // fallback
             x = (orig_x + 3) * m_safeArea.width() / xscale;
 
         int orig_y = teletextmode ? cc->x : cc->y;
         int y;
-        if (orig_y < rows/2)
+        if (orig_y < yscale / 2)
             // top half -- anchor up
-            y = yoffset + (orig_y * m_safeArea.height() * textFontZoom
-                           / (rows * 100));
+            y = (orig_y * m_safeArea.height() * textFontZoom / (yscale * 100));
         else
             // bottom half -- anchor down
-            y = yoffset + m_safeArea.height()
-                    - ((rows - orig_y) * m_safeArea.height() * textFontZoom
-                       / (rows * 100));
+            y = m_safeArea.height() -
+                ((yscale - orig_y) * m_safeArea.height() * textFontZoom /
+                 (yscale * 100));
 
         FormattedTextLine line(x, y, orig_x, orig_y);
         while (!text.isNull())
