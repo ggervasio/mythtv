@@ -993,7 +993,7 @@ void FormattedTextSubtitle::InitFromCC608(vector<CC608Text*> &buffers,
     bool teletextmode = (*i)->teletextmode;
     bool useBackground = m_useBackground && !teletextmode;
 
-    int xscale = teletextmode ? 40 : 36;
+    int xscale = teletextmode ? 40 : 32;
     int yscale = teletextmode ? 25 : 17;
     int pixelSize = m_safeArea.height() * textFontZoom
                     / (yscale * LINE_SPACING * 100);
