@@ -39,6 +39,10 @@
 #include "mythdirs.h"
 #include "mythuihelper.h"
 
+#if defined(Q_OS_MACX)
+#include "privatedecoder_vda.h"
+#endif
+
 static HostCheckBox *DecodeExtraAudio()
 {
     HostCheckBox *gc = new HostCheckBox("DecodeExtraAudio");
@@ -1147,6 +1151,27 @@ PlaybackProfileConfigs::PlaybackProfileConfigs(const QString &str) :
         !profiles.contains("VDPAU Slim"))
     {
         VideoDisplayProfile::CreateVDPAUProfiles(host);
+        profiles = VideoDisplayProfile::GetProfiles(host);
+    }
+
+#if defined(Q_OS_MACX)
+    if (VDALibrary::GetVDALibrary() != NULL)
+    {
+        if (!profiles.contains("VDA Normal") &&
+            !profiles.contains("VDA High Quality") &&
+            !profiles.contains("VDA Slim"))
+        {
+            VideoDisplayProfile::CreateVDAProfiles(host);
+            profiles = VideoDisplayProfile::GetProfiles(host);
+        }
+    }
+#endif
+
+    if (!profiles.contains("OpenGL Normal") &&
+        !profiles.contains("OpenGL High Quality") &&
+        !profiles.contains("OpenGL Slim"))
+    {
+        VideoDisplayProfile::CreateOpenGLProfiles(host);
         profiles = VideoDisplayProfile::GetProfiles(host);
     }
 
@@ -2262,6 +2287,25 @@ static HostComboBox *MythTimeFormat()
     gc->setHelpText(QObject::tr("Your preferred time format. You must choose "
                     "a format with \"AM\" or \"PM\" in it, otherwise your "
                     "time display will be 24-hour or \"military\" time."));
+    return gc;
+}
+
+static HostComboBox *ThemePainter()
+{
+    HostComboBox *gc = new HostComboBox("ThemePainter");
+    gc->setLabel(QObject::tr("Paint engine"));
+    gc->addSelection(QObject::tr("Qt"), "qt");
+    gc->addSelection(QObject::tr("Auto"), "auto");
+#ifdef USING_OPENGL
+    gc->addSelection(QObject::tr("OpenGL"), "opengl");
+#endif
+#ifdef USING_MINGW
+    gc->addSelection(QObject::tr("Direct3D"), "d3d9");
+#endif
+    gc->setHelpText(QObject::tr("This selects what MythTV uses to draw. "
+                    "Choosing 'Auto' is recommended, unless running on systems "
+                    "with broken OpenGL implementations (broken hardware or "
+                    "drivers or windowing systems) where only Qt works."));
     return gc;
 }
 
@@ -3650,6 +3694,7 @@ AppearanceSettings::AppearanceSettings()
     VerticalConfigurationGroup* screen = new VerticalConfigurationGroup(false);
     screen->setLabel(QObject::tr("Theme") + " / " + QObject::tr("Screen Settings"));
 
+    screen->addChild(ThemePainter());
     screen->addChild(MenuTheme());
 
     if (MythDisplay::GetNumberXineramaScreens() > 1)
