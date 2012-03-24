@@ -881,6 +881,7 @@ void TVRec::FinishedRecording(RecordingInfo *curRec, RecordingQuality *recq)
     // if this is a dummy recorder, do no more..
     if (HasFlags(kFlagDummyRecorderRunning))
     {
+        curRec->FinishedRecording(true); // so end time is updated
         SendMythSystemRecEvent("REC_FINISHED", curRecording);
         return;
     }
@@ -921,8 +922,7 @@ void TVRec::FinishedRecording(RecordingInfo *curRec, RecordingQuality *recq)
     }
 
     // store recording in recorded table
-    if (recgrp != "LiveTV")
-        curRec->FinishedRecording(!is_good);
+    curRec->FinishedRecording(!is_good || (recgrp == "LiveTV"));
 
     // send out REC_FINISHED message
     SendMythSystemRecEvent("REC_FINISHED", curRecording);

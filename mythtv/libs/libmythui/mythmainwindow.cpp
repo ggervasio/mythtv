@@ -436,8 +436,8 @@ MythMainWindow::MythMainWindow(const bool useDB)
     d->ignore_joystick_keys = false;
     d->exitingtomain = false;
     d->popwindows = true;
-    d->exitmenucallback = false;
-    d->exitmenumediadevicecallback = false;
+    d->exitmenucallback = NULL;
+    d->exitmenumediadevicecallback = NULL;
     d->mediadeviceforcallback = NULL;
     d->escapekey = Qt::Key_Escape;
     d->mainStack = NULL;
@@ -2363,14 +2363,6 @@ void MythMainWindow::customEvent(QEvent *ce)
             state.insert("currentlocation", GetMythUI()->GetCurrentLocation());
             MythUIStateTracker::SetState(state);
         }
-        else if (message.startsWith("PLAYBACK_START"))
-        {
-            PauseIdleTimer(true);
-        }
-        else if (message.startsWith("PLAYBACK_END"))
-        {
-            PauseIdleTimer(false);
-        }
     }
     else if ((MythEvent::Type)(ce->type()) == MythEvent::MythUserMessage)
     {
@@ -2572,7 +2564,8 @@ void MythMainWindow::HideMouseTimeout(void)
 
 void MythMainWindow::ResetIdleTimer(void)
 {
-    if (d->standby && d->enteringStandby)
+    if (!d->idleTimer->isActive() ||
+        (d->standby && d->enteringStandby))
         return;
 
     if (d->standby)
@@ -2584,9 +2577,15 @@ void MythMainWindow::ResetIdleTimer(void)
 void MythMainWindow::PauseIdleTimer(bool pause)
 {
     if (pause)
+    {
+        LOG(VB_GENERAL, LOG_NOTICE, "Suspending idle timer");
         d->idleTimer->stop();
+    }
     else
+    {
+        LOG(VB_GENERAL, LOG_NOTICE, "Resuming idle timer");
         d->idleTimer->start();
+    }
 
     // ResetIdleTimer();
 }
