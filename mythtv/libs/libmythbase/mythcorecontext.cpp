@@ -1284,8 +1284,11 @@ void MythCoreContext::ReInitLocale(void)
     QLocale::setDefault(d->m_locale->ToQLocale());
 }
 
-const QLocale MythCoreContext::GetQLocale(void) const
+const QLocale MythCoreContext::GetQLocale(void)
 {
+    if (!d->m_locale)
+        InitLocale();
+
     return d->m_locale->ToQLocale();
 }
 
