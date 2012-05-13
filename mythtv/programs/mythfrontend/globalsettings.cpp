@@ -210,51 +210,6 @@ static HostComboBox *AutoCommercialSkip()
     return gc;
 }
 
-static GlobalCheckBox *AutoMetadataLookup()
-{
-    GlobalCheckBox *bc = new GlobalCheckBox("AutoMetadataLookup");
-    bc->setLabel(QObject::tr("Run metadata lookup"));
-    bc->setValue(true);
-    bc->setHelpText(QObject::tr("This is the default value used for the "
-                    "automatic metadata lookup setting when a new "
-                    "scheduled recording is created."));
-    return bc;
-}
-
-static GlobalCheckBox *AutoCommercialFlag()
-{
-    GlobalCheckBox *bc = new GlobalCheckBox("AutoCommercialFlag");
-    bc->setLabel(QObject::tr("Run commercial detection"));
-    bc->setValue(true);
-    bc->setHelpText(QObject::tr("This is the default value used for the "
-                    "automatic commercial detection setting when a new "
-                    "scheduled recording is created."));
-    return bc;
-}
-
-static GlobalCheckBox *AutoTranscode()
-{
-    GlobalCheckBox *bc = new GlobalCheckBox("AutoTranscode");
-    bc->setLabel(QObject::tr("Run transcoder"));
-    bc->setValue(false);
-    bc->setHelpText(QObject::tr("This is the default value used for the "
-                    "automatic-transcode setting when a new scheduled "
-                    "recording is created."));
-    return bc;
-}
-
-static GlobalComboBox *DefaultTranscoder()
-{
-    GlobalComboBox *bc = new GlobalComboBox("DefaultTranscoder");
-    bc->setLabel(QObject::tr("Default transcoder"));
-    RecordingProfile::fillSelections(bc, RecordingProfile::TranscoderGroup,
-                                     true);
-    bc->setHelpText(QObject::tr("This is the default value used for the "
-                    "transcoder setting when a new scheduled "
-                    "recording is created."));
-    return bc;
-}
-
 static GlobalSpinBox *DeferAutoTranscodeDays()
 {
     GlobalSpinBox *gs = new GlobalSpinBox("DeferAutoTranscodeDays", 0, 365, 1);
@@ -264,22 +219,6 @@ static GlobalSpinBox *DeferAutoTranscodeDays()
                     "completes instead of immediately afterwards."));
     gs->setValue(0);
     return gs;
-}
-
-static GlobalCheckBox *AutoRunUserJob(uint job_num)
-{
-    QString dbStr = QString("AutoRunUserJob%1").arg(job_num);
-    QString label = QObject::tr("Run user job #%1")
-        .arg(job_num);
-    GlobalCheckBox *bc = new GlobalCheckBox(dbStr);
-    bc->setLabel(label);
-    bc->setValue(false);
-    bc->setHelpText(QObject::tr("This is the default value used for the "
-                    "'Run %1' setting when a new scheduled "
-                    "recording is created.")
-                    .arg(gCoreContext->GetSetting(QString("UserJobDesc%1")
-                         .arg(job_num))));
-    return bc;
 }
 
 static GlobalCheckBox *AggressiveCommDetect()
@@ -448,17 +387,6 @@ static GlobalSpinBox *AutoExpireDayPriority()
     bs->setValue(3);
     return bs;
 };
-
-static GlobalCheckBox *AutoExpireDefault()
-{
-    GlobalCheckBox *bc = new GlobalCheckBox("AutoExpireDefault");
-    bc->setLabel(QObject::tr("Auto-Expire default"));
-    bc->setValue(true);
-    bc->setHelpText(QObject::tr("If enabled, any new recording schedules "
-                    "will be marked as eligible for auto-expiration. "
-                    "Existing schedules will keep their current value."));
-    return bc;
-}
 
 static GlobalSpinBox *AutoExpireLiveTVMaxAge()
 {
@@ -1169,12 +1097,20 @@ PlaybackProfileConfigs::PlaybackProfileConfigs(const QString &str) :
     }
 #endif
 
-#ifdef USING_OPENGL
+#ifdef USING_OPENGL_VIDEO
     if (!profiles.contains("OpenGL Normal") &&
         !profiles.contains("OpenGL High Quality") &&
         !profiles.contains("OpenGL Slim"))
     {
         VideoDisplayProfile::CreateOpenGLProfiles(host);
+        profiles = VideoDisplayProfile::GetProfiles(host);
+    }
+#endif
+
+#ifdef USING_GLVAAPI
+    if (!profiles.contains("VAAPI Normal"))
+    {
+        VideoDisplayProfile::CreateVAAPIProfiles(host);
         profiles = VideoDisplayProfile::GetProfiles(host);
     }
 #endif
@@ -1417,23 +1353,6 @@ static HostSpinBox *OSDCC708TextZoomPercentage(void)
     return gs;
 }
 
-static HostComboBox *SubtitleFont()
-{
-    HostComboBox *hcb = new HostComboBox("DefaultSubtitleFont");
-    QFontDatabase db;
-    QStringList fonts = db.families();
-    QStringList hide  = db.families(QFontDatabase::Symbol);
-
-    hcb->setLabel(QObject::tr("Subtitle Font"));
-    hcb->setHelpText(QObject::tr("The font to use for text based subtitles."));
-    foreach (QString font, fonts)
-    {
-        if (!hide.contains(font))
-            hcb->addSelection(font, font, font.toLower() == "freemono");
-    }
-    return hcb;
-}
-
 static HostComboBox *SubtitleCodec()
 {
     HostComboBox *gc = new HostComboBox("SubtitleCodec");
@@ -1498,18 +1417,6 @@ static HostSpinBox *YScanDisplacement()
     return gs;
 };
 
-static HostCheckBox *CCBackground()
-{
-    HostCheckBox *gc = new HostCheckBox("CCBackground");
-    gc->setLabel(QObject::tr("Black background for closed captioning"));
-    gc->setValue(false);
-    gc->setHelpText(QObject::tr(
-                        "If enabled, captions will be displayed "
-                        "over a black background "
-                        "for better contrast."));
-    return gc;
-}
-
 static HostCheckBox *DefaultCCMode()
 {
     HostCheckBox *gc = new HostCheckBox("DefaultCCMode");
@@ -1520,19 +1427,6 @@ static HostCheckBox *DefaultCCMode()
                         "when playing back recordings or watching "
                         "Live TV. Closed Captioning can be turned on or off "
                         "by pressing \"T\" during playback."));
-    return gc;
-}
-
-static HostCheckBox *PreferCC708()
-{
-    HostCheckBox *gc = new HostCheckBox("Prefer708Captions");
-    gc->setLabel(QObject::tr("Prefer EIA-708 over EIA-608 captions"));
-    gc->setValue(true);
-    gc->setHelpText(
-        QObject::tr(
-            "If enabled, the newer EIA-708 captions will be preferred over "
-            "the older EIA-608 captions in ATSC streams."));
-
     return gc;
 }
 
@@ -2210,30 +2104,32 @@ static HostComboBox *MythDateFormatCB()
             QObject::tr("Samples are shown using tomorrow's date.");
     }
 
-    gc->addSelection(sampdate.toString("ddd MMM d"), "ddd MMM d");
-    gc->addSelection(sampdate.toString("ddd d MMM"), "ddd d MMM");
-    gc->addSelection(sampdate.toString("ddd MMMM d"), "ddd MMMM d");
-    gc->addSelection(sampdate.toString("ddd d MMMM"), "ddd d MMMM");
-    gc->addSelection(sampdate.toString("dddd MMM d"), "dddd MMM d");
-    gc->addSelection(sampdate.toString("dddd d MMM"), "dddd d MMM");
-    gc->addSelection(sampdate.toString("MMM d"), "MMM d");
-    gc->addSelection(sampdate.toString("d MMM"), "d MMM");
-    gc->addSelection(sampdate.toString("MM/dd"), "MM/dd");
-    gc->addSelection(sampdate.toString("dd/MM"), "dd/MM");
-    gc->addSelection(sampdate.toString("MM.dd"), "MM.dd");
-    gc->addSelection(sampdate.toString("dd.MM"), "dd.MM");
-    gc->addSelection(sampdate.toString("M/d/yyyy"), "M/d/yyyy");
-    gc->addSelection(sampdate.toString("d/M/yyyy"), "d/M/yyyy");
-    gc->addSelection(sampdate.toString("MM.dd.yyyy"), "MM.dd.yyyy");
-    gc->addSelection(sampdate.toString("dd.MM.yyyy"), "dd.MM.yyyy");
-    gc->addSelection(sampdate.toString("yyyy-MM-dd"), "yyyy-MM-dd");
-    gc->addSelection(sampdate.toString("ddd MMM d yyyy"), "ddd MMM d yyyy");
-    gc->addSelection(sampdate.toString("ddd d MMM yyyy"), "ddd d MMM yyyy");
-    gc->addSelection(sampdate.toString("ddd yyyy-MM-dd"), "ddd yyyy-MM-dd");
-    gc->addSelection(sampdate.toString(
+    QLocale locale = gCoreContext->GetQLocale();
+
+    gc->addSelection(locale.toString(sampdate, "ddd MMM d"), "ddd MMM d");
+    gc->addSelection(locale.toString(sampdate, "ddd d MMM"), "ddd d MMM");
+    gc->addSelection(locale.toString(sampdate, "ddd MMMM d"), "ddd MMMM d");
+    gc->addSelection(locale.toString(sampdate, "ddd d MMMM"), "ddd d MMMM");
+    gc->addSelection(locale.toString(sampdate, "dddd MMM d"), "dddd MMM d");
+    gc->addSelection(locale.toString(sampdate, "dddd d MMM"), "dddd d MMM");
+    gc->addSelection(locale.toString(sampdate, "MMM d"), "MMM d");
+    gc->addSelection(locale.toString(sampdate, "d MMM"), "d MMM");
+    gc->addSelection(locale.toString(sampdate, "MM/dd"), "MM/dd");
+    gc->addSelection(locale.toString(sampdate, "dd/MM"), "dd/MM");
+    gc->addSelection(locale.toString(sampdate, "MM.dd"), "MM.dd");
+    gc->addSelection(locale.toString(sampdate, "dd.MM"), "dd.MM");
+    gc->addSelection(locale.toString(sampdate, "M/d/yyyy"), "M/d/yyyy");
+    gc->addSelection(locale.toString(sampdate, "d/M/yyyy"), "d/M/yyyy");
+    gc->addSelection(locale.toString(sampdate, "MM.dd.yyyy"), "MM.dd.yyyy");
+    gc->addSelection(locale.toString(sampdate, "dd.MM.yyyy"), "dd.MM.yyyy");
+    gc->addSelection(locale.toString(sampdate, "yyyy-MM-dd"), "yyyy-MM-dd");
+    gc->addSelection(locale.toString(sampdate, "ddd MMM d yyyy"), "ddd MMM d yyyy");
+    gc->addSelection(locale.toString(sampdate, "ddd d MMM yyyy"), "ddd d MMM yyyy");
+    gc->addSelection(locale.toString(sampdate, "ddd yyyy-MM-dd"), "ddd yyyy-MM-dd");
+    gc->addSelection(locale.toString(sampdate,
         QString::fromUtf8("dddd yyyy\u5E74M\u6708d\u65E5")),
         QString::fromUtf8("dddd yyyy\u5E74M\u6708d\u65E5"));
-    gc->addSelection(sampdate.toString(
+    gc->addSelection(locale.toString(sampdate,
         QString::fromUtf8("ddd M\u6708d\u65E5")),
         QString::fromUtf8("ddd M\u6708d\u65E5"));
     gc->setHelpText(QObject::tr("Your preferred date format.") + ' ' +
@@ -2256,26 +2152,27 @@ static HostComboBox *MythShortDateFormat()
         sampleStr =
             QObject::tr("Samples are shown using tomorrow's date.");
     }
+    QLocale locale = gCoreContext->GetQLocale();
 
-    gc->addSelection(sampdate.toString("M/d"), "M/d");
-    gc->addSelection(sampdate.toString("d/M"), "d/M");
-    gc->addSelection(sampdate.toString("MM/dd"), "MM/dd");
-    gc->addSelection(sampdate.toString("dd/MM"), "dd/MM");
-    gc->addSelection(sampdate.toString("MM.dd"), "MM.dd");
-    gc->addSelection(sampdate.toString("dd.MM."), "dd.MM.");
-    gc->addSelection(sampdate.toString("M.d."), "M.d.");
-    gc->addSelection(sampdate.toString("d.M."), "d.M.");
-    gc->addSelection(sampdate.toString("MM-dd"), "MM-dd");
-    gc->addSelection(sampdate.toString("dd-MM"), "dd-MM");
-    gc->addSelection(sampdate.toString("MMM d"), "MMM d");
-    gc->addSelection(sampdate.toString("d MMM"), "d MMM");
-    gc->addSelection(sampdate.toString("ddd d"), "ddd d");
-    gc->addSelection(sampdate.toString("d ddd"), "d ddd");
-    gc->addSelection(sampdate.toString("ddd M/d"), "ddd M/d");
-    gc->addSelection(sampdate.toString("ddd d/M"), "ddd d/M");
-    gc->addSelection(sampdate.toString("M/d ddd"), "M/d ddd");
-    gc->addSelection(sampdate.toString("d/M ddd"), "d/M ddd");
-    gc->addSelection(sampdate.toString(
+    gc->addSelection(locale.toString(sampdate, "M/d"), "M/d");
+    gc->addSelection(locale.toString(sampdate, "d/M"), "d/M");
+    gc->addSelection(locale.toString(sampdate, "MM/dd"), "MM/dd");
+    gc->addSelection(locale.toString(sampdate, "dd/MM"), "dd/MM");
+    gc->addSelection(locale.toString(sampdate, "MM.dd"), "MM.dd");
+    gc->addSelection(locale.toString(sampdate, "dd.MM."), "dd.MM.");
+    gc->addSelection(locale.toString(sampdate, "M.d."), "M.d.");
+    gc->addSelection(locale.toString(sampdate, "d.M."), "d.M.");
+    gc->addSelection(locale.toString(sampdate, "MM-dd"), "MM-dd");
+    gc->addSelection(locale.toString(sampdate, "dd-MM"), "dd-MM");
+    gc->addSelection(locale.toString(sampdate, "MMM d"), "MMM d");
+    gc->addSelection(locale.toString(sampdate, "d MMM"), "d MMM");
+    gc->addSelection(locale.toString(sampdate, "ddd d"), "ddd d");
+    gc->addSelection(locale.toString(sampdate, "d ddd"), "d ddd");
+    gc->addSelection(locale.toString(sampdate, "ddd M/d"), "ddd M/d");
+    gc->addSelection(locale.toString(sampdate, "ddd d/M"), "ddd d/M");
+    gc->addSelection(locale.toString(sampdate, "M/d ddd"), "M/d ddd");
+    gc->addSelection(locale.toString(sampdate, "d/M ddd"), "d/M ddd");
+    gc->addSelection(locale.toString(sampdate,
         QString::fromUtf8("M\u6708d\u65E5")),
         QString::fromUtf8("M\u6708d\u65E5"));
     gc->setHelpText(QObject::tr("Your preferred short date format.") + ' ' +
@@ -2290,14 +2187,16 @@ static HostComboBox *MythTimeFormat()
 
     QTime samptime = QTime::currentTime();
 
-    gc->addSelection(samptime.toString("h:mm AP"), "h:mm AP");
-    gc->addSelection(samptime.toString("h:mm ap"), "h:mm ap");
-    gc->addSelection(samptime.toString("hh:mm AP"), "hh:mm AP");
-    gc->addSelection(samptime.toString("hh:mm ap"), "hh:mm ap");
-    gc->addSelection(samptime.toString("h:mm"), "h:mm");
-    gc->addSelection(samptime.toString("hh:mm"), "hh:mm");
-    gc->addSelection(samptime.toString("hh.mm"), "hh.mm");
-    gc->addSelection(samptime.toString("AP h:mm"), "AP h:mm");
+    QLocale locale = gCoreContext->GetQLocale();
+
+    gc->addSelection(locale.toString(samptime, "h:mm AP"), "h:mm AP");
+    gc->addSelection(locale.toString(samptime, "h:mm ap"), "h:mm ap");
+    gc->addSelection(locale.toString(samptime, "hh:mm AP"), "hh:mm AP");
+    gc->addSelection(locale.toString(samptime, "hh:mm ap"), "hh:mm ap");
+    gc->addSelection(locale.toString(samptime, "h:mm"), "h:mm");
+    gc->addSelection(locale.toString(samptime, "hh:mm"), "hh:mm");
+    gc->addSelection(locale.toString(samptime, "hh.mm"), "hh.mm");
+    gc->addSelection(locale.toString(samptime, "AP h:mm"), "AP h:mm");
     gc->setHelpText(QObject::tr("Your preferred time format. You must choose "
                     "a format with \"AM\" or \"PM\" in it, otherwise your "
                     "time display will be 24-hour or \"military\" time."));
@@ -2457,36 +2356,6 @@ static GlobalComboBox *GRSchedOpenEnd()
     bc->addSelection(QObject::tr("Always"), "2");
     bc->setValue(0);
     return bc;
-}
-
-static GlobalSpinBox *GRDefaultStartOffset()
-{
-    GlobalSpinBox *bs = new GlobalSpinBox("DefaultStartOffset",
-                                          -10, 30, 5, true);
-    bs->setLabel(QObject::tr("Default 'Start Early' minutes for new "
-                             "recording rules"));
-    bs->setHelpText(QObject::tr("Set this to '0' unless you expect that the "
-                    "majority of your show times will not match your TV "
-                    "listings. This sets the initial start early or start "
-                    "late time when rules are created. These can then be "
-                    "adjusted per recording rule."));
-    bs->setValue(0);
-    return bs;
-}
-
-static GlobalSpinBox *GRDefaultEndOffset()
-{
-    GlobalSpinBox *bs = new GlobalSpinBox("DefaultEndOffset",
-                                          -10, 30, 5, true);
-    bs->setLabel(QObject::tr("Default 'End Late' minutes for new "
-                             "recording rules"));
-    bs->setHelpText(QObject::tr("Set this to '0' unless you expect that the "
-                    "majority of your show times will not match your TV "
-                    "listings. This sets the initial end late or end early "
-                    "time when rules are created. These can then be adjusted "
-                    "per recording rule."));
-    bs->setValue(0);
-    return bs;
 }
 
 static GlobalSpinBox *GRPrefInputRecPriority()
@@ -3550,10 +3419,7 @@ OSDSettings::OSDSettings()
     osd->addChild(EnableMHEG());
     osd->addChild(PersistentBrowseMode());
     osd->addChild(BrowseAllTuners());
-    osd->addChild(CCBackground());
     osd->addChild(DefaultCCMode());
-    osd->addChild(PreferCC708());
-    osd->addChild(SubtitleFont());
     osd->addChild(OSDSubtitleTextZoomPercentage());
     osd->addChild(OSDCC608TextZoomPercentage());
     osd->addChild(OSDCC708TextZoomPercentage());
@@ -3587,7 +3453,6 @@ GeneralSettings::GeneralSettings()
 
     VerticalConfigurationGroup *expgrp0 =
         new VerticalConfigurationGroup(false, false, true, true);
-    expgrp0->addChild(AutoExpireDefault());
     expgrp0->addChild(RerecordWatched());
     expgrp0->addChild(AutoExpireWatchedPriority());
 
@@ -3614,29 +3479,7 @@ GeneralSettings::GeneralSettings()
     jobs->addChild(CommercialSkipMethod());
     jobs->addChild(CommFlagFast());
     jobs->addChild(AggressiveCommDetect());
-    jobs->addChild(DefaultTranscoder());
     jobs->addChild(DeferAutoTranscodeDays());
-
-    VerticalConfigurationGroup* autogrp0 =
-        new VerticalConfigurationGroup(false, false, true, true);
-    autogrp0->addChild(AutoMetadataLookup());
-    autogrp0->addChild(AutoCommercialFlag());
-    autogrp0->addChild(AutoTranscode());
-
-    VerticalConfigurationGroup* autogrp1 =
-        new VerticalConfigurationGroup(false, false, true, true);
-    autogrp0->addChild(AutoRunUserJob(1));
-    autogrp1->addChild(AutoRunUserJob(2));
-    autogrp1->addChild(AutoRunUserJob(3));
-    autogrp1->addChild(AutoRunUserJob(4));
-
-    HorizontalConfigurationGroup *autogrp =
-        new HorizontalConfigurationGroup(true, true, false, true);
-    autogrp->setLabel(
-        QObject::tr("Default Job Queue Settings for New Scheduled Recordings"));
-    autogrp->addChild(autogrp0);
-    autogrp->addChild(autogrp1);
-    jobs->addChild(autogrp);
 
     addChild(jobs);
 
@@ -3672,8 +3515,6 @@ GeneralRecPrioritiesSettings::GeneralRecPrioritiesSettings()
 
     sched->addChild(GRSchedMoveHigher());
     sched->addChild(GRSchedOpenEnd());
-    sched->addChild(GRDefaultStartOffset());
-    sched->addChild(GRDefaultEndOffset());
     sched->addChild(GRPrefInputRecPriority());
     sched->addChild(GRHDTVRecPriority());
     sched->addChild(GRWSRecPriority());

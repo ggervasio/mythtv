@@ -306,7 +306,7 @@ static void filter_line_mmx2(struct ThisFilter *p, uint8_t *dst,
 \
             /* if (p->mode<2) ... */\
             "movq    %[tmp3], %%mm6 \n\t" /* diff */\
-            "cmp       $2, %[mode] \n\t"\
+            "cmpl      $2, %[mode] \n\t"\
             "jge       1f \n\t"\
             LOAD4("(%["prev2"],%[mrefs],2)", %%mm2) /* prev2[x-2*refs] */\
             LOAD4("(%["next2"],%[mrefs],2)", %%mm4) /* next2[x-2*refs] */\
@@ -625,18 +625,18 @@ static VideoFilter * YadifDeintFilter(VideoFrameType inpixfmt,
 
     filter->filter_line = filter_line_c;
 #if HAVE_MMX
-    if (filter->mm_flags & FF_MM_MMX)
+    if (filter->mm_flags & AV_CPU_FLAG_MMX)
     {
         filter->filter_line = filter_line_mmx2;
     }
 
-    if (filter->mm_flags & FF_MM_SSE2)
+    if (filter->mm_flags & AV_CPU_FLAG_SSE2)
         fast_memcpy=fast_memcpy_SSE;
-    else if (filter->mm_flags & FF_MM_MMXEXT)
+    else if (filter->mm_flags & AV_CPU_FLAG_MMX2)
         fast_memcpy=fast_memcpy_MMX2;
-    else if (filter->mm_flags & FF_MM_3DNOW)
+    else if (filter->mm_flags & AV_CPU_FLAG_3DNOW)
         fast_memcpy=fast_memcpy_3DNow;
-    else if (filter->mm_flags & FF_MM_MMX)
+    else if (filter->mm_flags & AV_CPU_FLAG_MMX)
         fast_memcpy=fast_memcpy_MMX;
     else
 #endif

@@ -83,7 +83,8 @@ void MythUtilCommandLineParser::LoadArguments(void)
                 "access those files to do so. If enabled, this will also "
                 "trigger the bulk metadata scanner upon completion.")
                 ->SetGroup("Backend")
-        << add("--event", "event", "", "Send a backend event test message.", "")
+        << add("--event", "event", QVariant::StringList, 
+                "Send a backend event test message.", "")
                 ->SetGroup("Backend")
         << add("--systemevent", "systemevent", "",
                 "Send a backend SYSTEM_EVENT test message.", "")
@@ -95,6 +96,10 @@ void MythUtilCommandLineParser::LoadArguments(void)
                 "all other connected programs. This event will clear the "
                 "local database settings cache used by each program, causing "
                 "options to be re-read from the database upon next use.")
+                ->SetGroup("Backend")
+        << add("--parse-video-filename", "parsevideo", "", "",
+                "Diagnostic tool for testing filename formats against what "
+                "the Video Library name parser will detect them as.")
                 ->SetGroup("Backend")
 
         // jobutils.cpp

@@ -150,11 +150,10 @@ class MBASE_PUBLIC MythCoreContext : public MythObservable, public MythSocketCBs
     QString GetBackendServerIP(void);
     QString GetBackendServerIP(const QString &host);
 
-    void SetSetting(const QString &key, const QString &newValue);
-
     void ClearSettingsCache(const QString &myKey = QString(""));
     void ActivateSettingsCache(bool activate = true);
     void OverrideSettingForSession(const QString &key, const QString &value);
+    void ClearOverrideSettingForSession(const QString &key);
 
     void dispatch(const MythEvent &event);
     void dispatchNow(const MythEvent &event); // MDEPRECATED;
@@ -162,7 +161,7 @@ class MBASE_PUBLIC MythCoreContext : public MythObservable, public MythSocketCBs
     void InitLocale(void);
     void ReInitLocale(void);
     MythLocale *GetLocale(void) const;
-    const QLocale GetQLocale(void) const;
+    const QLocale GetQLocale(void);
     void SaveLocaleDefaults(void);
     QString GetLanguage(void);
     QString GetLanguageAndVariant(void);

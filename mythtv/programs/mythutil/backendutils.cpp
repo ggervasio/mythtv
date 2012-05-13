@@ -1,20 +1,27 @@
+// C++ includes
+#include <iostream>
+
 // libmyth* headers
 #include "exitcodes.h"
 #include "mythcorecontext.h"
 #include "mythlogging.h"
 #include "remoteutil.h"
+#include "scheduledrecording.h"
+#include "videometadata.h"
 
 // local headers
 #include "backendutils.h"
 
-static int RawSendEvent(const QString &eventString)
+static int RawSendEvent(const QStringList &eventStringList)
 {
-    if (eventString.isEmpty())
+    if (eventStringList.isEmpty() || eventStringList[0].isEmpty())
         return GENERIC_EXIT_INVALID_CMDLINE;
 
     if (gCoreContext->ConnectToMasterServer(false, false))
     {
-        gCoreContext->SendMessage(eventString);
+        QStringList message("MESSAGE");
+        message << eventStringList;
+        gCoreContext->SendReceiveStringList(message);
         return GENERIC_EXIT_OK;
     }
     return GENERIC_EXIT_CONNECT_ERROR;
@@ -36,28 +43,22 @@ static int ClearSettingsCache(const MythUtilCommandLineParser &cmdline)
 
 static int SendEvent(const MythUtilCommandLineParser &cmdline)
 {
-    return RawSendEvent(cmdline.toString("event"));
+    return RawSendEvent(cmdline.toStringList("event"));
 }
 
 static int SendSystemEvent(const MythUtilCommandLineParser &cmdline)
 {
-    return RawSendEvent(QString("SYSTEM_EVENT %1 SENDER %2")
-                                .arg(cmdline.toString("systemevent"))
-                                .arg(gCoreContext->GetHostName()));
+    return RawSendEvent(QStringList(QString("SYSTEM_EVENT %1 SENDER %2")
+                                    .arg(cmdline.toString("systemevent"))
+                                    .arg(gCoreContext->GetHostName())));
 }
 
 static int Reschedule(const MythUtilCommandLineParser &cmdline)
 {
     if (gCoreContext->ConnectToMasterServer(false, false))
     {
-        QStringList slist("RESCHEDULE_RECORDINGS -1");
-        if (gCoreContext->SendReceiveStringList(slist))
-        {
-            LOG(VB_GENERAL, LOG_ERR,
-                "Error sending reschedule command to master backend");
-            return GENERIC_EXIT_CONNECT_ERROR;
-        }
-
+        ScheduledRecording::RescheduleMatch(0, 0, 0, QDateTime(),
+                                            "MythUtilCommand");
         LOG(VB_GENERAL, LOG_INFO, "Reschedule command sent to master");
         return GENERIC_EXIT_OK;
     }
@@ -79,6 +80,21 @@ static int ScanVideos(const MythUtilCommandLineParser &cmdline)
     return GENERIC_EXIT_CONNECT_ERROR;
 }
 
+static int ParseVideoFilename(const MythUtilCommandLineParser &cmdline)
+{
+    QString filename = cmdline.toString("parsevideo");
+    cout << "Title:    " << VideoMetadata::FilenameToMeta(filename, 1)
+                                            .toLocal8Bit().constData() << endl
+         << "Season:   " << VideoMetadata::FilenameToMeta(filename, 2)
+                                            .toLocal8Bit().constData() << endl
+         << "Episode:  " << VideoMetadata::FilenameToMeta(filename, 3)
+                                            .toLocal8Bit().constData() << endl
+         << "Subtitle: " << VideoMetadata::FilenameToMeta(filename, 4)
+                                            .toLocal8Bit().constData() << endl;
+
+    return GENERIC_EXIT_OK;
+}
+
 void registerBackendUtils(UtilMap &utilMap)
 {
     utilMap["clearcache"]           = &ClearSettingsCache;
@@ -86,6 +102,7 @@ void registerBackendUtils(UtilMap &utilMap)
     utilMap["resched"]              = &Reschedule;
     utilMap["scanvideos"]           = &ScanVideos;
     utilMap["systemevent"]          = &SendSystemEvent;
+    utilMap["parsevideo"]           = &ParseVideoFilename;
 }
 
 /* vim: set expandtab tabstop=4 shiftwidth=4: */
