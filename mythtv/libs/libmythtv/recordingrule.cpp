@@ -675,8 +675,6 @@ void RecordingRule::AssignProgramInfo()
     m_title       = m_progInfo->GetTitle();
     m_subtitle    = m_progInfo->GetSubtitle();
     m_description = m_progInfo->GetDescription();
-    m_season      = m_progInfo->GetSeason();
-    m_episode     = m_progInfo->GetEpisode();
     m_channelid   = m_progInfo->GetChanID();
     m_station     = m_progInfo->GetChannelSchedulingID();
     m_startdate   = m_progInfo->GetScheduledStartTime().date();
@@ -707,7 +705,13 @@ void RecordingRule::AssignProgramInfo()
         }
     }
     m_category = m_progInfo->GetCategory();
-    m_inetref = m_progInfo->GetInetRef();
+
+    if (m_inetref.isEmpty())
+    {
+        m_inetref = m_progInfo->GetInetRef();
+        m_season  = m_progInfo->GetSeason();
+        m_episode = m_progInfo->GetEpisode();
+    }
 }
 
 unsigned RecordingRule::GetDefaultFilter(void)
@@ -722,7 +726,10 @@ unsigned RecordingRule::GetDefaultFilter(void)
         MythDB::DBError("GetDefaultFilter", query);
         return 0;
     }
-    query.next();
+
+    if (!query.next())
+        return 0;
+    
     return query.value(0).toUInt();
 }
 
