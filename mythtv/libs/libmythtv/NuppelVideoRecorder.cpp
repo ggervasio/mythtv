@@ -524,7 +524,7 @@ bool NuppelVideoRecorder::SetupAVCodecVideo(void)
         return false;
     }
 
-    mpa_vidctx = avcodec_alloc_context3(NULL);
+    mpa_vidctx = avcodec_alloc_context3(mpa_vidcodec);
 
     avcodec_get_frame_defaults(&mpa_picture);
 
@@ -2985,6 +2985,8 @@ void NuppelVideoRecorder::WriteVideo(VideoFrame *frame, bool skipsync,
                     "WriteVideo : avcodec_encode_video() failed");
                 return;
             }
+
+            tmp = packet.size;
         }
     }
     else
