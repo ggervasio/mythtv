@@ -42,7 +42,7 @@
             with bitmap teletext subtitles, or CEA-608 teletext
             captions.  A monospaced font should be used.
            -->
-        <fontdef name="teletext" face="FreeMono" from="provider">
+        <fontdef name="teletext" face="Lucida Sans Typewriter" from="provider">
         </fontdef>
 
 
@@ -50,7 +50,7 @@
             CEA-608 closed captions.  These also apply to CEA-608 VBI
             teletext captions.  A monospaced font should be used.
            -->
-        <fontdef name="608" face="FreeMono" from="provider">
+        <fontdef name="608" face="Lucida Sans Typewriter" from="provider">
         </fontdef>
 
         <shape   name="608" from="black_background">
@@ -63,7 +63,7 @@
             tags 0 and 3 are used by broadcasters.
            -->
         <!-- Font tag 0: "Default" -->
-        <fontdef name="708_0" face="FreeMono"        from="provider">
+        <fontdef name="708_0" face="Lucida Sans Typewriter"        from="provider">
         </fontdef>
 
         <!-- Font tag 1: "Monospaced Serif" -->
