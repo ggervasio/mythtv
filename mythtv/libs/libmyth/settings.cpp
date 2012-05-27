@@ -705,7 +705,7 @@ void ComboBoxSetting::setVisible(bool b)
     }
 }
 
-void ComboBoxSetting::setValue(const QString &newValue)
+void ComboBoxSetting::setValue(QString newValue)
 {
     for (uint i = 0; i < values.size(); i++)
     {
