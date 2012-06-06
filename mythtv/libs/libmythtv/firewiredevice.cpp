@@ -7,6 +7,9 @@
 // C++ headers
 #include <algorithm>
 
+// POSIX headers
+#include <unistd.h>
+
 // Qt headers
 #include <QMap>
 

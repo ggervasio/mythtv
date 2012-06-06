@@ -1,3 +1,5 @@
+#include <unistd.h>
+
 #include <QMutexLocker>
 #include <QString>
 #include <QMutex>
