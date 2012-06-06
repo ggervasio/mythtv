@@ -1,5 +1,7 @@
 
-using namespace std;
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 #include <QString>
 #include <QWriteLocker>
@@ -33,7 +35,7 @@ void FileServerHandler::connectionClosed(MythSocket *socket)
         {
             if ((*i)->GetSocket() == socket)
             {
-                (*i)->DownRef();
+                (*i)->DecrRef();
                 m_ftMap.remove(i.key());
                 return;
             }
@@ -49,7 +51,7 @@ void FileServerHandler::connectionClosed(MythSocket *socket)
         {
             if ((*i)->GetSocket() == socket)
             {
-                (*i)->DownRef();
+                (*i)->DecrRef();
                 m_fsMap.remove(i.key());
                 return;
             }
@@ -844,7 +846,7 @@ bool FileServerHandler::HandleGetFileList(SocketHandler *socket,
             if (m_fsMap.contains(wantHost))
             {
                 remsock = m_fsMap[wantHost];
-                remsock->UpRef();
+                remsock->IncrRef();
             }
         }
 
@@ -854,7 +856,7 @@ bool FileServerHandler::HandleGetFileList(SocketHandler *socket,
             res << "QUERY_SG_GETFILELIST" << wantHost << groupname << path
                 << QString::number(fileNamesOnly);
             remsock->SendReceiveStringList(res);
-            remsock->DownRef();
+            remsock->DecrRef();
         }
         else
         {
@@ -909,7 +911,7 @@ bool FileServerHandler::HandleFileQuery(SocketHandler *socket,
             if (m_fsMap.contains(wantHost))
             {
                 remsock = m_fsMap[wantHost];
-                remsock->UpRef();
+                remsock->IncrRef();
             }
         }
 
@@ -917,7 +919,7 @@ bool FileServerHandler::HandleFileQuery(SocketHandler *socket,
         {
             res << "QUERY_SG_FILEQUERY" << wantHost << groupname << filename;
             remsock->SendReceiveStringList(res);
-            remsock->DownRef();
+            remsock->DecrRef();
         }
         else
         {
@@ -961,7 +963,7 @@ bool FileServerHandler::HandleQueryFileTransfer(SocketHandler *socket,
         }
 
         ft = m_ftMap[recnum];
-        ft->UpRef();
+        ft->IncrRef();
     }
 
     if (slist[1] == "IS_OPEN")
@@ -1038,7 +1040,7 @@ bool FileServerHandler::HandleQueryFileTransfer(SocketHandler *socket,
         res << "ERROR" << "invalid_call";
     }
 
-    ft->DownRef();
+    ft->DecrRef();
     socket->SendStringList(res);
     return true;
 }

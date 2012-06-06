@@ -344,7 +344,9 @@ class MPUBLIC ComboBoxSetting: public SelectSetting
     virtual void setHelpText(const QString &str);
 
   public slots:
-    virtual void setValue(QString newValue);
+    virtual void SetDBValue(const QString &newValue)
+        { SelectSetting::setValue(newValue); }
+    virtual void setValue(const QString &newValue);
     virtual void setValue(int which);
 
     void addSelection(const QString &label,

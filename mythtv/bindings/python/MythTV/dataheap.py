@@ -439,10 +439,10 @@ class Recorded( CMPRecord, DBDataWrite ):
             if role=='Writer': role = 'Author'
             metadata.people.append(OrdDict((('name',name), ('job',role))))
 
-        for arttype in ['coverart', 'fanart', 'banner']:
-            art = getattr(self.artwork, arttype)
-            if art:
-                metadata.images.append(OrdDict((('type',arttype), ('filename',art))))
+#        for arttype in ['coverart', 'fanart', 'banner']:
+#            art = getattr(self.artwork, arttype)
+#            if art:
+#                metadata.images.append(OrdDict((('type',arttype), ('filename',art))))
 
         return metadata
 
@@ -1034,10 +1034,10 @@ class Video( CMPVideo, VideoSchema, DBDataWrite ):
             metadata.countries.append(country.country)
 
         # pull images
-        for arttype in ['coverart', 'fanart', 'banner', 'screenshot']:
-            art = getattr(self, arttype)
-            if art:
-                metadata.images.append(OrdDict((('type',arttype), ('filename',art))))
+#        for arttype in ['coverart', 'fanart', 'banner', 'screenshot']:
+#            art = getattr(self, arttype)
+#            if art:
+#                metadata.images.append(OrdDict((('type',arttype), ('filename',art))))
 
         return metadata
 
