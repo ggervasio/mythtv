@@ -13,6 +13,9 @@
 // Qt headers
 #include <QMap>
 
+// for usleep
+#include <unistd.h> 
+
 // MythTV headers
 #include "linuxfirewiredevice.h"
 #if USING_OSX_FIREWIRE
