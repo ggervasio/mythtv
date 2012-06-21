@@ -832,8 +832,8 @@ void PlaybackBox::UpdateUIListItem(MythUIButtonListItem *item,
 
     item->DisplayState(rating, "ratingstate");
 
-    QString oldimgfile = item->GetImage("preview");
 #if 1
+    QString oldimgfile = item->GetImageFilename("preview");
     if (oldimgfile.isEmpty() || force_preview_reload)
         m_preview_tokens.insert(m_helper.GetPreviewImage(*pginfo));
 #endif
@@ -984,7 +984,7 @@ void PlaybackBox::ItemVisible(MythUIButtonListItem *item)
     item->DisplayState(extract_commflag_state(*pginfo), "commflagged");
 
     MythUIButtonListItem *sel_item = item->parent()->GetItemCurrent();
-    if ((item != sel_item) && item->GetImage("preview").isEmpty() &&
+    if ((item != sel_item) && item->GetImageFilename("preview").isEmpty() &&
         (asAvailable == pginfo->GetAvailableStatus()))
     {
         QString token = m_helper.GetPreviewImage(*pginfo, true);
@@ -995,7 +995,7 @@ void PlaybackBox::ItemVisible(MythUIButtonListItem *item)
         // now make sure selected item is still at the top of the queue
         ProgramInfo *sel_pginfo =
             qVariantValue<ProgramInfo*>(sel_item->GetData());
-        if (sel_pginfo && sel_item->GetImage("preview").isEmpty() &&
+        if (sel_pginfo && sel_item->GetImageFilename("preview").isEmpty() &&
             (asAvailable == sel_pginfo->GetAvailableStatus()))
         {
             m_preview_tokens.insert(

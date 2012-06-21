@@ -23,20 +23,20 @@ zeromq-all:	zeromq/Makefile
 	${MAKE} -C zeromq all
 
 zeromq/Makefile:	zeromq/configure
-	(cd zeromq ; ./configure --prefix=${PREFIX})
+	(cd zeromq ; ./configure --without-documentation --prefix=${PREFIX})
 
 zeromq-install zeromq-uninstall zeromq-clean zeromq-distclean:
 	${MAKE} -C zeromq ${@:zeromq-%=%} 
 
 nzmqt-all:	zeromq-all
-	(cd nzmqt/src ; ${QMAKE})
+	(cd nzmqt/src ; ${QMAKE} -o Makefile)
 	${MAKE} -C nzmqt/src all
 
 nzmqt-install nzmqt-uninstall nzmqt-clean nzmqt-distclean:
 	${MAKE} -C nzmqt/src ${@:nzmqt-%=%} 
 
 qjson-all:
-	(cd qjson ; ${QMAKE})
+	(cd qjson ; ${QMAKE} -o Makefile)
 	-[ -f qjson/include/QJson ] && \
 	  (cd qjson/include ; ${RM} QJson ; ${LN_S} ../src QJson)
 	${MAKE} -C qjson all

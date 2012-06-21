@@ -3864,7 +3864,7 @@ void MainServer::HandleRecorderQuery(QStringList &slist, QStringList &commands,
             }
         }
 
-        retlist << "ok";
+        retlist << "OK";
     }
     else if (command == "PAUSE")
     {
