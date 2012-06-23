@@ -54,7 +54,7 @@ ImageProperties &ImageProperties::operator=(const ImageProperties &other)
 ImageProperties::~ImageProperties()
 {
     if (maskImage)
-        maskImage->DecrRef();
+        maskImage->DownRef();
 }
 
 void ImageProperties::Init()
@@ -96,16 +96,19 @@ void ImageProperties::Copy(const ImageProperties &other)
     SetMaskImage(other.maskImage);
 }
 
-void ImageProperties::SetMaskImage(MythImage *image)
+void ImageProperties::SetMaskImage(MythImage* image)
 {
-    if (image)
-        image->IncrRef();
     if (maskImage)
-        maskImage->DecrRef();
+        maskImage->DownRef();
 
     isMasked = false;
     maskImage = image;
-    isMasked = maskImage;
+
+    if (maskImage)
+    {
+        maskImage->UpRef();
+        isMasked = true;
+    }
 }
 
 /*!
@@ -253,15 +256,12 @@ class ImageLoader
 
         if (image)
         {
-            if (VERBOSE_LEVEL_CHECK(VB_GUI | VB_FILE, LOG_INFO))
-            {
-                image->IncrRef();
-                int cnt = image->DecrRef();
-                LOG(VB_GUI | VB_FILE, LOG_INFO,
-                    QString("ImageLoader::LoadImage(%1) Found in cache, "
-                            "RefCount = %2")
-                    .arg(cacheKey).arg(cnt));
-            }
+            image->UpRef();
+
+            LOG(VB_GUI | VB_FILE, LOG_INFO,
+                QString("ImageLoader::LoadImage(%1) Found in cache, "
+                        "RefCount = %2").arg(cacheKey)
+                        .arg(image->RefCount()));
 
             if (imProps.isReflected)
                 image->setIsReflected(true);
@@ -275,6 +275,7 @@ class ImageLoader
                         "Loading Directly").arg(cacheKey));
 
             image = painter->GetFormatImage();
+            image->UpRef();
             bool ok = false;
 
             if (imageReader)
@@ -284,7 +285,7 @@ class ImageLoader
 
             if (!ok)
             {
-                image->DecrRef();
+                image->DownRef();
                 image = NULL;
             }
         }
@@ -297,7 +298,7 @@ class ImageLoader
             if (imProps.isMasked)
             {
                 QRect imageArea = image->rect();
-                QRect maskArea = imProps.GetMaskImageRect();
+                QRect maskArea = imProps.GetMaskImage()->rect();
 
                 // Crop the mask to the image
                 int x = 0;
@@ -312,7 +313,7 @@ class ImageLoader
                 if (x > 0 || y > 0)
                     imageArea.translate(x, y);
 
-                QImage mask = imProps.GetMaskImageSubset(imageArea);
+                QImage mask = imProps.GetMaskImage()->copy(imageArea);
                 image->setAlphaChannel(mask.alphaChannel());
             }
 
@@ -334,7 +335,7 @@ class ImageLoader
                 QString("ImageLoader::LoadImage(%1) Image is NULL")
                                                     .arg(filename));
 
-            image->DecrRef();
+            image->DownRef();
             image = NULL;
         }
 
@@ -591,7 +592,7 @@ void MythUIImage::Clear(void)
         QHash<int, MythImage *>::iterator it = m_Images.begin();
 
         if (*it)
-            (*it)->DecrRef();
+            (*it)->DownRef();
 
         m_Images.remove(it.key());
     }
@@ -742,7 +743,7 @@ void MythUIImage::SetImage(MythImage *img)
     Clear();
     m_Delay = -1;
 
-    img->IncrRef();
+    img->UpRef();
 
     QSize forceSize = m_imageProperties.forceSize;
     if (!forceSize.isNull())
@@ -802,7 +803,7 @@ void MythUIImage::SetImages(QVector<MythImage *> *images)
             continue;
         }
 
-        im->IncrRef();
+        im->UpRef();
 
 
         QSize forceSize = m_imageProperties.forceSize;
@@ -990,31 +991,16 @@ bool MythUIImage::Load(bool allowLoadInBackground, bool forceStat)
         if (forceStat)
             cacheMode2 |= (int)kCacheForceStat;
 
-        bool do_background_load = false;
-        if (allowLoadInBackground)
-        {
-            if (bPreferLoadInBackground)
-            {
-                do_background_load = true;
-            }
-            else
-            {
-                MythImage *img = GetMythUI()->LoadCacheImage(
-                    filename, imagelabel, GetPainter(),
-                    static_cast<ImageCacheMode>(cacheMode));
-                if (img)
-                    img->DecrRef();
-                else
-                    do_background_load = true;
-            }
-        }
-
-        if (do_background_load)
+        if ((allowLoadInBackground) &&
+            ((bPreferLoadInBackground) ||
+             (!GetMythUI()->LoadCacheImage(filename, imagelabel,
+                                           GetPainter(),
+                                           static_cast<ImageCacheMode>(cacheMode)))))
         {
             SetMinArea(MythRect());
             LOG(VB_GUI | VB_FILE, LOG_DEBUG, LOC +
                 QString("Load(), spawning thread to load '%1'").arg(filename));
-                
+
             m_runningThreads++;
             ImageLoadThread *bImgThread;
             bImgThread = new ImageLoadThread(this, GetPainter(),
@@ -1187,7 +1173,7 @@ void MythUIImage::DrawSelf(MythPainter *p, int xoffset, int yoffset,
         MythImage *currentImage = m_Images[m_CurPos];
 
         if (currentImage)
-            currentImage->IncrRef();
+            currentImage->UpRef();
 
         m_ImagesLock.unlock();
         d->m_UpdateLock.unlock();
@@ -1224,7 +1210,7 @@ void MythUIImage::DrawSelf(MythPainter *p, int xoffset, int yoffset,
             srcRect = currentImageArea;
 
         p->DrawImage(area, currentImage, srcRect, alpha);
-        currentImage->DecrRef();
+        currentImage->DownRef();
         d->m_UpdateLock.unlock();
     }
     else
@@ -1376,11 +1362,16 @@ bool MythUIImage::ParseElement(
         QString maskfile = getFirstText(element);
 
         MythImage *newMaskImage = GetPainter()->GetFormatImage();
+
         if (newMaskImage->Load(maskfile))
+        {
             m_imageProperties.SetMaskImage(newMaskImage);
+        }
         else
+        {
+            newMaskImage->DownRef();
             m_imageProperties.SetMaskImage(NULL);
-        newMaskImage->DecrRef();
+        }
     }
     else if (element.tagName() == "grayscale" ||
              element.tagName() == "greyscale")
@@ -1541,7 +1532,7 @@ void MythUIImage::customEvent(QEvent *event)
                                                                 .arg(filename));
 
             if (image)
-                image->DecrRef();
+                image->DownRef();
 
             if (animationFrames)
             {
@@ -1551,7 +1542,7 @@ void MythUIImage::customEvent(QEvent *event)
                      ++it)
                 {
                     MythImage *im = (*it).first;
-                    im->DecrRef();
+                    im->DownRef();
                 }
 
                 delete animationFrames;
@@ -1591,7 +1582,7 @@ void MythUIImage::customEvent(QEvent *event)
                 // If we got to this point, it means this same MythUIImage
                 // was told to reload the same image, so we use the newest
                 // copy of the image.
-                m_Images[number]->DecrRef(); // delete the original
+                m_Images[number]->DownRef(); // delete the original
             }
 
             m_Images[number] = image;

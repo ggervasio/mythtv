@@ -109,6 +109,7 @@ ThumbFinder::ThumbFinder(MythScreenStack *parent, ArchiveItem *archiveItem,
     m_startPTS = -1;
     m_currentPTS = -1;
     m_firstIFramePTS = -1;
+    m_image = NULL;
 }
 
 void ThumbFinder::Init(void)
@@ -123,6 +124,12 @@ ThumbFinder::~ThumbFinder()
     m_thumbList.clear();
 
     closeAVCodec();
+
+    if (m_image)
+    {
+        m_image->DownRef();
+        m_image = NULL;
+    }
 }
 
 bool ThumbFinder::Create(void)
@@ -884,11 +891,17 @@ bool ThumbFinder::getFrameImage(bool needKeyFrame, int64_t requiredPTS)
 
         if (m_updateFrame)
         {
-            MythImage *mimage =
-                GetMythMainWindow()->GetCurrentPainter()->GetFormatImage();
-            mimage->Assign(img);
-            m_frameImage->SetImage(mimage);
-            mimage->DecrRef();
+            if (m_image)
+            {
+                m_image->DownRef();
+                m_image = NULL;
+            }
+
+            m_image = GetMythMainWindow()->GetCurrentPainter()->GetFormatImage();
+            m_image->Assign(img);
+            m_image->UpRef();
+
+            m_frameImage->SetImage(m_image);
         }
 
         updateCurrentPos();

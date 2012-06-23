@@ -53,6 +53,8 @@ class Player
     MythUIText  *m_statusText;
     MythUIText  *m_cameraText;
 
+    MythImage   *m_image;
+
     uchar       *m_rgba;
 
     Monitor      m_monitor;

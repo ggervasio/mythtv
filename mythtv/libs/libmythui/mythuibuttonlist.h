@@ -53,30 +53,20 @@ class MUI_PUBLIC MythUIButtonListItem
     void SetFontState(const QString &state, const QString &name="");
 
     /** Sets an image directly, should only be used in special circumstances
-     *  since it bypasses the cache.
+     *  since it bypasses the cache
      */
-    void SetImage(MythImage *image, const QString &name="");
+    void setImage(MythImage *image, const QString &name="");
 
     /** Gets a MythImage which has been assigned to this button item,
-     *  as with SetImage() it should only be used in special circumstances
-     *  since it bypasses the cache.
-     *  \note The reference count is set for one use, call DecrRef() to delete.
+     *  as with setImage() it should only be used in special circumstances
+     *  since it bypasses the cache
      */
-    MythImage *GetImage(const QString &name="");
-
-    /// Returns true when the image exists.
-    bool HasImage(const QString &name="")
-    {
-        MythImage *img = GetImage(name);
-        bool ret = img;
-        img->DecrRef();
-        return ret;
-    }
+    MythImage *getImage(const QString &name="");
 
     void SetImage(const QString &filename, const QString &name="",
                   bool force_reload = false);
     void SetImageFromMap(const InfoMap &imageMap);
-    QString GetImageFilename(const QString &name="") const;
+    QString GetImage(const QString &name="") const;
 
     void DisplayState(const QString &state, const QString &name);
     void SetStatesFromMap(const InfoMap &stateMap);

@@ -1752,7 +1752,7 @@ void SmartPLResultViewer::trackVisible(MythUIButtonListItem *item)
     if (!item)
         return;
 
-    if (item->GetImageFilename().isEmpty())
+    if (item->GetImage().isEmpty())
     {
         Metadata *mdata = qVariantValue<Metadata*> (item->GetData());
         if (mdata)

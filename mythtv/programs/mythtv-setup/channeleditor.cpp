@@ -207,7 +207,7 @@ void ChannelEditor::itemChanged(MythUIButtonListItem *item)
     if (m_preview)
     {
         m_preview->Reset();
-        QString iconpath = item->GetImageFilename();
+        QString iconpath = item->GetImage();
         if (!iconpath.isEmpty())
         {
             m_preview->SetFilename(iconpath);

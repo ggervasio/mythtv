@@ -25,13 +25,13 @@
 
 MythUIHelper *MythImage::s_ui = NULL;
 
-MythImage::MythImage(MythPainter *parent, const char *name) :
-    ReferenceCounter(name)
+MythImage::MythImage(MythPainter *parent)
 {
     if (!parent)
         LOG(VB_GENERAL, LOG_ERR, "Image created without parent!");
 
     m_Parent = parent;
+    m_RefCount = 0;
 
     m_Changed = false;
 
@@ -59,51 +59,63 @@ MythImage::~MythImage()
         m_Parent->DeleteFormatImage(this);
 }
 
-int MythImage::IncrRef(void)
+void MythImage::UpRef(void)
 {
-    int cnt = ReferenceCounter::IncrRef();
-    if ((2 == cnt) && s_ui && m_cached)
+    QMutexLocker locker(&m_RefCountLock);
+    if (s_ui && m_cached && m_RefCount == 1)
         s_ui->ExcludeFromCacheSize(this);
-    return cnt;
+    m_RefCount++;
 }
 
-int MythImage::DecrRef(void)
+bool MythImage::DownRef(void)
 {
-    bool cached = m_cached;
-    int cnt = ReferenceCounter::DecrRef();
-    if (cached)
+    m_RefCountLock.lock();
+    m_RefCount--;
+    if (s_ui && m_cached)
     {
-        if (s_ui && (1 == cnt))
+        if (m_RefCount == 1)
             s_ui->IncludeInCacheSize(this);
-
-        if (0 == cnt)
-        {
-            LOG(VB_GENERAL, LOG_INFO,
-                "Image should be removed from cache prior to deletion.");
-        }
+        else if (m_RefCount == 0)
+            s_ui->ExcludeFromCacheSize(this);
     }
-    return cnt;
+
+    if (m_RefCount <= 0)
+    {
+        m_RefCountLock.unlock();
+        delete this;
+        return true;
+    }
+    m_RefCountLock.unlock();
+    return false;
+}
+
+int MythImage::RefCount(void)
+{
+    QMutexLocker locker(&m_RefCountLock);
+    return m_RefCount;
 }
 
 void MythImage::SetIsInCache(bool bCached)
 {
-    IncrRef();
+    QMutexLocker locker(&m_RefCountLock);
+    if (s_ui && m_RefCount == 1)
+    {
+        if (!m_cached && bCached)
+            s_ui->IncludeInCacheSize(this);
+        else if (m_cached && !bCached)
+            s_ui->ExcludeFromCacheSize(this);
+    }
     m_cached = bCached;
-    DecrRef();
 }
 
 void MythImage::Assign(const QImage &img)
 {
-    if (m_cached)
-    {
-        SetIsInCache(false);
-        *(static_cast<QImage*>(this)) = img;
-        SetIsInCache(m_cached);
-    }
-    else
-    {
-        *(static_cast<QImage*>(this)) = img;
-    }
+    QMutexLocker locker(&m_RefCountLock);
+    if (s_ui && m_RefCount == 1 && m_cached)
+        s_ui->ExcludeFromCacheSize(this);
+    *(static_cast<QImage *> (this)) = img;
+    if (s_ui && m_RefCount == 1 && m_cached)
+        s_ui->IncludeInCacheSize(this);
     SetChanged();
 }
 

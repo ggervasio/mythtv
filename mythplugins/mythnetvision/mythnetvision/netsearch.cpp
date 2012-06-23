@@ -744,7 +744,7 @@ void NetSearch::slotItemChanged()
         if (!item->GetThumbnail().isEmpty() && m_thumbImage)
         {
             MythUIButtonListItem *btn = m_searchResultList->GetItemCurrent();
-            QString filename = btn->GetImageFilename();
+            QString filename = btn->GetImage();
             if (filename.contains("%SHAREDIR%"))
                 filename.replace("%SHAREDIR%", GetShareDir());
             m_thumbImage->Reset();
@@ -780,7 +780,7 @@ void NetSearch::slotItemChanged()
 
         if (m_thumbImage)
         {
-            QString filename = item->GetImageFilename();
+            QString filename = item->GetImage();
             m_thumbImage->Reset();
             if (filename.contains("%SHAREDIR%"))
                 filename.replace("%SHAREDIR%", GetShareDir());

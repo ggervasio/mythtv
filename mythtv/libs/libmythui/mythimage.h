@@ -8,7 +8,6 @@
 #include <QPixmap>
 #include <QImageReader>
 
-#include "referencecounter.h"
 #include "mythpainter.h"
 
 enum ReflectAxis {ReflectHorizontal, ReflectVertical};
@@ -28,17 +27,17 @@ class MUI_PUBLIC MythImageReader: public QImageReader
     QNetworkReply *m_networkReply;
 };
 
-class MUI_PUBLIC MythImage : public QImage, public ReferenceCounter
+class MUI_PUBLIC MythImage : public QImage
 {
   public:
-    /// Creates a reference counted image, call DecrRef() to delete.
-    MythImage(MythPainter *parent, const char *name = "MythImage");
+    MythImage(MythPainter *parent);
 
     MythPainter* GetParent(void)        { return m_Parent;   }
     void SetParent(MythPainter *parent) { m_Parent = parent; }
+    void UpRef(void);
+    bool DownRef(void);
 
-    virtual int IncrRef(void);
-    virtual int DecrRef(void);
+    int RefCount(void);
 
     virtual void SetChanged(bool change = true) { m_Changed = change; }
     bool IsChanged() const { return m_Changed; }
@@ -65,7 +64,7 @@ class MUI_PUBLIC MythImage : public QImage, public ReferenceCounter
      * @param size The size of the image.
      * @param begin The beginning colour.
      * @param end The ending colour.
-     * @return A reference counted image, call DecrRef() to delete.
+     * @return A MythImage filled with a gradient.
      */
     static MythImage *Gradient(MythPainter *painter,
                                const QSize & size, const QColor &beg,
@@ -82,11 +81,6 @@ class MUI_PUBLIC MythImage : public QImage, public ReferenceCounter
 
     void SetIsInCache(bool bCached);
 
-    uint GetCacheSize(void) const
-    {
-        return (m_cached) ? numBytes() : 0;
-    }
-
   protected:
     virtual ~MythImage();
     static void MakeGradient(QImage &image, const QColor &begin,
@@ -96,6 +90,9 @@ class MUI_PUBLIC MythImage : public QImage, public ReferenceCounter
 
     bool m_Changed;
     MythPainter *m_Parent;
+
+    int    m_RefCount;
+    QMutex m_RefCountLock;
 
     bool m_isGradient;
     QColor m_gradBegin;

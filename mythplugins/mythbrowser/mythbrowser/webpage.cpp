@@ -100,11 +100,7 @@ void WebPage::slotIconChanged(void)
     QIcon icon = m_browser->GetIcon();
 
     if (icon.isNull())
-    {
-        MythImage *mimage = m_parent->GetDefaultFavIcon();
-        m_listItem->SetImage(mimage, "favicon");
-        mimage->DecrRef();
-    }
+        m_listItem->setImage(m_parent->getDefaultFavIcon(), "favicon");
     else
     {
         QPixmap pixmap = icon.pixmap(32, 32);
@@ -114,8 +110,7 @@ void WebPage::slotIconChanged(void)
         MythImage *mimage = GetMythPainter()->GetFormatImage();
         mimage->Assign(image);
 
-        m_listItem->SetImage(mimage, "favicon");
-        mimage->DecrRef();
+        m_listItem->setImage(mimage, "favicon");
     }
 
     m_parent->m_pageList->Refresh();
@@ -125,7 +120,7 @@ void WebPage::slotLoadStarted(void)
 {
     m_listItem->SetText(tr("Loading..."));
     m_listItem->DisplayState("loading", "loadingstate");
-    m_listItem->SetImage(NULL, "favicon");
+    m_listItem->setImage(NULL, "favicon");
     m_listItem->SetImage("", "favicon");
 
     m_parent->m_pageList->Update();

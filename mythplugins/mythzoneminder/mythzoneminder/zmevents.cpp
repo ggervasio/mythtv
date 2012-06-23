@@ -256,7 +256,7 @@ void ZMEvents::eventChanged(MythUIButtonListItem *item)
             continue;
 
         MythUIButtonListItem *gridItem = m_eventGrid->GetItemAt(x);
-        if (gridItem && !gridItem->HasImage())
+        if (gridItem && !gridItem->getImage())
         {
             if (x < 0 || x > (int)m_eventList->size() - 1)
                 continue;
@@ -272,9 +272,8 @@ void ZMEvents::eventChanged(MythUIButtonListItem *item)
                     {
                         MythImage *mimage = GetMythPainter()->GetFormatImage();
                         mimage->Assign(image);
-                        gridItem->SetImage(mimage);
+                        gridItem->setImage(mimage);
                         mimage->SetChanged();
-                        mimage->DecrRef();
                     }
                 }
             }

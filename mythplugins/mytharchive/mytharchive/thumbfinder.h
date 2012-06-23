@@ -101,6 +101,7 @@ class ThumbFinder : public MythScreenType
     int                 m_thumbCount;
     QList<ThumbImage *> m_thumbList;
     QString             m_thumbDir;
+    MythImage          *m_image;
 
     // GUI stuff
     MythUIButton       *m_frameButton;
