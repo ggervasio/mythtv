@@ -8,7 +8,6 @@
 #include <cstdlib>
 #include <cerrno>
 #include <ctime>
-#include <cmath>
 
 // POSIX headers
 #include <unistd.h>
@@ -26,6 +25,7 @@ using namespace std;
 #include <QCoreApplication>
 #include <QKeyEvent>
 #include <QDir>
+#include <QtCore/qnumeric.h>
 
 // MythTV headers
 #include "mthread.h"
@@ -74,12 +74,6 @@ extern "C" {
 
 #if ! HAVE_ROUND
 #define round(x) ((int) ((x) + 0.5))
-#endif
-
-#if CONFIG_DARWIN
-extern "C" {
-int isnan(double);
-}
 #endif
 
 static unsigned dbg_ident(const MythPlayer*);
@@ -497,7 +491,7 @@ bool MythPlayer::InitVideo(void)
     {
         LOG(VB_GENERAL, LOG_ERR, LOC +
                 "Couldn't create VideoOutput instance. Exiting..");
-        SetErrored(QObject::tr("Failed to initialize video output"));
+        SetErrored(tr("Failed to initialize video output"));
         return false;
     }
 
@@ -576,7 +570,7 @@ void MythPlayer::ReinitVideo(void)
     if (!videoOutput->IsPreferredRenderer(video_disp_dim))
     {
         LOG(VB_PLAYBACK, LOG_INFO, LOC + "Need to switch video renderer.");
-        SetErrored(QObject::tr("Need to switch video renderer."));
+        SetErrored(tr("Need to switch video renderer."));
         errorType |= kError_Switch_Renderer;
         return;
     }
@@ -597,7 +591,7 @@ void MythPlayer::ReinitVideo(void)
         {
             LOG(VB_GENERAL, LOG_ERR, LOC +
                 "Failed to Reinitialize Video. Exiting..");
-            SetErrored(QObject::tr("Failed to reinitialize video output"));
+            SetErrored(tr("Failed to reinitialize video output"));
             return;
         }
 
@@ -813,7 +807,7 @@ void MythPlayer::SetScanType(FrameScanType scan)
 void MythPlayer::SetVideoParams(int width, int height, double fps,
                                 FrameScanType scan)
 {
-    if (width < 1 || height < 1 || isnan(fps))
+    if (width < 1 || height < 1 || qIsNaN(fps))
         return;
 
     video_dim      = QSize((width + 15) & ~0xf, (height + 15) & ~0xf);
@@ -1345,7 +1339,7 @@ void MythPlayer::DisableCaptions(uint mode, bool osd_msg)
 
     QString msg = "";
     if (kDisplayNUVTeletextCaptions & mode)
-        msg += QObject::tr("TXT CAP");
+        msg += tr("TXT CAP");
     if (kDisplayTeletextCaptions & mode)
     {
         msg += decoder->GetTrackDesc(kTrackTypeTeletextCaptions,
@@ -1365,13 +1359,13 @@ void MythPlayer::DisableCaptions(uint mode, bool osd_msg)
     }
     if (kDisplayTextSubtitle & mode)
     {
-        msg += QObject::tr("Text subtitles");
+        msg += tr("Text subtitles");
         if (osd)
             osd->EnableSubtitles(preserve);
     }
     if (!msg.isEmpty() && osd_msg)
     {
-        msg += " " + QObject::tr("Off");
+        msg += " " + tr("Off");
         SetOSDMessage(msg, kOSDTimeout_Med);
     }
 }
@@ -1392,10 +1386,10 @@ void MythPlayer::EnableCaptions(uint mode, bool osd_msg)
     {
         if (osd)
             osd->EnableSubtitles(kDisplayTextSubtitle);
-        msg += QObject::tr("Text subtitles");
+        msg += tr("Text subtitles");
     }
     if (kDisplayNUVTeletextCaptions & mode)
-        msg += QObject::tr("TXT") + QString(" %1").arg(ttPageNum, 3, 16);
+        msg += QString(tr("TXT %1")).arg(ttPageNum, 3, 16);
     if (kDisplayTeletextCaptions & mode)
     {
         msg += decoder->GetTrackDesc(kTrackTypeTeletextCaptions,
@@ -1409,7 +1403,7 @@ void MythPlayer::EnableCaptions(uint mode, bool osd_msg)
         textDisplayMode = kDisplayTeletextCaptions;
     }
 
-    msg += " " + QObject::tr("On");
+    msg += " " + tr("On");
 
     LOG(VB_PLAYBACK, LOG_INFO, QString("EnableCaptions(%1) msg: %2")
         .arg(mode).arg(msg));
@@ -1465,9 +1459,8 @@ void MythPlayer::SetCaptionsEnabled(bool enable, bool osd_msg)
         {
             if (osd_msg)
             {
-                SetOSDMessage(QObject::tr(
-                                  "No captions",
-                                  "CC/Teletext/Subtitle text not available"),
+                SetOSDMessage(tr("No captions",
+                                 "CC/Teletext/Subtitle text not available"),
                               kOSDTimeout_Med);
             }
             LOG(VB_PLAYBACK, LOG_INFO,
@@ -1576,8 +1569,8 @@ void MythPlayer::SetAllowForcedSubtitles(bool allow)
     bool old = allowForcedSubtitles;
     allowForcedSubtitles = allow;
     SetOSDMessage(allowForcedSubtitles ?
-                      QObject::tr("Forced Subtitles On") :
-                      QObject::tr("Forced Subtitles Off"),
+                      tr("Forced Subtitles On") :
+                      tr("Forced Subtitles Off"),
                   kOSDTimeout_Med);
     if (old != allowForcedSubtitles)
     {
@@ -1799,7 +1792,7 @@ void MythPlayer::AVSync(VideoFrame *buffer, bool limit_delay)
     {
         LOG(VB_GENERAL, LOG_ERR, LOC +
             "AVSync: Unknown error in videoOutput, aborting playback.");
-        SetErrored(QObject::tr("Failed to initialize A/V Sync"));
+        SetErrored(tr("Failed to initialize A/V Sync"));
         return;
     }
 
@@ -1878,7 +1871,7 @@ void MythPlayer::AVSync(VideoFrame *buffer, bool limit_delay)
         {
             LOG(VB_GENERAL, LOG_ERR, LOC + "Error condition detected "
                     "in videoOutput after Show(), aborting playback.");
-            SetErrored(QObject::tr("Serious error detected in Video Output"));
+            SetErrored(tr("Serious error detected in Video Output"));
             return;
         }
 
@@ -2042,7 +2035,7 @@ void MythPlayer::DisplayPauseFrame(void)
 
     if (videoOutput->IsErrored())
     {
-        SetErrored(QObject::tr("Serious error detected in Video Output"));
+        SetErrored(tr("Serious error detected in Video Output"));
         return;
     }
 
@@ -2118,8 +2111,7 @@ bool MythPlayer::PrebufferEnoughFrames(int min_buffers)
         {
             LOG(VB_GENERAL, LOG_ERR, LOC +
                 "Waited too long for decoder to fill video buffers. Exiting..");
-            SetErrored(QObject::tr("Video frame buffering failed too many "
-                                   "times."));
+            SetErrored(tr("Video frame buffering failed too many times."));
         }
         if (normal_speed)
             videosync->Start();
@@ -2475,7 +2467,7 @@ void MythPlayer::SwitchToProgram(void)
             .arg(player_ctx->tvchain->GetCardType(newid)));
         LOG(VB_GENERAL, LOG_ERR, player_ctx->tvchain->toString());
         SetEof(true);
-        SetErrored(QObject::tr("Error opening switch program buffer"));
+        SetErrored(tr("Error opening switch program buffer"));
         delete pginfo;
         return;
     }
@@ -2500,7 +2492,7 @@ void MythPlayer::SwitchToProgram(void)
         if (newtype)
         {
             if (OpenFile() < 0)
-                SetErrored(QObject::tr("Error opening switch program file"));
+                SetErrored(tr("Error opening switch program file"));
         }
         else
             ResetPlaying();
@@ -2609,7 +2601,7 @@ void MythPlayer::JumpToProgram(void)
                 .arg(player_ctx->tvchain->GetCardType(newid)));
         LOG(VB_GENERAL, LOG_ERR, player_ctx->tvchain->toString());
         SetEof(true);
-        SetErrored(QObject::tr("Error opening jump program file buffer"));
+        SetErrored(tr("Error opening jump program file buffer"));
         delete pginfo;
         inJumpToProgramPause = false;
         return;
@@ -2619,7 +2611,7 @@ void MythPlayer::JumpToProgram(void)
     if (newtype || wasDummy)
     {
         if (OpenFile() < 0)
-            SetErrored(QObject::tr("Error opening jump program file"));
+            SetErrored(tr("Error opening jump program file"));
     }
     else
         ResetPlaying();
@@ -2628,7 +2620,7 @@ void MythPlayer::JumpToProgram(void)
     {
         LOG(VB_GENERAL, LOG_ERR, LOC + "JumpToProgram failed.");
         if (!IsErrored())
-            SetErrored(QObject::tr("Error reopening video decoder"));
+            SetErrored(tr("Error reopening video decoder"));
         delete pginfo;
         inJumpToProgramPause = false;
         return;
@@ -2820,7 +2812,7 @@ void MythPlayer::EventLoop(void)
         LOG(VB_GENERAL, LOG_ERR, LOC +
             "Unknown recorder error, exiting decoder");
         if (!IsErrored())
-            SetErrored(QObject::tr("Irrecoverable recorder error"));
+            SetErrored(tr("Irrecoverable recorder error"));
         killdecoder = true;
         return;
     }
@@ -2882,7 +2874,8 @@ void MythPlayer::EventLoop(void)
     {
         if (!commBreakMap.HasMap())
         {
-            SetOSDStatus(QObject::tr("Not Flagged"), kOSDTimeout_Med);
+            //: The commercials/adverts have not been flagged
+            SetOSDStatus(tr("Not Flagged"), kOSDTimeout_Med);
             QString message = "COMMFLAG_REQUEST ";
             player_ctx->LockPlayingInfo(__FILE__, __LINE__);
             message += player_ctx->playingInfo->GetChanID() + " " +
@@ -3701,7 +3694,7 @@ void MythPlayer::WaitForSeek(uint64_t frame, uint64_t seeksnap_wanted)
         if (!(count % 150) && !hasFullPositionMap)
         {
             int num = (count / 150) % 4;
-            SetOSDMessage(QObject::tr("Searching") + QString().fill('.', num),
+            SetOSDMessage(tr("Searching") + QString().fill('.', num),
                           kOSDTimeout_Short);
             DisplayPauseFrame();
             need_clear = true;
@@ -3768,7 +3761,7 @@ bool MythPlayer::EnableEdit(void)
     if (!hasFullPositionMap)
     {
         LOG(VB_GENERAL, LOG_ERR, LOC + "Cannot edit - no full position map");
-        SetOSDStatus(QObject::tr("No Seektable"), kOSDTimeout_Med);
+        SetOSDStatus(tr("No Seektable"), kOSDTimeout_Med);
         return false;
     }
 
@@ -3789,7 +3782,7 @@ bool MythPlayer::EnableEdit(void)
     bool loadedAutoSave = deleteMap.LoadAutoSaveMap(totalFrames);
     if (loadedAutoSave)
     {
-        SetOSDMessage(QObject::tr("Using previously auto-saved cuts"),
+        SetOSDMessage(tr("Using previously auto-saved cuts"),
                       kOSDTimeout_Short);
     }
 
@@ -3833,7 +3826,7 @@ void MythPlayer::DisableEdit(int howToSave)
     if (!pausedBeforeEdit)
         Play(speedBeforeEdit);
     else
-        SetOSDStatus(QObject::tr("Paused"), kOSDTimeout_None);
+        SetOSDStatus(tr("Paused"), kOSDTimeout_None);
 }
 
 bool MythPlayer::HandleProgramEditorActions(QStringList &actions,
@@ -3917,18 +3910,17 @@ bool MythPlayer::HandleProgramEditorActions(QStringList &actions,
         else if (action == ACTION_SELECT)
         {
             deleteMap.NewCut(frame, totalFrames);
-            SetOSDMessage(QObject::tr("New cut added."), kOSDTimeout_Short);
+            SetOSDMessage(tr("New cut added."), kOSDTimeout_Short);
             refresh = true;
         }
         else if (action == "DELETE")
         {
-            deleteMap.Delete(frame, totalFrames,
-                             QObject::tr("Delete"));
+            deleteMap.Delete(frame, totalFrames, tr("Delete"));
             refresh = true;
         }
         else if (action == "REVERT")
         {
-            deleteMap.LoadMap(totalFrames, QObject::tr("Undo Changes"));
+            deleteMap.LoadMap(totalFrames, tr("Undo Changes"));
             refresh = true;
         }
         else if (action == "REVERTEXIT")
@@ -3955,16 +3947,18 @@ bool MythPlayer::HandleProgramEditorActions(QStringList &actions,
             if (handled && (action == "CUTTOBEGINNING" ||
                 action == "CUTTOEND" || action == "NEWCUT"))
             {
-                SetOSDMessage(QObject::tr("New cut added."), kOSDTimeout_Short);
+                SetOSDMessage(tr("New cut added."), kOSDTimeout_Short);
             }
             else if (handled && action == "UNDO")
             {
-                SetOSDMessage(QObject::tr("Undo") + " - " + undoMessage,
+                //: %1 is the undo message
+                SetOSDMessage(QString(tr("Undo - %1")).arg(undoMessage),
                               kOSDTimeout_Short);
             }
             else if (handled && action == "REDO")
             {
-                SetOSDMessage(QObject::tr("Redo") + " - " + redoMessage,
+                //: %1 is the redo message
+                SetOSDMessage(QString(tr("Redo - %1")).arg(redoMessage),
                               kOSDTimeout_Short);
             }
         }
@@ -4723,11 +4717,11 @@ void MythPlayer::calcSliderPos(osdInfo &info, bool paddedFields)
             }
             else
             {
-                text3 = QObject::tr("%n second(s)", "", sbsecs);
+                text3 = tr("%n second(s)", "", sbsecs);
             }
         }
 
-        info.text[relPrefix + "description"] = QObject::tr("%1 of %2").arg(text1).arg(text2);
+        info.text[relPrefix + "description"] = tr("%1 of %2").arg(text1).arg(text2);
         info.text[relPrefix + "playedtime"] = text1;
         info.text[relPrefix + "totaltime"] = text2;
         info.text[relPrefix + "remainingtime"] = islive ? QString() : text3;
@@ -4962,8 +4956,8 @@ void MythPlayer::ToggleStudioLevels(void)
     int val = videoOutput->GetPictureAttribute(kPictureAttribute_StudioLevels);
     val = (val > 0) ? 0 : 1;
     videoOutput->SetPictureAttribute(kPictureAttribute_StudioLevels, val);
-    QString msg = (val > 0) ? QObject::tr("Enabled Studio Levels") :
-                              QObject::tr("Disabled Studio Levels");
+    QString msg = (val > 0) ? tr("Enabled Studio Levels") :
+                              tr("Disabled Studio Levels");
     SetOSDMessage(msg, kOSDTimeout_Med);
 }
 
@@ -4987,13 +4981,13 @@ void MythPlayer::ToggleNightMode(void)
     QString msg;
     if (!nm)
     {
-        msg = QObject::tr("Enabled Night Mode");
+        msg = tr("Enabled Night Mode");
         b -= kNightModeBrightenssAdjustment;
         c -= kNightModeContrastAdjustment;
     }
     else
     {
-        msg = QObject::tr("Disabled Night Mode");
+        msg = tr("Disabled Night Mode");
         b += kNightModeBrightenssAdjustment;
         c += kNightModeContrastAdjustment;
     }
