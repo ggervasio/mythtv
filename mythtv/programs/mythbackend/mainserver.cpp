@@ -2255,11 +2255,12 @@ bool MainServer::TruncateAndClose(ProgramInfo *pginfo, int fd,
     }
 
     int cards = 5;
-
-    MSqlQuery query(MSqlQuery::InitCon());
-    query.prepare("SELECT COUNT(cardid) FROM capturecard;");
-    if (query.exec() && query.next())
-        cards = query.value(0).toInt();
+    {
+        MSqlQuery query(MSqlQuery::InitCon());
+        query.prepare("SELECT COUNT(cardid) FROM capturecard;");
+        if (query.exec() && query.next())
+            cards = query.value(0).toInt();
+    }
 
     // Time between truncation steps in milliseconds
     const size_t sleep_time = 500;
@@ -2273,6 +2274,8 @@ bool MainServer::TruncateAndClose(ProgramInfo *pginfo, int fd,
             .arg(filename)
             .arg(increment / (1024.0 * 1024.0), 0, 'f', 2)
             .arg(sleep_time));
+
+    GetMythDB()->GetDBManager()->PurgeIdleConnections(false);
 
     int count = 0;
     while (fsize > 0)

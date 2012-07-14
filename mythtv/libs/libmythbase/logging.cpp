@@ -493,6 +493,7 @@ void LoggerThread::launchLogServer(void)
 
         MythSystem ms(GetInstallPrefix() + "/bin/mythlogserver", args, mask);
         ms.Run();
+        ms.Wait(0);
     }
 }
 
@@ -863,6 +864,8 @@ void logStop(void)
     {
         logThread->stop();
         logThread->wait();
+        delete logThread;
+        logThread = NULL;
     }
 }
 
@@ -1041,7 +1044,7 @@ void verboseInit(void)
 ///        (for --verbose help)
 void verboseHelp(void)
 {
-    QString m_verbose = verboseString.trimmed();
+    QString m_verbose = userDefaultValueStr.trimmed();
     m_verbose.replace(QRegExp(" "), ",");
     m_verbose.remove(QRegExp("^,"));
 
