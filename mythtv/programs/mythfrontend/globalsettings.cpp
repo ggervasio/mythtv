@@ -38,7 +38,9 @@
 #include "mythconfig.h"
 #include "mythdirs.h"
 #include "mythuihelper.h"
-
+#ifdef USING_AIRPLAY
+#include "AirPlay/mythraopconnection.h"
+#endif
 #if defined(Q_OS_MACX)
 #include "privatedecoder_vda.h"
 #endif
@@ -2155,13 +2157,13 @@ static HostComboBox *ThemePainter()
 {
     HostComboBox *gc = new HostComboBox("ThemePainter");
     gc->setLabel(QObject::tr("Paint engine"));
-    gc->addSelection(QObject::tr("Qt"), "qt");
-    gc->addSelection(QObject::tr("Auto"), "auto");
+    gc->addSelection(QObject::tr("Qt"), QT_PAINTER);
+    gc->addSelection(QObject::tr("Auto"), AUTO_PAINTER);
 #ifdef USING_OPENGL
-    gc->addSelection(QObject::tr("OpenGL"), "opengl");
+    gc->addSelection(QObject::tr("OpenGL"), OPENGL_PAINTER);
 #endif
 #ifdef USING_MINGW
-    gc->addSelection(QObject::tr("Direct3D"), "d3d9");
+    gc->addSelection(QObject::tr("Direct3D"), D3D9_PAINTER);
 #endif
     gc->setHelpText(QObject::tr("This selects what MythTV uses to draw. "
                     "Choosing 'Auto' is recommended, unless running on systems "
@@ -2598,6 +2600,85 @@ static HostLineEdit *UDPNotifyPort()
                     "from the \"mythutil\" program on this port."));
     return ge;
 }
+
+#ifdef USING_AIRPLAY
+// AirPlay Settings
+static HostCheckBox *AirPlayEnabled()
+{
+    HostCheckBox *gc = new HostCheckBox("AirPlayEnabled");
+    gc->setLabel(QObject::tr("Enable AirPlay"));
+    gc->setHelpText(QObject::tr("AirPlay lets you wirelessly view content on "
+                                "your TV from your iPhone, iPad, iPod Touch, or "
+                                "iTunes on your computer."));
+    gc->setValue(true);
+    return gc;
+}
+
+static HostCheckBox *AirPlayAudioOnly()
+{
+    HostCheckBox *gc = new HostCheckBox("AirPlayAudioOnly");
+    gc->setLabel(QObject::tr("Only support AirTunes (no video)"));
+    gc->setHelpText(QObject::tr("Only stream audio from your iPhone, iPad, "
+                                "iPod Touch, or iTunes on your computer"));
+    gc->setValue(false);
+    return gc;
+}
+
+static HostCheckBox *AirPlayPasswordEnabled()
+{
+    HostCheckBox *gc = new HostCheckBox("AirPlayPasswordEnabled");
+    gc->setLabel(QObject::tr("Require password"));
+    gc->setValue(false);
+    gc->setHelpText(QObject::tr("Require a password to use AirPlay. Your iPhone, "
+                                "iPad, iPod Touch, or iTunes on your computer "
+                                "will prompt you when required"));
+    return gc;
+}
+
+static HostLineEdit *AirPlayPassword()
+{
+    HostLineEdit *ge = new HostLineEdit("AirPlayPassword");
+    ge->setValue("0000");
+    ge->setHelpText(QObject::tr("Your iPhone, iPad, iPod Touch, or iTunes on "
+                                "your computer will prompt you for this password "
+                                "when required"));
+    return ge;
+}
+
+static HorizontalConfigurationGroup *AirPlayPasswordSettings()
+{
+    HorizontalConfigurationGroup *hc =
+        new HorizontalConfigurationGroup(false, false, false, false);
+    hc->addChild(AirPlayPasswordEnabled());
+    hc->addChild(AirPlayPassword());
+    return hc;
+}
+
+static TransLabelSetting *AirPlayInfo()
+{
+    TransLabelSetting *ts = new TransLabelSetting();
+    ts->setValue(QObject::tr("All AirPlay settings take effect when "
+                             "you restart MythFrontend."));
+    return ts;
+}
+
+static TransLabelSetting *AirPlayRSAInfo()
+{
+    TransLabelSetting *ts = new TransLabelSetting();
+    if (MythRAOPConnection::LoadKey() == NULL)
+    {
+        ts->setValue(QObject::tr("AirTunes RSA key couldn't be loaded. "
+                                 "Check http://www.mythtv.org/wiki/AirTunes/AirPlay. "
+                                 "Last Error: %1")
+                     .arg(MythRAOPConnection::RSALastError()));
+    }
+    else
+    {
+        ts->setValue(QObject::tr("AirTunes RSA key successfully loaded."));
+    }
+    return ts;
+}
+#endif
 
 static HostCheckBox *RealtimePriority()
 {
@@ -3200,6 +3281,27 @@ MainGeneralSettings::MainGeneralSettings()
     media->addChild(mediaMon);
     addChild(media);
 
+    VerticalConfigurationGroup *remotecontrol =
+    new VerticalConfigurationGroup(false, true, false, false);
+    remotecontrol->setLabel(QObject::tr("Remote Control"));
+    remotecontrol->addChild(LircDaemonDevice());
+    remotecontrol->addChild(NetworkControlEnabled());
+    remotecontrol->addChild(NetworkControlPort());
+    remotecontrol->addChild(UDPNotifyPort());
+    addChild(remotecontrol);
+
+#ifdef USING_AIRPLAY
+    VerticalConfigurationGroup *airplay =
+    new VerticalConfigurationGroup(false, true, false, false);
+    airplay->setLabel(QObject::tr("AirPlay Settings"));
+    airplay->addChild(AirPlayEnabled());
+    airplay->addChild(AirPlayAudioOnly());
+    airplay->addChild(AirPlayPasswordSettings());
+    airplay->addChild(AirPlayInfo());
+    airplay->addChild(AirPlayRSAInfo());
+    addChild(airplay);
+#endif
+
     VerticalConfigurationGroup *shutdownSettings =
         new VerticalConfigurationGroup(true, true, false, false);
     shutdownSettings->setLabel(QObject::tr("Shutdown/Reboot Settings"));
@@ -3208,15 +3310,6 @@ MainGeneralSettings::MainGeneralSettings()
     shutdownSettings->addChild(HaltCommand());
     shutdownSettings->addChild(RebootCommand());
     addChild(shutdownSettings);
-
-    VerticalConfigurationGroup *remotecontrol =
-        new VerticalConfigurationGroup(false, true, false, false);
-    remotecontrol->setLabel(QObject::tr("Remote Control"));
-    remotecontrol->addChild(LircDaemonDevice());
-    remotecontrol->addChild(NetworkControlEnabled());
-    remotecontrol->addChild(NetworkControlPort());
-    remotecontrol->addChild(UDPNotifyPort());
-    addChild(remotecontrol);
 }
 
 PlaybackSettings::PlaybackSettings()
@@ -3492,7 +3585,9 @@ AppearanceSettings::AppearanceSettings()
     VerticalConfigurationGroup* screen = new VerticalConfigurationGroup(false);
     screen->setLabel(QObject::tr("Theme") + " / " + QObject::tr("Screen Settings"));
 
+#if ! CONFIG_DARWIN
     screen->addChild(ThemePainter());
+#endif
     screen->addChild(MenuTheme());
 
     if (MythDisplay::GetNumberXineramaScreens() > 1)
