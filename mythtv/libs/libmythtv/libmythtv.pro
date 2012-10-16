@@ -123,6 +123,7 @@ HEADERS += mythsystemevent.h
 HEADERS += avfringbuffer.h          ThreadedFileWriter.h
 HEADERS += ringbuffer.h             fileringbuffer.h
 HEADERS += streamingringbuffer.h    metadataimagehelper.h
+HEADERS += icringbuffer.h
 
 SOURCES += recordinginfo.cpp
 SOURCES += dbcheck.cpp
@@ -150,6 +151,7 @@ SOURCES += mythsystemevent.cpp
 SOURCES += avfringbuffer.cpp        ThreadedFileWriter.cpp
 SOURCES += ringbuffer.cpp           fileringBuffer.cpp
 SOURCES += streamingringbuffer.cpp  metadataimagehelper.cpp
+SOURCES += icringbuffer.cpp
 
 # DiSEqC
 HEADERS += diseqc.h                 diseqcsettings.h
@@ -278,6 +280,7 @@ using_frontend {
     HEADERS += tv_play_win.h            deletemap.h
     HEADERS += mythcommflagplayer.h     commbreakmap.h
     HEADERS += mythiowrapper.h          tvbrowsehelper.h
+    HEADERS += netstream.h
     SOURCES += tv_play.cpp              mythplayer.cpp
     SOURCES += audioplayer.cpp
     SOURCES += mythccextractorplayer.cpp teletextextractorreader.cpp
@@ -285,6 +288,7 @@ using_frontend {
     SOURCES += tv_play_win.cpp          deletemap.cpp
     SOURCES += mythcommflagplayer.cpp   commbreakmap.cpp
     SOURCES += mythiowrapper.cpp        tvbrowsehelper.cpp
+    SOURCES += netstream.cpp
 
     # Text subtitle parser
     HEADERS += textsubtitleparser.h     xine_demux_sputext.h
@@ -419,6 +423,10 @@ using_frontend {
         HEADERS += dsmccreceiver.h
         SOURCES += dsmcc.cpp                dsmcccache.cpp
         SOURCES += dsmccbiop.cpp            dsmccobjcarousel.cpp
+
+         # MHEG interaction channel
+        HEADERS += mhegic.h
+        SOURCES += mhegic.cpp
 
         # MHEG/MHI stuff
         HEADERS += interactivetv.h          mhi.h

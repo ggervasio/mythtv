@@ -154,7 +154,7 @@ Advanced options (experts only):
 
 External codec library options (used for mythffmpeg and streaming transcode):
   --enable-libmp3lame      enable MP3 encoding via libmp3lame [no]
-  --enable-libfaac         enable AAC encoding vic libfaac [no]
+  --enable-libfaac         enable AAC encoding via libfaac [no]
   --enable-libx264         enable H.264 encoding via x264 [no]
   --enable-libvpx          enable VP8 encoding via libvpx [no]
   --enable-libxvid         enable Xvid encoding via xvidcore,
@@ -4734,8 +4734,7 @@ if enabled gxx; then
     fi
     check_cxxflags -Wno-switch
     check_cxxflags -Wredundant-decls
-# Disable for 0.26 release, since we plan to fix these post 0.26
-#    check_cxxflags -Woverloaded-virtual
+    check_cxxflags -Woverloaded-virtual
     check_cxxflags -funit-at-a-time
 elif enabled icpc; then
     # 177: function declared but never referenced (triggers on Q_OBJECT)
@@ -5511,6 +5510,18 @@ cp_if_changed $TMPH external/FFmpeg/libavutil/avconfig.h
 <<BLOCKQUOTE
 echo "config:$arch:$subarch:$cpu:$target_os:$cc_ident:$FFMPEG_CONFIGURATION" >config.fate
 BLOCKQUOTE
+
+# configure zeromq
+echo "Configuring zeromq..."
+(cd external/zeromq ; \
+         ./configure --quiet --without-documentation --prefix=${prefix} \
+                     --includedir=${prefix}/include/mythtv/zeromq)
+echo "Configuring nzmqt..."
+(cd external/nzmqt/src ; \
+       ${qmake} -o Makefile)
+echo "Configuring qjson..."
+(cd external/qjson ; \
+       ${qmake} -o Makefile)
 
 test -n "$WARNINGS" && printf "\n$WARNINGS" || exit 0
 

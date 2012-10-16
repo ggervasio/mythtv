@@ -2208,6 +2208,9 @@ int AvFormatDecoder::ScanStreams(bool novideo)
         }
     }
 
+    if ((uint)ic->bit_rate > bitrate)
+        bitrate = (uint)ic->bit_rate;
+
     if (bitrate > 0)
     {
         bitrate = (bitrate + 999) / 1000;

@@ -348,7 +348,7 @@ int main(int argc, char *argv[])
 #ifndef _WIN32
     QList<int> signallist;
     signallist << SIGINT << SIGTERM << SIGSEGV << SIGABRT << SIGBUS << SIGFPE
-               << SIGILL;
+               << SIGILL << SIGRTMIN;
     SignalHandler::Init(signallist);
     signal(SIGHUP, SIG_IGN);
 #endif
@@ -613,6 +613,27 @@ int main(int argc, char *argv[])
         }
 
         LOG(VB_GENERAL, LOG_INFO, QString("    Found %1").arg(found));
+    }
+
+    if (grab_data)
+    {
+        LOG(VB_GENERAL, LOG_INFO, "Fixing missing original airdates.");
+        MSqlQuery query(MSqlQuery::InitCon());
+
+        query.prepare("UPDATE program p "
+                      "JOIN ( "
+                      "  SELECT programid, MAX(originalairdate) maxoad "
+                      "  FROM program "
+                      "  WHERE programid <> '' AND "
+                      "        originalairdate IS NOT NULL "
+                      "  GROUP BY programid ) oad "
+                      "  ON p.programid = oad.programid "
+                      "SET p.originalairdate = oad.maxoad "
+                      "WHERE p.originalairdate IS NULL");
+
+        if (query.exec())
+            LOG(VB_GENERAL, LOG_INFO,
+                QString("    Found %1").arg(query.numRowsAffected()));
     }
 
     if (mark_repeats)

@@ -60,6 +60,7 @@ using namespace std;
 #include "mythuiimage.h"
 #include "mythlogging.h"
 #include "mythmiscutil.h"
+#include "icringbuffer.h"
 
 extern "C" {
 #include "vbitext/vbi.h"
@@ -899,7 +900,7 @@ int MythPlayer::OpenFile(uint retries)
     if (!player_ctx || !player_ctx->buffer)
         return -1;
 
-    livetv = player_ctx->tvchain;
+    livetv = player_ctx->tvchain && player_ctx->buffer->LiveMode();
 
     if (player_ctx->tvchain &&
         player_ctx->tvchain->GetCardType(player_ctx->tvchain->GetCurPos()) ==
@@ -2050,6 +2051,7 @@ void MythPlayer::DisplayPauseFrame(void)
     SetBuffering(false);
 
     RefreshPauseFrame();
+    PreProcessNormalFrame(); // Allow interactiveTV to draw on pause frame
 
     osdLock.lock();
     videofiltersLock.lock();
@@ -2375,7 +2377,7 @@ bool MythPlayer::FastForward(float seconds)
         return false;
 
     if (fftime <= 0)
-        fftime = (long long)(seconds * video_frame_rate);
+        fftime = (long long)(seconds * video_frame_rate + 0.5);
     return fftime > CalcMaxFFTime(fftime, false);
 }
 
@@ -2385,7 +2387,7 @@ bool MythPlayer::Rewind(float seconds)
         return false;
 
     if (rewindtime <= 0)
-        rewindtime = (long long)(seconds * video_frame_rate);
+        rewindtime = (long long)(seconds * video_frame_rate + 0.5);
     return (uint64_t)rewindtime >= framesPlayed;
 }
 
@@ -2462,6 +2464,14 @@ void MythPlayer::SwitchToProgram(void)
         SetEof(false);
         delete pginfo;
         return;
+    }
+
+    if (player_ctx->buffer->GetType() == ICRingBuffer::kRingBufferType)
+    {
+        // Restore original ringbuffer
+        ICRingBuffer *ic = dynamic_cast< ICRingBuffer* >(player_ctx->buffer);
+        player_ctx->buffer = ic->Take();
+        delete ic;
     }
 
     player_ctx->buffer->OpenFile(
@@ -2597,6 +2607,14 @@ void MythPlayer::JumpToProgram(void)
     }
 
     SendMythSystemPlayEvent("PLAY_CHANGED", pginfo);
+
+    if (player_ctx->buffer->GetType() == ICRingBuffer::kRingBufferType)
+    {
+        // Restore original ringbuffer
+        ICRingBuffer *ic = dynamic_cast< ICRingBuffer* >(player_ctx->buffer);
+        player_ctx->buffer = ic->Take();
+        delete ic;
+    }
 
     player_ctx->buffer->OpenFile(
         pginfo->GetPlaybackURL(), RingBuffer::kLiveTVOpenTimeout);
@@ -2798,6 +2816,16 @@ void MythPlayer::EventLoop(void)
         JumpToProgram();
     }
 
+    // Change interactive stream if requested
+    { QMutexLocker locker(&itvLock);
+    if (!m_newStream.isEmpty())
+    {
+        QString stream = m_newStream;
+        m_newStream.clear();
+        locker.unlock();
+        JumpToStream(stream);
+    }}
+
     // Disable fastforward if we are too close to the end of the buffer
     if (ffrew_skip > 1 && (CalcMaxFFTime(100, false) < 100))
     {
@@ -2834,22 +2862,24 @@ void MythPlayer::EventLoop(void)
     }
 
     // Handle end of file
-    if (GetEof())
+    if (GetEof() && !allpaused)
     {
-        if (player_ctx->tvchain)
+#ifdef USING_MHEG
+        if (interactiveTV && interactiveTV->StreamStarted(false))
         {
-            if (!allpaused && player_ctx->tvchain->HasNext())
-            {
-                LOG(VB_GENERAL, LOG_NOTICE, LOC + "LiveTV forcing JumpTo 1");
-                player_ctx->tvchain->JumpToNext(true, 1);
-                return;
-            }
-        }
-        else if (!allpaused)
-        {
-            SetPlaying(false);
+            Pause();
             return;
         }
+#endif
+        if (player_ctx->tvchain && player_ctx->tvchain->HasNext())
+        {
+            LOG(VB_GENERAL, LOG_NOTICE, LOC + "LiveTV forcing JumpTo 1");
+            player_ctx->tvchain->JumpToNext(true, 1);
+            return;
+        }
+
+        SetPlaying(false);
+        return;
     }
 
     // Handle rewind
@@ -4589,9 +4619,13 @@ int MythPlayer::GetSecondsBehind(void) const
 
 int64_t MythPlayer::GetSecondsPlayed(void)
 {
+#if 0
     return decoder->IsCodecMPEG() ?
                 (disp_timecode / 1000.f) :
                 (framesPlayed / video_frame_rate);
+#else
+    return framesPlayed / video_frame_rate;
+#endif
 }
 
 int64_t MythPlayer::GetTotalSeconds(void) const
@@ -4871,6 +4905,135 @@ bool MythPlayer::SetVideoByComponentTag(int tag)
     if (decoder)
         return decoder->SetVideoByComponentTag(tag);
     return false;
+}
+
+static inline double SafeFPS(DecoderBase *decoder)
+{
+    if (!decoder)
+        return 25;
+    double fps = decoder->GetFPS();
+    return fps > 0 ? fps : 25.0;
+}
+
+// Called from MHIContext::Begin/End/Stream on the MHIContext::StartMHEGEngine thread
+bool MythPlayer::SetStream(const QString &stream)
+{
+    // The stream name is empty if the stream is closing
+    LOG(VB_PLAYBACK, LOG_INFO, LOC + QString("SetStream '%1'").arg(stream));
+
+    QMutexLocker locker(&itvLock);
+    m_newStream = stream;
+    m_newStream.detach();
+    // Stream will be changed by JumpToStream called from EventLoop
+    // If successful will call interactiveTV->StreamStarted();
+
+    if (stream.isEmpty() && player_ctx->tvchain &&
+        player_ctx->buffer->GetType() == ICRingBuffer::kRingBufferType)
+    {
+        // Restore livetv
+        SetEof(true);
+        player_ctx->tvchain->JumpToNext(false, 1);
+        player_ctx->tvchain->JumpToNext(true, 1);
+    }
+
+    return !stream.isEmpty();
+}
+
+// Called from EventLoop pn the main application thread
+void MythPlayer::JumpToStream(const QString &stream)
+{
+    LOG(VB_PLAYBACK, LOG_INFO, LOC + "JumpToStream - begin");
+
+    if (stream.isEmpty())
+        return; // Shouldn't happen
+
+    Pause();
+    ResetCaptions();
+
+    ProgramInfo pginfo(stream);
+    SetPlayingInfo(pginfo);
+
+    if (player_ctx->buffer->GetType() != ICRingBuffer::kRingBufferType)
+        player_ctx->buffer = new ICRingBuffer(stream, player_ctx->buffer);
+    else
+        player_ctx->buffer->OpenFile(stream);
+
+    if (!player_ctx->buffer->IsOpen())
+    {
+        LOG(VB_GENERAL, LOG_ERR, LOC + "JumpToStream buffer OpenFile failed");
+        SetEof(true);
+        SetErrored(QObject::tr("Error opening remote stream buffer"));
+        return;
+    }
+
+    watchingrecording = false;
+    totalLength = 0;
+    totalFrames = 0;
+    totalDuration = 0;
+
+    if (OpenFile(120) < 0) // 120 retries ~= 60 seconds
+    {
+        LOG(VB_GENERAL, LOG_ERR, LOC + "JumpToStream OpenFile failed.");
+        SetEof(true);
+        SetErrored(QObject::tr("Error opening remote stream"));
+        return;
+    }
+
+    if (totalLength == 0)
+    {
+        long long len = player_ctx->buffer->GetRealFileSize();
+        totalLength = (int)(len / ((decoder->GetRawBitrate() * 1000) / 8));
+        totalFrames = (int)(totalLength * SafeFPS(decoder));
+    }
+    LOG(VB_PLAYBACK, LOG_INFO, LOC +
+        QString("JumpToStream length %1 bytes @ %2 Kbps = %3 Secs, %4 frames @ %5 fps")
+        .arg(player_ctx->buffer->GetRealFileSize()).arg(decoder->GetRawBitrate())
+        .arg(totalLength).arg(totalFrames).arg(decoder->GetFPS()) );
+
+    SetEof(false);
+
+    // the bitrate is reset by player_ctx->buffer->OpenFile()...
+    player_ctx->buffer->UpdateRawBitrate(decoder->GetRawBitrate());
+    decoder->SetProgramInfo(pginfo);
+
+    Play();
+    ChangeSpeed();
+
+    player_ctx->SetPlayerChangingBuffers(false);
+#ifdef USING_MHEG
+    if (interactiveTV) interactiveTV->StreamStarted();
+#endif
+
+    LOG(VB_PLAYBACK, LOG_INFO, LOC + "JumpToStream - end");
+}
+
+long MythPlayer::GetStreamPos()
+{
+    return (long)((1000 * GetFramesPlayed()) / SafeFPS(decoder));
+}
+
+long MythPlayer::GetStreamMaxPos()
+{
+    long maxpos = (long)(1000 * (totalDuration > 0 ? totalDuration : totalLength));
+    long pos = GetStreamPos();
+    return maxpos > pos ? maxpos : pos;
+}
+
+long MythPlayer::SetStreamPos(long ms)
+{
+    uint64_t frameNum = (uint64_t)((ms * SafeFPS(decoder)) / 1000);
+    LOG(VB_PLAYBACK, LOG_INFO, LOC + QString("SetStreamPos %1 mS = frame %2, now=%3")
+        .arg(ms).arg(frameNum).arg(GetFramesPlayed()) );
+    JumpToFrame(frameNum);
+    return ms;
+}
+
+void MythPlayer::StreamPlay(bool play)
+{
+    if (play)
+        Play();
+    else
+        Pause();
 }
 
 /** \fn MythPlayer::SetDecoder(DecoderBase*)
