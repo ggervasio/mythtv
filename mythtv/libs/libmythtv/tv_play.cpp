@@ -1414,7 +1414,7 @@ void TV::UpdateChannelList(int groupID)
     if (groupID == channelGroupId)
         return;
 
-    DBChanList list;
+    ChannelInfoList list;
     if (groupID != -1)
     {
         list = ChannelUtil::GetChannels(
@@ -3497,7 +3497,8 @@ bool TV::eventFilter(QObject *o, QEvent *e)
 
     if (e->type() == MythEvent::MythEventMessage ||
         e->type() == MythEvent::MythUserMessage  ||
-        e->type() == MythEvent::kUpdateTvProgressEventType)
+        e->type() == MythEvent::kUpdateTvProgressEventType ||
+        e->type() == MythMediaEvent::kEventType)
     {
         customEvent(e);
         return true;
@@ -7513,7 +7514,7 @@ void TV::ChangeChannel(PlayerContext *ctx, uint chanid, const QString &chan)
         UpdateOSDInput(ctx);
 }
 
-void TV::ChangeChannel(const PlayerContext *ctx, const DBChanList &options)
+void TV::ChangeChannel(const PlayerContext *ctx, const ChannelInfoList &options)
 {
     for (uint i = 0; i < options.size(); i++)
     {
@@ -9000,6 +9001,40 @@ void TV::customEvent(QEvent *e)
     {
         OSDHideEvent *ce = reinterpret_cast<OSDHideEvent*>(e);
         HandleOSDClosed(ce->GetFunctionalType());
+        return;
+    }
+
+    // Stop DVD playback cleanly when the DVD is ejected
+    if (e->type() == MythMediaEvent::kEventType)
+    {
+        PlayerContext *mctx = GetPlayerReadLock(0, __FILE__, __LINE__);
+        TVState state = mctx->GetState();
+        if (state != kState_WatchingDVD)
+        {
+            ReturnPlayerLock(mctx);
+            return;
+        }
+
+        MythMediaEvent *me = static_cast<MythMediaEvent*>(e);
+        MythMediaDevice *device = me->getDevice();
+
+        QString filename = mctx->buffer->GetFilename();
+
+        if (device && filename.endsWith(device->getDevicePath()) &&
+            (device->getStatus() == MEDIASTAT_OPEN))
+        {
+            LOG(VB_GENERAL, LOG_NOTICE,
+                "DVD has been ejected, exiting playback");
+
+            for (uint i = 0; mctx && (i < player.size()); i++)
+            {
+                PlayerContext *ctx = GetPlayer(mctx, i);
+                PrepareToExitPlayer(ctx, __LINE__, kBookmarkAuto);
+            }
+
+            SetExitPlayer(true, true);
+        }
+        ReturnPlayerLock(mctx);
         return;
     }
 
@@ -10544,11 +10579,11 @@ void TV::OSDDialogEvent(int result, QString text, QString action)
             if (actx->tvchain)
             {
                 QMutexLocker locker(&channelGroupLock);
-                const DBChanList &list = channelGroupChannelList;
+                const ChannelInfoList &list = channelGroupChannelList;
                 cur_channum = actx->tvchain->GetChannelName(-1);
                 new_channum = cur_channum;
 
-                DBChanList::const_iterator it = list.begin();
+                ChannelInfoList::const_iterator it = list.begin();
                 for (; it != list.end(); ++it)
                 {
                     if ((*it).channum == cur_channum)
@@ -11152,7 +11187,7 @@ void TV::FillOSDMenuSubtitles(const PlayerContext *ctx, OSD *osd,
             osd->DialogAddButton(tr("Disable Subtitles"), ACTION_DISABLESUBS);
         else if (have_subs && !enabled)
             osd->DialogAddButton(tr("Enable Subtitles"), ACTION_ENABLESUBS);
-        if (!av_tracks.empty())
+        if (!av_tracks.empty() || !text_tracks.empty())
         {
             if (forcedon)
             {
@@ -11164,9 +11199,10 @@ void TV::FillOSDMenuSubtitles(const PlayerContext *ctx, OSD *osd,
                 osd->DialogAddButton(tr("Enable Forced Subtitles"),
                                      ACTION_ENABLEFORCEDSUBS);
             }
-            osd->DialogAddButton(tr("Select Subtitle"),
-                                 "DIALOG_MENU_AVSUBTITLES_0",
-                                 true, selected == "AVSUBTITLES");
+            if (!av_tracks.empty())
+                osd->DialogAddButton(tr("Select Subtitle"),
+                                     "DIALOG_MENU_AVSUBTITLES_0",
+                                     true, selected == "AVSUBTITLES");
         }
         if (havetext || !text_tracks.empty())
         {
@@ -11403,7 +11439,7 @@ void TV::FillOSDMenuNavigate(const PlayerContext *ctx, OSD *osd,
         currenttext = tr("Angle");
         int current_angle = GetCurrentAngle(ctx);
 
-        for (int i = 0; i < num_angles; i++)
+        for (int i = 1; i <= num_angles; i++)
         {
             QString angleIdx = QString("%1").arg(i, 3, 10, QChar(48));
             QString desc = GetAngleName(ctx, i);

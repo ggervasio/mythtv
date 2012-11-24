@@ -31,6 +31,7 @@ using namespace std;
 #include "scanwizard.h"
 #include "cardutil.h"
 #include "sourceutil.h"
+#include "channelinfo.h"
 #include "channelutil.h"
 #include "frequencies.h"
 #include "diseqcsettings.h"
@@ -2049,8 +2050,6 @@ CetonConfigurationGroup::CetonConfigurationGroup
 
     connect(deviceid, SIGNAL(LoadedIP(const QString&)),
             ip,       SLOT(  LoadValue(const QString&)));
-    connect(deviceid, SIGNAL(LoadedCard(const QString&)),
-            card,     SLOT(  LoadValue(const QString&)));
     connect(deviceid, SIGNAL(LoadedTuner(const QString&)),
             tuner,    SLOT(  LoadValue(const QString&)));
 
@@ -2762,7 +2761,7 @@ void StartingChannel::SetSourceID(const QString &sourceid)
     // Get the existing starting channel
     QString startChan = CardUtil::GetStartingChannel(getInputID());
 
-    DBChanList channels = ChannelUtil::GetAllChannels(sourceid.toUInt());
+    ChannelInfoList channels = ChannelUtil::GetAllChannels(sourceid.toUInt());
 
     if (channels.empty())
     {

@@ -2684,6 +2684,8 @@ void MainServer::DoHandleUndeleteRecording(
         recinfo.ApplyRecordRecGroupChange("Default");
         recinfo.UpdateLastDelete(false);
         recinfo.SaveAutoExpire(kDisableAutoExpire);
+        if (m_sched)
+            m_sched->RescheduleCheck(recinfo, "DoHandleUndelete");
         ret = 0;
 #if 0
     }

@@ -927,6 +927,9 @@ void TVRec::FinishedRecording(RecordingInfo *curRec, RecordingQuality *recq)
         PreviewGeneratorQueue::GetPreviewImage(*curRec, "");
     }
 
+    // store recording in recorded table
+    curRec->FinishedRecording(!is_good || (recgrp == "LiveTV"));
+
     // send out UPDATE_RECORDING_STATUS message
     if (recgrp != "LiveTV")
     {
@@ -938,9 +941,6 @@ void TVRec::FinishedRecording(RecordingInfo *curRec, RecordingQuality *recq)
                      .arg(curRec->GetRecordingEndTime(MythDate::ISODate)));
         gCoreContext->dispatch(me);
     }
-
-    // store recording in recorded table
-    curRec->FinishedRecording(!is_good || (recgrp == "LiveTV"));
 
     // send out REC_FINISHED message
     SendMythSystemRecEvent("REC_FINISHED", curRec);
