@@ -1960,35 +1960,6 @@ bool ProgramInfo::LoadProgramFromRecorded(
     return true;
 }
 
-/** \fn ProgramInfo::GetRecordingTypeRecPriority(RecordingType)
- *  \brief Returns recording priority change needed due to RecordingType.
- */
-int ProgramInfo::GetRecordingTypeRecPriority(RecordingType type)
-{
-    switch (type)
-    {
-        case kSingleRecord:
-            return gCoreContext->GetNumSetting("SingleRecordRecPriority", 1);
-        case kTimeslotRecord:
-            return gCoreContext->GetNumSetting("TimeslotRecordRecPriority", 0);
-        case kWeekslotRecord:
-            return gCoreContext->GetNumSetting("WeekslotRecordRecPriority", 0);
-        case kChannelRecord:
-            return gCoreContext->GetNumSetting("ChannelRecordRecPriority", 0);
-        case kAllRecord:
-            return gCoreContext->GetNumSetting("AllRecordRecPriority", 0);
-        case kFindOneRecord:
-        case kFindDailyRecord:
-        case kFindWeeklyRecord:
-            return gCoreContext->GetNumSetting("FindOneRecordRecPriority", -1);
-        case kOverrideRecord:
-        case kDontRecord:
-            return gCoreContext->GetNumSetting("OverrideRecordRecPriority", 0);
-        default:
-            return 0;
-    }
-}
-
 /** \fn ProgramInfo::IsSameProgramWeakCheck(const ProgramInfo&) const
  *  \brief Checks for duplicate using only title, chanid and startts.
  *  \param other ProgramInfo to compare this one with.
@@ -2006,7 +1977,7 @@ bool ProgramInfo::IsSameProgramWeakCheck(const ProgramInfo &other) const
  */
 bool ProgramInfo::IsSameProgram(const ProgramInfo& other) const
 {
-    if (GetRecordingRuleType() == kFindOneRecord)
+    if (GetRecordingRuleType() == kOneRecord)
         return recordid == other.recordid;
 
     if (findid && findid == other.findid &&

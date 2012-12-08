@@ -244,7 +244,6 @@ MythPlayer::MythPlayer(PlayerFlags flags)
     endExitPrompt      = gCoreContext->GetNumSetting("EndOfRecordingExitPrompt");
     pip_default_loc    = (PIPLocation)gCoreContext->GetNumSetting("PIPLocation", kPIPTopLeft);
     tc_wrap[TC_AUDIO]  = gCoreContext->GetNumSetting("AudioSyncOffset", 0);
-    allowForcedSubtitles = gCoreContext->GetNumSetting("AllowForcedSubtitles", 1);
 
     // Get VBI page number
     QString mypage = gCoreContext->GetSetting("VBIpageNr", "888");
@@ -816,6 +815,8 @@ void MythPlayer::SetVideoParams(int width, int height, double fps,
 
     video_dim      = QSize((width + 15) & ~0xf, (height + 15) & ~0xf);
     video_disp_dim = QSize(width, height);
+    if (height)
+        video_aspect = (float)width / height;
 
     if (fps > 0.0f && fps < 121.0f)
     {
@@ -1574,17 +1575,11 @@ void MythPlayer::EnableForcedSubtitles(bool enable)
 
 void MythPlayer::SetAllowForcedSubtitles(bool allow)
 {
-    bool old = allowForcedSubtitles;
     allowForcedSubtitles = allow;
     SetOSDMessage(allowForcedSubtitles ?
                       tr("Forced Subtitles On") :
                       tr("Forced Subtitles Off"),
                   kOSDTimeout_Med);
-    if (old != allowForcedSubtitles)
-    {
-        gCoreContext->SaveSetting("AllowForcedSubtitles",
-                                  allowForcedSubtitles);
-    }
 }
 
 void MythPlayer::DoDisableForcedSubtitles(void)

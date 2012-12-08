@@ -46,6 +46,8 @@ AVFormatWriter::AVFormatWriter()
       m_videoStream(NULL),   m_avVideoCodec(NULL),
       m_audioStream(NULL),   m_avAudioCodec(NULL),
       m_picture(NULL),       m_tmpPicture(NULL),
+      m_pkt(NULL),           m_audPicture(NULL),
+      m_audPkt(NULL),
       m_videoOutBuf(NULL),
       m_audioOutBuf(NULL),   m_audioOutBufSize(0),
       m_audioFltBuf(NULL)
@@ -246,9 +248,7 @@ bool AVFormatWriter::NextFrameIsKeyFrame(void)
 
 int AVFormatWriter::WriteVideoFrame(VideoFrame *frame)
 {
-    AVCodecContext *c;
-
-    c = m_videoStream->codec;
+    //AVCodecContext *c = m_videoStream->codec;
 
     uint8_t *planes[3];
     int len = frame->size;
@@ -461,7 +461,7 @@ AVStream* AVFormatWriter::AddVideoStream(void)
     {
         LOG(VB_RECORD, LOG_ERR,
             LOC + "AddVideoStream(): avcodec_find_encoder() failed");
-        return false;
+        return NULL;
     }
 
     avcodec_get_context_defaults3(c, codec);

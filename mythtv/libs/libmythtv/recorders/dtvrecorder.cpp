@@ -426,7 +426,6 @@ bool DTVRecorder::FindMPEG2Keyframes(const TSPacket* tspacket)
     const uint8_t *bufptr = tspacket->data() + tspacket->AFCOffset();
     const uint8_t *bufend = tspacket->data() + TSPacket::kSize;
     int ext_type, bytes_left;
-    int picture_structure, top_field_first, repeat_first_field, progressive_frame;
     _repeat_pict = 0;
 
     while (bufptr < bufend)
@@ -475,10 +474,10 @@ bool DTVRecorder::FindMPEG2Keyframes(const TSPacket* tspacket)
                     case 0x8: /* picture coding extension */
                         if (bytes_left >= 5)
                         {
-                            picture_structure = bufptr[2]&3;
-                            top_field_first = bufptr[3] & (1 << 7);
-                            repeat_first_field = bufptr[3] & (1 << 1);
-                            progressive_frame = bufptr[4] & (1 << 7);
+                            //int picture_structure = bufptr[2]&3;
+                            int top_field_first = bufptr[3] & (1 << 7);
+                            int repeat_first_field = bufptr[3] & (1 << 1);
+                            int progressive_frame = bufptr[4] & (1 << 7);
 
                             /* check if we must repeat the frame */
                             _repeat_pict = 1;
@@ -685,31 +684,6 @@ bool DTVRecorder::FindOtherKeyframes(const TSPacket *tspacket)
     _has_written_other_keyframe = true;
 
     return true;
-}
-
-// documented in recorderbase.h
-void DTVRecorder::SetNextRecording(const RecordingInfo *progInf, RingBuffer *rb)
-{
-    LOG(VB_RECORD, LOG_INFO, LOC + QString("SetNextRecord(0x%1, 0x%2)")
-            .arg((uint64_t)progInf,0,16).arg((uint64_t)rb,0,16));
-    // First we do some of the time consuming stuff we can do now
-    SavePositionMap(true);
-    if (ringBuffer)
-    {
-        ringBuffer->WriterFlush();
-        if (curRecording)
-            curRecording->SaveFilesize(ringBuffer->GetRealFileSize());
-    }
-
-    // Then we set the next info
-    nextRingBufferLock.lock();
-
-    nextRecording = NULL;
-    if (progInf)
-        nextRecording = new RecordingInfo(*progInf);
-
-    nextRingBuffer = rb;
-    nextRingBufferLock.unlock();
 }
 
 /** \fn DTVRecorder::HandleKeyframe(uint64_t)

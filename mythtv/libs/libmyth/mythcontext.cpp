@@ -25,7 +25,6 @@ using namespace std;
 #include "dbutil.h"
 #include "DisplayRes.h"
 #include "mythmediamonitor.h"
-#include "mythsocketthread.h"
 
 #include "mythdb.h"
 #include "mythdirs.h"
@@ -1161,7 +1160,6 @@ MythContext::~MythContext()
     if (MThreadPool::globalInstance()->activeThreadCount())
         LOG(VB_GENERAL, LOG_INFO, "Waiting for threads to exit.");
 
-    ShutdownRRT();
     MThreadPool::globalInstance()->waitForDone();
     logStop();
 

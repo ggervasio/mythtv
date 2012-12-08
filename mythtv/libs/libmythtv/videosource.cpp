@@ -2021,8 +2021,7 @@ void CetonDeviceID::UpdateValues(void)
     }
 }
 
-CetonConfigurationGroup::CetonConfigurationGroup
-        (CaptureCard& a_parent) :
+CetonConfigurationGroup::CetonConfigurationGroup(CaptureCard& a_parent) :
     VerticalConfigurationGroup(false, true, false, false),
     parent(a_parent)
 {

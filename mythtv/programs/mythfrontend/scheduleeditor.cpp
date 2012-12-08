@@ -52,6 +52,8 @@ static QString fs4(QT_TRANSLATE_NOOP("SchedFilterEditor", "Commercial free"));
 static QString fs5(QT_TRANSLATE_NOOP("SchedFilterEditor", "High definition"));
 static QString fs6(QT_TRANSLATE_NOOP("SchedFilterEditor", "This episode"));
 static QString fs7(QT_TRANSLATE_NOOP("SchedFilterEditor", "This series"));
+static QString fs8(QT_TRANSLATE_NOOP("SchedFilterEditor", "This time"));
+static QString fs9(QT_TRANSLATE_NOOP("SchedFilterEditor", "This day and time"));
 
 void *ScheduleEditor::RunScheduleEditor(ProgramInfo *proginfo, void *player)
 {
@@ -267,7 +269,7 @@ void ScheduleEditor::Load()
                                tr("Record this showing with override options"),
                                      ENUM_TO_QVARIANT(kOverrideRecord));
             new MythUIButtonListItem(m_rulesList,
-                                tr("Do not allow this showing to be recorded"),
+                                tr("Do not record this showing"),
                                      ENUM_TO_QVARIANT(kDontRecord));
         }
         else
@@ -278,38 +280,29 @@ void ScheduleEditor::Load()
             new MythUIButtonListItem(m_rulesList, 
                                      tr("Do not record this program"),
                                      ENUM_TO_QVARIANT(kNotRecording));
-
             if (hasChannel)
                 new MythUIButtonListItem(m_rulesList,
                                          tr("Record only this showing"),
                                          ENUM_TO_QVARIANT(kSingleRecord));
             if (!isManual)
                 new MythUIButtonListItem(m_rulesList,
-                                        tr("Record one showing of this title"),
-                                         ENUM_TO_QVARIANT(kFindOneRecord));
-            if (hasChannel)
+                                         tr("Record only one showing"),
+                                         ENUM_TO_QVARIANT(kOneRecord));
+            if (!hasChannel || isManual)
                 new MythUIButtonListItem(m_rulesList,
-                                      tr("Record in this timeslot every week"),
-                                         ENUM_TO_QVARIANT(kWeekslotRecord));
-            if (!isManual)
+                                         tr("Record one showing every week"),
+                                         ENUM_TO_QVARIANT(kWeeklyRecord));
+            if (!hasChannel || isManual)
                 new MythUIButtonListItem(m_rulesList,
-                             tr("Record one showing of this title every week"),
-                                         ENUM_TO_QVARIANT(kFindWeeklyRecord));
-            if (hasChannel)
-                new MythUIButtonListItem(m_rulesList,
-                                       tr("Record in this timeslot every day"),
-                                         ENUM_TO_QVARIANT(kTimeslotRecord));
-            if (!isManual)
-                new MythUIButtonListItem(m_rulesList,
-                              tr("Record one showing of this title every day"),
-                                         ENUM_TO_QVARIANT(kFindDailyRecord));
+                                         tr("Record one showing every day"),
+                                         ENUM_TO_QVARIANT(kDailyRecord));
             if (hasChannel && !isManual)
                 new MythUIButtonListItem(m_rulesList,
-                                      tr("Record at any time on this channel"),
+                                     tr("Record all showings on this channel"),
                                          ENUM_TO_QVARIANT(kChannelRecord));
             if (!isManual)
                 new MythUIButtonListItem(m_rulesList,
-                                         ("Record at any time on any channel"),
+                                         ("Record all showings"),
                                          ENUM_TO_QVARIANT(kAllRecord));
         }
 
@@ -928,8 +921,8 @@ bool SchedEditChild::keyPressEvent(QKeyEvent *event)
     return handled;
 }
 
-bool SchedEditChild::Create(const QString xmlfile, const QString winname,
-                            bool isTemplate)
+bool SchedEditChild::CreateEditChild(
+    const QString xmlfile, const QString winname, bool isTemplate)
 {
     if (!LoadWindowFromXML(xmlfile, winname, this))
         return false;
@@ -996,9 +989,12 @@ SchedOptEditor::~SchedOptEditor(void)
 
 bool SchedOptEditor::Create()
 {
-    if (!SchedEditChild::Create("schedule-ui.xml", "scheduleoptionseditor",
-                                m_recordingRule->m_isTemplate))
+    if (!SchedEditChild::CreateEditChild(
+            "schedule-ui.xml", "scheduleoptionseditor",
+            m_recordingRule->m_isTemplate))
+    {
         return false;
+    }
 
     bool err = false;
 
@@ -1064,9 +1060,12 @@ SchedFilterEditor::~SchedFilterEditor(void)
 
 bool SchedFilterEditor::Create()
 {
-    if (!SchedEditChild::Create("schedule-ui.xml", "schedulefiltereditor",
-                                m_recordingRule->m_isTemplate))
+    if (!SchedEditChild::CreateEditChild(
+            "schedule-ui.xml", "schedulefiltereditor",
+            m_recordingRule->m_isTemplate))
+    {
         return false;
+    }
 
     bool err = false;
 
@@ -1175,9 +1174,12 @@ StoreOptEditor::~StoreOptEditor(void)
 
 bool StoreOptEditor::Create()
 {
-    if (!SchedEditChild::Create("schedule-ui.xml", "storageoptionseditor",
-                                m_recordingRule->m_isTemplate))
+    if (!SchedEditChild::CreateEditChild(
+            "schedule-ui.xml", "storageoptionseditor",
+            m_recordingRule->m_isTemplate))
+    {
         return false;
+    }
 
     bool err = false;
 
@@ -1261,9 +1263,12 @@ PostProcEditor::~PostProcEditor(void)
 
 bool PostProcEditor::Create()
 {
-    if (!SchedEditChild::Create("schedule-ui.xml", "postproceditor",
-                                m_recordingRule->m_isTemplate))
+    if (!SchedEditChild::CreateEditChild(
+            "schedule-ui.xml", "postproceditor",
+            m_recordingRule->m_isTemplate))
+    {
         return false;
+    }
 
     bool err = false;
 
@@ -1350,9 +1355,12 @@ MetadataOptions::~MetadataOptions(void)
 
 bool MetadataOptions::Create()
 {
-    if (!SchedEditChild::Create("schedule-ui.xml", "metadataoptions",
-                                m_recordingRule->m_isTemplate))
+    if (!SchedEditChild::CreateEditChild(
+            "schedule-ui.xml", "metadataoptions",
+            m_recordingRule->m_isTemplate))
+    {
         return false;
+    }
 
     bool err = false;
 

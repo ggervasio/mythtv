@@ -1335,7 +1335,7 @@ void PlaybackBox::UpdateUIGroupList(const QStringList &groupPreferences)
         QStringList::iterator it;
         for (it = m_titleList.begin(); it != m_titleList.end(); ++it)
         {
-            QString groupname = (*it).simplified();
+            QString groupname = (*it);
 
             MythUIButtonListItem *item =
                 new MythUIButtonListItem(
@@ -1692,7 +1692,7 @@ bool PlaybackBox::UpdateUILists(void)
                     sTitle = construct_sort_title(
                         p->GetTitle(), m_viewMask, titleSort,
                         p->GetRecordingPriority(), m_prefixes);
-                    sTitle = sTitle.toLower().simplified();
+                    sTitle = sTitle.toLower();
 
                     if (!sortedList.contains(sTitle))
                         sortedList[sTitle] = p->GetTitle();
@@ -1942,8 +1942,7 @@ bool PlaybackBox::UpdateUILists(void)
 
             // Daily
             if (spanHours[recid] < 50 ||
-                recType[recid] == kTimeslotRecord ||
-                recType[recid] == kFindDailyRecord)
+                recType[recid] == kDailyRecord)
             {
                 if (delHours[recid] < m_watchListBlackOut * 4)
                 {
@@ -1975,8 +1974,7 @@ bool PlaybackBox::UpdateUILists(void)
             }
             // Weekly
             else if (nextHours[recid] ||
-                     recType[recid] == kWeekslotRecord ||
-                     recType[recid] == kFindWeeklyRecord)
+                     recType[recid] == kWeeklyRecord)
 
             {
                 if (delHours[recid] < (m_watchListBlackOut * 24) - 4)

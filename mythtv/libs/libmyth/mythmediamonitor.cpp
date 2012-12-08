@@ -97,7 +97,7 @@ void MediaMonitor::SetCDSpeed(const char *device, int speed)
     MythCDROM *cd = MythCDROM::get(NULL, device, false, false);
     if (cd)
     {
-        cd->setSpeed(device, speed);
+        cd->setDeviceSpeed(device, speed);
         delete cd;
         return;
     }
@@ -380,9 +380,9 @@ bool MediaMonitor::RemoveDevice(const QString &dev)
         {
             if (m_UseCount[*it] == 0)
             {
+                m_UseCount.remove(*it);
                 (*it)->deleteLater();
                 m_Devices.erase(it);
-                m_UseCount.remove(*it);
             }
             else
             {
