@@ -144,7 +144,7 @@ class ProcessRequestRunnable : public QRunnable
 
     virtual void run(void)
     {
-        LOG(VB_GENERAL, LOG_INFO, QString("Processing request for sock %1")
+        LOG(VB_GENERAL, LOG_DEBUG, QString("Processing request for sock %1")
             .arg(m_sock->GetSocketDescriptor()));
         m_parent.ProcessRequest(m_sock);
         m_sock->DecrRef();
@@ -467,7 +467,7 @@ void MainServer::ProcessRequestWork(MythSocket *sock)
     QStringList tokens = line.split(' ', QString::SkipEmptyParts);
     QString command = tokens[0];
 #if 1
-    LOG(VB_GENERAL, LOG_INFO, "PRW: command='" + command + "'");
+    LOG(VB_GENERAL, LOG_DEBUG, "PRW: command='" + command + "'");
 #endif
     if (command == "MYTH_PROTO_VERSION")
     {
@@ -4657,13 +4657,20 @@ void MainServer::GetFilesystemInfos(QList<FileSystemInfo> &fsInfos)
     while (it != strlist.end())
     {
         fsInfo.setHostname(*(it++));
+        if (it == strlist.end()) break;
         fsInfo.setPath(*(it++));
+        if (it == strlist.end()) break;
         fsInfo.setLocal((*(it++)).toInt() > 0);
+        if (it == strlist.end()) break;
         fsInfo.setFSysID(-1);
         ++it;
+        if (it == strlist.end()) break;
         fsInfo.setGroupID((*(it++)).toInt());
+        if (it == strlist.end()) break;
         fsInfo.setBlockSize((*(it++)).toInt());
+        if (it == strlist.end()) break;
         fsInfo.setTotalSpace((*(it++)).toLongLong());
+        if (it == strlist.end()) break;
         fsInfo.setUsedSpace((*(it++)).toLongLong());
         fsInfo.setWeight(0);
         fsInfos.push_back(fsInfo);
