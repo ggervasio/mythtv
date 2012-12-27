@@ -130,17 +130,6 @@ static HostCheckBox *RememberRecGroup()
     return gc;
 }
 
-static HostCheckBox *UseGroupNameAsAllPrograms()
-{
-    HostCheckBox *gc = new HostCheckBox("DispRecGroupAsAllProg");
-    gc->setLabel(QObject::tr("Show filter name instead of \"All Programs\""));
-    gc->setValue(false);
-    gc->setHelpText(QObject::tr("If enabled, use the name of the display "
-                    "filter currently applied in place of the term \"All "
-                    "Programs\" in the playback screen."));
-    return gc;
-}
-
 static HostCheckBox *PBBStartInTitle()
 {
     HostCheckBox *gc = new HostCheckBox("PlaybackBoxStartInTitle");
@@ -2191,17 +2180,6 @@ static HostComboBox *LongChannelFormat()
     return gc;
 }
 
-static GlobalCheckBox *LiveTVPriority()
-{
-    GlobalCheckBox *bc = new GlobalCheckBox("LiveTVPriority");
-    bc->setLabel(QObject::tr("Allow Live TV to move scheduled shows"));
-    bc->setValue(false);
-    bc->setHelpText(QObject::tr("If enabled, scheduled recordings will "
-                    "be moved to other cards (where possible), so that "
-                    "Live TV will not be interrupted."));
-    return bc;
-}
-
 static HostCheckBox *ChannelGroupRememberLast()
 {
     HostCheckBox *gc = new HostCheckBox("ChannelGroupRememberLast");
@@ -3285,7 +3263,6 @@ PlaybackSettings::PlaybackSettings()
     pbox2->addChild(DisplayRecGroup());
     pbox2->addChild(QueryInitialFilter());
     pbox2->addChild(RememberRecGroup());
-    pbox2->addChild(UseGroupNameAsAllPrograms());
     addChild(pbox2);
 
     VerticalConfigurationGroup* pbox3 = new VerticalConfigurationGroup(false);
@@ -3355,9 +3332,8 @@ OSDSettings::OSDSettings()
     //cc->addChild(DecodeVBIFormat());
     //addChild(cc);
 
-#if CONFIG_DARWIN
+#if defined(Q_OS_MACX)
     // Any Mac OS-specific OSD stuff would go here.
-    // Note that this define should be Q_WS_MACX
 #endif
 }
 
@@ -3368,7 +3344,6 @@ GeneralSettings::GeneralSettings()
     general->addChild(ChannelOrdering());
     general->addChild(ChannelFormat());
     general->addChild(LongChannelFormat());
-    general->addChild(LiveTVPriority());
     addChild(general);
 
     VerticalConfigurationGroup* autoexp = new VerticalConfigurationGroup(false);

@@ -21,9 +21,8 @@ contains(INCLUDEPATH, /usr/local/include) {
 
 DEPENDPATH  += .
 DEPENDPATH  += ../libmyth ../libmyth/audio
-DEPENDPATH  += ../libmythbase ../libmythhdhomerun
+DEPENDPATH  += ../libmythbase
 DEPENDPATH  += ../libmythdvdnav/
-DEPENDPATH  += ../libmythbluray/
 DEPENDPATH  += ./mpeg ./channelscan ./visualisations
 DEPENDPATH  += ./recorders
 DEPENDPATH  += ./recorders/dvbdev
@@ -261,9 +260,9 @@ LIBS += -L../libmythdvdnav
 LIBS += -lmythdvdnav-$$LIBVERSION
 
 #Bluray stuff
-DEPENDPATH   += ../libmythbluray/
-INCLUDEPATH  += ../libmythbluray/
-POST_TARGETDEPS += ../libmythbluray/libmythbluray-$${MYTH_LIB_EXT}
+DEPENDPATH   += ../../external/libmythbluray/
+INCLUDEPATH  += ../../external/libmythbluray/
+POST_TARGETDEPS += ../../external/libmythbluray/libmythbluray-$${MYTH_LIB_EXT}
 HEADERS += Bluray/bdringbuffer.h
 SOURCES += Bluray/bdringbuffer.cpp
 using_frontend {
@@ -274,7 +273,7 @@ using_frontend {
     HEADERS += Bluray/bdoverlayscreen.h
     SOURCES += Bluray/bdoverlayscreen.cpp
 }
-LIBS += -L../libmythbluray
+LIBS += -L../../external/libmythbluray
 LIBS += -lmythbluray-$$LIBVERSION
 
 #HLS stuff
@@ -637,6 +636,9 @@ using_backend {
     # Support for HDHomeRun box
     using_hdhomerun {
         # MythTV HDHomeRun glue
+        INCLUDEPATH += ../../external/libhdhomerun
+        DEPENDPATH += ../../external/libhdhomerun
+
         HEADERS += recorders/hdhrsignalmonitor.h
         HEADERS += recorders/hdhrchannel.h
         HEADERS += recorders/hdhrrecorder.h
@@ -772,7 +774,7 @@ LIBS += -lmythbase-$$LIBVERSION
 LIBS += -lmythservicecontracts-$$LIBVERSION
 using_mheg: LIBS += -L../libmythfreemheg -lmythfreemheg-$$LIBVERSION
 using_live: LIBS += -L../libmythlivemedia -lmythlivemedia-$$LIBVERSION
-using_hdhomerun: LIBS += -L../libmythhdhomerun -lmythhdhomerun-$$LIBVERSION
+using_hdhomerun: LIBS += -L../../external/libhdhomerun -lmythhdhomerun-$$LIBVERSION
 using_backend: LIBS += -lmp3lame
 LIBS += $$EXTRA_LIBS $$QMAKE_LIBS_DYNLOAD
 
@@ -783,7 +785,7 @@ POST_TARGETDEPS += ../../external/FFmpeg/libavformat/$$avLibName(avformat)
 POST_TARGETDEPS += ../../external/FFmpeg/libswscale/$$avLibName(swscale)
 using_mheg: POST_TARGETDEPS += ../libmythfreemheg/libmythfreemheg-$${MYTH_SHLIB_EXT}
 using_live: POST_TARGETDEPS += ../libmythlivemedia/libmythlivemedia-$${MYTH_SHLIB_EXT}
-using_hdhomerun: POST_TARGETDEPS += ../libmythhdhomerun/libmythhdhomerun-$${MYTH_SHLIB_EXT}
+using_hdhomerun: POST_TARGETDEPS += ../../external/libhdhomerun/libmythhdhomerun-$${LIBVERSION}.$${QMAKE_EXTENSION_SHLIB}
 
 include ( ../libs-targetfix.pro )
 
