@@ -174,7 +174,7 @@ QString MythDB::GetError(const QString &where, const MSqlQuery &query)
         str += "Bindings were:\n";
         str += tmp;
     }
-    str += DBErrorMessage(query.lastError());
+    str = DBErrorMessage(query.lastError()) + str;
     return str;
 }
 
@@ -186,7 +186,7 @@ void MythDB::DBError(const QString &where, const MSqlQuery &query)
 QString MythDB::DBErrorMessage(const QSqlError& err)
 {
     if (!err.type())
-        return "No error type from QSqlError?  Strange...";
+        return "No error type from QSqlError?  Strange...\n";
 
     return QString("Driver error was [%1/%2]:\n"
                    "%3\n"
