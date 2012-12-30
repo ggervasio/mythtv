@@ -631,7 +631,8 @@ bool MSqlQuery::exec()
     // if the query failed with "MySQL server has gone away"
     // Close and reopen the database connection and retry the query if it
     // connects again
-    if (!result && QSqlQuery::lastError().number() == 2006 && Reconnect())
+    int err_num = QSqlQuery::lastError().number();
+    if (!result && (err_num == 2006 || err_num == 2013) && Reconnect())
         result = QSqlQuery::exec();
 
     if (!result)
@@ -714,7 +715,8 @@ bool MSqlQuery::exec(const QString &query)
     // if the query failed with "MySQL server has gone away"
     // Close and reopen the database connection and retry the query if it
     // connects again
-    if (!result && QSqlQuery::lastError().number() == 2006 && Reconnect())
+    int err_num = QSqlQuery::lastError().number();
+    if (!result && (err_num == 2006 || err_num == 2013) && Reconnect())
         result = QSqlQuery::exec(query);
 
     LOG(VB_DATABASE, LOG_DEBUG,
@@ -828,7 +830,8 @@ bool MSqlQuery::prepare(const QString& query)
     // if the prepare failed with "MySQL server has gone away"
     // Close and reopen the database connection and retry the query if it
     // connects again
-    if (!ok && QSqlQuery::lastError().number() == 2006 && Reconnect())
+    int err_num = QSqlQuery::lastError().number();
+    if (!ok && (err_num == 2006 || err_num == 2013) && Reconnect())
         ok = true;
 
     if (!ok && !(GetMythDB()->SuppressDBMessages()))
