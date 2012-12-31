@@ -238,7 +238,7 @@ bool MSqlDatabase::Reconnect()
     bool open = m_db.isOpen();
     if (open)
     {
-        LOG(VB_GENERAL, LOG_INFO, "MySQL reconnected successfully");
+        LOG(VB_GENERAL, LOG_INFO, "MySQL reconnected successfully: " + m_name);
         InitSessionVars();
     }
 
@@ -284,7 +284,9 @@ MDBManager::~MDBManager()
 
 MSqlDatabase *MDBManager::popConnection(bool reuse)
 {
+#if 0
     PurgeIdleConnections(true);
+#endif
 
     m_lock.lock();
 
@@ -357,7 +359,9 @@ void MDBManager::pushConnection(MSqlDatabase *db)
 
     m_lock.unlock();
 
+#if 0
     PurgeIdleConnections(true);
+#endif
 }
 
 void MDBManager::PurgeIdleConnections(bool leaveOne)
