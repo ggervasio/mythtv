@@ -4579,20 +4579,13 @@ void MainServer::BackendQueryDiskSpace(QStringList &strlist, bool consolidated,
     while (it != strlist.end())
     {
         fsInfo.setHostname(*(it++));
-        if (it == strlist.end()) break;
         fsInfo.setPath(*(it++));
-        if (it == strlist.end()) break;
         fsInfo.setLocal((*(it++)).toInt() > 0);
-        if (it == strlist.end()) break;
         fsInfo.setFSysID(-1);
         ++it;   // Without this, the strlist gets out of whack
-        if (it == strlist.end()) break;
         fsInfo.setGroupID((*(it++)).toInt());
-        if (it == strlist.end()) break;
         fsInfo.setBlockSize((*(it++)).toInt());
-        if (it == strlist.end()) break;
         fsInfo.setTotalSpace((*(it++)).toLongLong());
-        if (it == strlist.end()) break;
         fsInfo.setUsedSpace((*(it++)).toLongLong());
         fsInfos.push_back(fsInfo);
     }
@@ -4681,20 +4674,13 @@ void MainServer::GetFilesystemInfos(QList<FileSystemInfo> &fsInfos)
     while (it != strlist.end())
     {
         fsInfo.setHostname(*(it++));
-        if (it == strlist.end()) break;
         fsInfo.setPath(*(it++));
-        if (it == strlist.end()) break;
         fsInfo.setLocal((*(it++)).toInt() > 0);
-        if (it == strlist.end()) break;
         fsInfo.setFSysID(-1);
         ++it;
-        if (it == strlist.end()) break;
         fsInfo.setGroupID((*(it++)).toInt());
-        if (it == strlist.end()) break;
         fsInfo.setBlockSize((*(it++)).toInt());
-        if (it == strlist.end()) break;
         fsInfo.setTotalSpace((*(it++)).toLongLong());
-        if (it == strlist.end()) break;
         fsInfo.setUsedSpace((*(it++)).toLongLong());
         fsInfo.setWeight(0);
         fsInfos.push_back(fsInfo);
