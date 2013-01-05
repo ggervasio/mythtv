@@ -4575,9 +4575,16 @@ void MainServer::BackendQueryDiskSpace(QStringList &strlist, bool consolidated,
     FileSystemInfo fsInfo;
     QList<FileSystemInfo> fsInfos;
 
+    int i = 0;
     QStringList::const_iterator it = strlist.begin();
     while (it != strlist.end())
     {
+        if ((i + 8) > strlist.size())
+        {
+            LOG(VB_GENERAL, LOG_ERR, QString("Invalid disk space list: %1")
+                                         .arg(strlist.join("[]:[]")));
+            break;
+        }
         fsInfo.setHostname(*(it++));
         fsInfo.setPath(*(it++));
         fsInfo.setLocal((*(it++)).toInt() > 0);
@@ -4588,6 +4595,7 @@ void MainServer::BackendQueryDiskSpace(QStringList &strlist, bool consolidated,
         fsInfo.setTotalSpace((*(it++)).toLongLong());
         fsInfo.setUsedSpace((*(it++)).toLongLong());
         fsInfos.push_back(fsInfo);
+        i += 8;
     }
     strlist.clear();
 
@@ -4670,9 +4678,16 @@ void MainServer::GetFilesystemInfos(QList<FileSystemInfo> &fsInfos)
 
     BackendQueryDiskSpace(strlist, false, true);
 
+    int i = 0;
     QStringList::const_iterator it = strlist.begin();
     while (it != strlist.end())
     {
+        if ((i + 8) > strlist.size())
+        {
+            LOG(VB_GENERAL, LOG_ERR, QString("Invalid disk space list: %1")
+                                         .arg(strlist.join("[]:[]")));
+            break;
+        }
         fsInfo.setHostname(*(it++));
         fsInfo.setPath(*(it++));
         fsInfo.setLocal((*(it++)).toInt() > 0);
@@ -4684,6 +4699,7 @@ void MainServer::GetFilesystemInfos(QList<FileSystemInfo> &fsInfos)
         fsInfo.setUsedSpace((*(it++)).toLongLong());
         fsInfo.setWeight(0);
         fsInfos.push_back(fsInfo);
+        i += 8;
     }
 
     LOG(VB_SCHEDULE | VB_FILE, LOG_DEBUG, "Determining unique filesystems");
