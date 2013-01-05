@@ -141,6 +141,26 @@ class DecoderBase
     virtual bool DoRewind(long long desiredFrame, bool doflush = true);
     virtual bool DoFastForward(long long desiredFrame, bool doflush = true);
 
+    static uint64_t
+        TranslatePositionAbsToRel(const frm_dir_map_t &deleteMap,
+                                  uint64_t absPosition,
+                                  const frm_pos_map_t &map = frm_pos_map_t(),
+                                  float fallback_ratio = 1.0);
+    static uint64_t
+        TranslatePositionRelToAbs(const frm_dir_map_t &deleteMap,
+                                  uint64_t relPosition,
+                                  const frm_pos_map_t &map = frm_pos_map_t(),
+                                  float fallback_ratio = 1.0);
+    static uint64_t TranslatePosition(const frm_pos_map_t &map,
+                                      uint64_t key,
+                                      float fallback_ratio);
+    uint64_t TranslatePositionFrameToMs(uint64_t position,
+                                        float fallback_framerate,
+                                        const frm_dir_map_t &cutlist);
+    uint64_t TranslatePositionMsToFrame(uint64_t dur_ms,
+                                        float fallback_framerate,
+                                        const frm_dir_map_t &cutlist);
+
     float GetVideoAspect(void) const { return current_aspect; }
 
     virtual int64_t NormalizeVideoTimecode(int64_t timecode) { return timecode; }
@@ -222,6 +242,7 @@ class DecoderBase
     void ResetTotalDuration(void) { totalDuration = 0; }
     void SaveTotalFrames(void);
     bool GetVideoInverted(void) const { return video_inverted; }
+    void TrackTotalDuration(bool track) { trackTotalDuration = track; }
 
   protected:
     virtual int  AutoSelectTrack(uint type);
@@ -263,6 +284,11 @@ class DecoderBase
     int keyframedist;
     long long indexOffset;
 
+    // The totalDuration field is only valid when the video is played
+    // from start to finish without any jumping.  trackTotalDuration
+    // indicates whether this is the case.
+    bool trackTotalDuration;
+
     bool ateof;
     bool exitafterdecoded;
     bool transcoding;
@@ -274,7 +300,10 @@ class DecoderBase
 
     mutable QMutex m_positionMapLock;
     vector<PosMapEntry> m_positionMap;
+    frm_pos_map_t m_frameToDurMap; // guarded by m_positionMapLock
+    frm_pos_map_t m_durToFrameMap; // guarded by m_positionMapLock
     bool dontSyncPositionMap;
+    mutable QDateTime m_lastPositionMapUpdate; // guarded by m_positionMapLock
 
     uint64_t seeksnap;
     bool livetv;
