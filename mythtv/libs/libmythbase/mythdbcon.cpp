@@ -284,7 +284,7 @@ MDBManager::~MDBManager()
 
 MSqlDatabase *MDBManager::popConnection(bool reuse)
 {
-#if 0
+#if 1
     PurgeIdleConnections(true);
 #endif
 
@@ -359,7 +359,7 @@ void MDBManager::pushConnection(MSqlDatabase *db)
 
     m_lock.unlock();
 
-#if 0
+#if 1
     PurgeIdleConnections(true);
 #endif
 }
