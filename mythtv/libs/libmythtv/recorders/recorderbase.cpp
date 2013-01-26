@@ -33,8 +33,8 @@ using namespace std;
 #define TVREC_CARDNUM \
         ((tvrec != NULL) ? QString::number(tvrec->GetCaptureCardNum()) : "NULL")
 
-#define LOC      QString("RecBase(%1:%2): ") \
-                 .arg(TVREC_CARDNUM).arg(videodevice)
+#define LOC QString("RecBase[%1](%2): ") \
+            .arg(TVREC_CARDNUM).arg(videodevice)
 
 const uint RecorderBase::kTimeOfLatestDataIntervalTarget = 5000;
 
@@ -192,7 +192,7 @@ void RecorderBase::SetIntOption(RecordingProfile *profile, const QString &name)
     if (setting)
         SetOption(name, setting->getValue().toInt());
     else
-        LOG(VB_GENERAL, LOG_ERR, LOC + 
+        LOG(VB_GENERAL, LOG_ERR, LOC +
             QString("SetIntOption(...%1): Option not in profile.").arg(name));
 }
 

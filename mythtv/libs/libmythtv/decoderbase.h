@@ -59,6 +59,14 @@ typedef enum AudioTrackType
 } AudioTrackType;
 QString toString(AudioTrackType type);
 
+// Eof States
+typedef enum
+{
+    kEofStateNone,     // no eof
+    kEofStateDelayed,  // decoder eof, but let player drain buffered frames
+    kEofStateImmediate // true eof
+} EofState;
+
 class StreamInfo
 {
   public:
@@ -115,8 +123,11 @@ class DecoderBase
                          char testbuf[kDecoderProbeBufferSize],
                          int testbufsize = kDecoderProbeBufferSize) = 0;
 
-    virtual void SetEof(bool eof)  { ateof = eof;  }
-    bool         GetEof(void) const { return ateof; }
+    virtual void SetEofState(EofState eof)  { ateof = eof;  }
+    virtual void SetEof(bool eof)  {
+        ateof = eof ? kEofStateDelayed : kEofStateNone;
+    }
+    EofState     GetEof(void)      { return ateof; }
 
     void SetSeekSnap(uint64_t snap)  { seeksnap = snap; }
     uint64_t GetSeekSnap(void) const { return seeksnap;  }
@@ -140,6 +151,7 @@ class DecoderBase
     virtual long long GetChapter(int chapter)             { return framesPlayed; }
     virtual bool DoRewind(long long desiredFrame, bool doflush = true);
     virtual bool DoFastForward(long long desiredFrame, bool doflush = true);
+    virtual void SetIdrOnlyKeyframes(bool value) { }
 
     static uint64_t
         TranslatePositionAbsToRel(const frm_dir_map_t &deleteMap,
@@ -205,6 +217,8 @@ class DecoderBase
     void SetTranscoding(bool value) { transcoding = value; }
 
     bool IsErrored() const { return errored; }
+
+    bool HasPositionMap(void) const { return GetPositionMapSize(); }
 
     void SetWaitForChange(void);
     bool GetWaitForChange(void) const;
@@ -289,7 +303,7 @@ class DecoderBase
     // indicates whether this is the case.
     bool trackTotalDuration;
 
-    bool ateof;
+    EofState ateof;
     bool exitafterdecoded;
     bool transcoding;
 

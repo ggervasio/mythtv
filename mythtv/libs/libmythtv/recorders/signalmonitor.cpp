@@ -56,7 +56,8 @@ extern "C" {
 
 #undef DBG_SM
 #define DBG_SM(FUNC, MSG) LOG(VB_CHANNEL, LOG_DEBUG, \
-    QString("SM(%1)::%2: %3").arg(channel->GetDevice()).arg(FUNC).arg(MSG))
+    QString("SM[%1](%2)::%3: %4").arg(capturecardnum) \
+                              .arg(channel->GetDevice()).arg(FUNC).arg(MSG))
 
 /** \class SignalMonitor
  *  \brief Signal monitoring base class.
@@ -189,7 +190,7 @@ SignalMonitor::SignalMonitor(int _capturecardnum, ChannelBase *_channel,
       capturecardnum(_capturecardnum), flags(wait_for_mask),
       update_rate(25),                 minimum_update_rate(5),
       update_done(false),              notify_frontend(true),
-      tablemon(false),                 eit_scan(false),                
+      tablemon(false),                 eit_scan(false),
       signalLock    (QObject::tr("Signal Lock"),  "slock",
                      1, true, 0,   1, 0),
       signalStrength(QObject::tr("Signal Power"), "signal",

@@ -28,13 +28,16 @@
 #include "ringbuffer.h"
 #include "tv_rec.h"
 
-#define LOC QString("ASIRec(%1): ").arg(tvrec->GetCaptureCardNum())
+#define LOC QString("ASIRec[%1](%2): ") \
+            .arg(tvrec ? tvrec->GetCaptureCardNum() : -1) \
+            .arg(m_channel->GetDevice())
 
 ASIRecorder::ASIRecorder(TVRec *rec, ASIChannel *channel) :
     DTVRecorder(rec), m_channel(channel), m_stream_handler(NULL),
     m_record_mpts(false)
 {
-    SetStreamData(new MPEGStreamData(-1,false));
+    SetStreamData(new MPEGStreamData(-1, rec ? rec->GetCaptureCardNum() : -1,
+                                     false));
     if (channel->GetProgramNumber() < 0 || !channel->GetMinorChannel())
         _stream_data->SetListeningDisabled(true);
 }
@@ -76,7 +79,7 @@ void ASIRecorder::run(void)
         _error = "MPEGStreamData pointer has not been set";
         LOG(VB_GENERAL, LOG_ERR, LOC + _error);
         Close();
-        return;        
+        return;
     }
 
     {

@@ -1290,7 +1290,7 @@ void NuppelVideoRecorder::DoV4L1(void)
                     gettimeofday(&stm, &tzone);
                 continue;
             }
-            
+
             if (!request_pause && mainpaused)
             {
                 mainpaused = false;
@@ -1386,7 +1386,7 @@ bool NuppelVideoRecorder::SetFormatV4L2(void)
             }
             else
             {
-                // we need to convert the buffer - we can't deal with uyvy 
+                // we need to convert the buffer - we can't deal with uyvy
                 // directly.
                 if (inpixfmt == FMT_YUV422P)
                 {
@@ -1649,7 +1649,7 @@ again:
                     gettimeofday(&stm, &tzone);
                 continue;
             }
-            
+
             if (!request_pause && mainpaused)
             {
                 mainpaused = false;
@@ -1885,7 +1885,7 @@ void NuppelVideoRecorder::DoMJPEG(void)
                     gettimeofday(&stm, &tzone);
                 continue;
             }
-            
+
             if (!request_pause && mainpaused)
             {
                 mainpaused = false;
@@ -2412,7 +2412,7 @@ void NuppelVideoRecorder::doAudioThread(void)
                 unpauseWait.wait(&pauseLock, 100);
                 continue;
             }
-            
+
             if (!request_pause && audiopaused)
             {
                 audiopaused = false;
@@ -2713,7 +2713,7 @@ void NuppelVideoRecorder::doWriteThread(void)
                 unpauseWait.wait(&pauseLock, 100);
                 continue;
             }
-            
+
             if (!request_pause && writepaused)
             {
                 writepaused = false;

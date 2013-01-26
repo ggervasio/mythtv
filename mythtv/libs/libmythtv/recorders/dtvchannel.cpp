@@ -10,7 +10,7 @@ using namespace std;
 #include "mpegtables.h"
 #include "mythlogging.h"
 
-#define LOC QString("DTVChan(%1): ").arg(GetDevice())
+#define LOC QString("DTVChan[%1](%2): ").arg(GetCardID()).arg(GetDevice())
 
 QReadWriteLock DTVChannel::master_map_lock(QReadWriteLock::Recursive);
 typedef QMap<QString,QList<DTVChannel*> > MasterMap;
@@ -370,7 +370,7 @@ bool DTVChannel::SetChannelByString(const QString &channum)
         int pcrpid = -1;
         vector<uint> pids;
         vector<uint> types;
-        pid_cache_t::iterator pit = pid_cache.begin(); 
+        pid_cache_t::iterator pit = pid_cache.begin();
         for (; pit != pid_cache.end(); ++pit)
         {
             if (!pit->GetStreamID())
