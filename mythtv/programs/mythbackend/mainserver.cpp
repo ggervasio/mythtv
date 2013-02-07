@@ -6281,7 +6281,7 @@ void MainServer::reconnectTimeout(void)
     }
 
     masterServer = new PlaybackSock(this, masterServerSock, server,
-                                    kPBSEvents_None);
+                                    kPBSEvents_Normal);
     sockListLock.lockForWrite();
     playbackList.push_back(masterServer);
     sockListLock.unlock();
