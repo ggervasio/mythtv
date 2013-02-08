@@ -346,11 +346,13 @@ bool MythSocket::SendReceiveStringList(
         return false;
     }
 
+#if 0
     if (!strlist.empty() && strlist[0] == "BACKEND_MESSAGE")
     {
         LOG(VB_GENERAL, LOG_ERR, LOC + "Got MythEvent on non-event socket");
         return false;
     }
+#endif
 
     return true;
 }
