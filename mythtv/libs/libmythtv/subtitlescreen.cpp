@@ -1303,20 +1303,23 @@ void SubtitleScreen::DisplayCC608Subtitles(void)
     if (!changed)
         return;
 
-    if (textlist)
-        textlist->lock.lock();
-
-    SetElementDeleted();
-    DeleteAllChildren();
-
     if (!textlist)
+    {
+        SetElementDeleted();
+        DeleteAllChildren();
         return;
+    }
 
+    textlist->lock.lock();
     if (textlist->buffers.empty())
     {
+        SetElementDeleted();
+        DeleteAllChildren();
         textlist->lock.unlock();
         return;
     }
+
+    DeleteAllChildren();
 
     FormattedTextSubtitle fsub(m_safeArea, this);
     fsub.InitFromCC608(textlist->buffers, m_textFontZoom);
