@@ -124,7 +124,7 @@ int V4LRecorder::OpenVBIDevice(void)
     uint rate = 0;
 #endif
 
-    QByteArray vbidev = vbidevice.toAscii();
+    QByteArray vbidev = vbidevice.toLatin1();
     if (VBIMode::PAL_TT == vbimode)
     {
         pal_tt = vbi_open(vbidev.constData(), NULL, 99, -1);

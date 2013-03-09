@@ -822,7 +822,7 @@ bool AvFormatDecoder::CanHandle(char testbuf[kDecoderProbeBufferSize],
 
     AVProbeData probe;
 
-    QByteArray fname = filename.toAscii();
+    QByteArray fname = filename.toLatin1();
     probe.filename = fname.constData();
     probe.buf = (unsigned char *)testbuf;
     probe.buf_size = testbufsize;
@@ -955,7 +955,7 @@ int AvFormatDecoder::OpenFile(RingBuffer *rbuffer, bool novideo,
 
     AVInputFormat *fmt      = NULL;
     QString        fnames   = ringBuffer->GetFilename();
-    QByteArray     fnamea   = fnames.toAscii();
+    QByteArray     fnamea   = fnames.toLatin1();
     const char    *filename = fnamea.constData();
 
     AVProbeData probe;
@@ -1385,8 +1385,6 @@ void AvFormatDecoder::InitVideoCodec(AVStream *stream, AVCodecContext *enc,
         FlagIsSet(kDecodeFewBlocks) || FlagIsSet(kDecodeNoLoopFilter)   ||
         FlagIsSet(kDecodeNoDecode))
     {
-        enc->flags2 |= CODEC_FLAG2_FAST;
-
         if ((AV_CODEC_ID_MPEG2VIDEO == codec->id) ||
             (AV_CODEC_ID_MPEG1VIDEO == codec->id))
         {
@@ -1797,7 +1795,6 @@ int AvFormatDecoder::ScanStreams(bool novideo)
     bool unknownbitrate = false;
     int scanerror = 0;
     bitrate       = 0;
-    fps           = 0;
 
     tracks[kTrackTypeAttachment].clear();
     tracks[kTrackTypeAudio].clear();
@@ -1810,6 +1807,7 @@ int AvFormatDecoder::ScanStreams(bool novideo)
         // we will rescan video streams
         tracks[kTrackTypeVideo].clear();
         selectedTrack[kTrackTypeVideo].av_stream_index = -1;
+        fps = 0;
     }
     map<int,uint> lang_sub_cnt;
     uint subtitleStreamCount = 0;
@@ -2979,7 +2977,9 @@ void AvFormatDecoder::HandleGopStart(
             m_positionMap.push_back(entry);
             if (trackTotalDuration)
             {
-                m_frameToDurMap[framesRead] = totalDuration / 1000;
+                m_frameToDurMap[framesRead] =
+                    (int64_t)totalDuration.num * 1000.0 / totalDuration.den
+                    + 0.5;
                 m_durToFrameMap[m_frameToDurMap[framesRead]] = framesRead;
             }
         }
@@ -3093,12 +3093,13 @@ void AvFormatDecoder::MpegPreProcessPkt(AVStream *stream, AVPacket *pkt)
     }
 }
 
-bool AvFormatDecoder::H264PreProcessPkt(AVStream *stream, AVPacket *pkt)
+// Returns the number of frame starts identified in the packet.
+int AvFormatDecoder::H264PreProcessPkt(AVStream *stream, AVPacket *pkt)
 {
     AVCodecContext *context = stream->codec;
     const uint8_t  *buf     = pkt->data;
     const uint8_t  *buf_end = pkt->data + pkt->size;
-    bool on_frame = false;
+    int num_frames = 0;
 
     // crude NAL unit vs Annex B detection.
     // the parser only understands Annex B
@@ -3114,7 +3115,7 @@ bool AvFormatDecoder::H264PreProcessPkt(AVStream *stream, AVPacket *pkt)
         {
             if (pkt->flags & AV_PKT_FLAG_KEY)
                 HandleGopStart(pkt, false);
-            return true;
+            return 1;
         }
     }
 
@@ -3127,7 +3128,7 @@ bool AvFormatDecoder::H264PreProcessPkt(AVStream *stream, AVPacket *pkt)
             if (m_h264_parser->FieldType() != H264Parser::FIELD_BOTTOM)
             {
                 if (m_h264_parser->onFrameStart())
-                    on_frame = true;
+                    ++num_frames;
 
                 if (!m_h264_parser->onKeyFrameStart())
                     continue;
@@ -3143,11 +3144,9 @@ bool AvFormatDecoder::H264PreProcessPkt(AVStream *stream, AVPacket *pkt)
         }
 
         current_aspect = get_aspect(*m_h264_parser);
-        uint  width  = m_h264_parser->pictureWidth();
-        uint  height = m_h264_parser->pictureHeight();
-        if (height == 1088 && current_height == 1080)
-            height = 1080;
-        float seqFPS = m_h264_parser->frameRate() * 0.001f;
+        uint  width  = m_h264_parser->pictureWidthCropped();
+        uint  height = m_h264_parser->pictureHeightCropped();
+        float seqFPS = m_h264_parser->frameRate();
 
         bool res_changed = ((width  != (uint)current_width) ||
                             (height != (uint)current_height));
@@ -3227,13 +3226,13 @@ bool AvFormatDecoder::H264PreProcessPkt(AVStream *stream, AVPacket *pkt)
         pkt->flags |= AV_PKT_FLAG_KEY;
     }
 
-    return on_frame;
+    return num_frames;
 }
 
 bool AvFormatDecoder::PreProcessVideoPacket(AVStream *curstream, AVPacket *pkt)
 {
     AVCodecContext *context = curstream->codec;
-    bool on_frame = true;
+    int num_frames = 1;
 
     if (CODEC_IS_FFMPEG_MPEG(context->codec_id))
     {
@@ -3241,7 +3240,7 @@ bool AvFormatDecoder::PreProcessVideoPacket(AVStream *curstream, AVPacket *pkt)
     }
     else if (CODEC_IS_H264(context->codec_id))
     {
-        on_frame = H264PreProcessPkt(curstream, pkt);
+        num_frames = H264PreProcessPkt(curstream, pkt);
     }
     else
     {
@@ -3267,12 +3266,19 @@ bool AvFormatDecoder::PreProcessVideoPacket(AVStream *curstream, AVPacket *pkt)
         return false;
     }
 
-    if (on_frame)
-        framesRead++;
+    framesRead += num_frames;
 
     if (trackTotalDuration)
-        totalDuration +=
-            av_q2d(curstream->time_base) * pkt->duration * 1000000; // usec
+    {
+        // The ffmpeg libraries represent a frame interval of a
+        // 59.94fps video as 1501/90000 seconds, when it should
+        // actually be 1501.5/90000 seconds.
+        AVRational pkt_dur = AVRationalInit(pkt->duration);
+        pkt_dur = av_mul_q(pkt_dur, curstream->time_base);
+        if (pkt_dur.num == 1501 && pkt_dur.den == 90000)
+            pkt_dur = AVRationalInit(1001, 60000); // 1501.5/90000
+        totalDuration = av_add_q(totalDuration, pkt_dur);
+    }
 
     justAfterChange = false;
 

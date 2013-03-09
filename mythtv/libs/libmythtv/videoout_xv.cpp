@@ -237,7 +237,8 @@ void VideoOutputXv::WindowResized(const QSize &new_size)
 }
 
 // documented in videooutbase.cpp
-bool VideoOutputXv::InputChanged(const QSize &input_size,
+bool VideoOutputXv::InputChanged(const QSize &video_dim_buf,
+                                 const QSize &video_dim_disp,
                                  float        aspect,
                                  MythCodecID  av_codec_id,
                                  void        *codec_private,
@@ -245,13 +246,14 @@ bool VideoOutputXv::InputChanged(const QSize &input_size,
 {
     LOG(VB_PLAYBACK, LOG_INFO, LOC +
         QString("InputChanged(%1,%2,%3) '%4'->'%5'")
-            .arg(input_size.width()).arg(input_size.height()).arg(aspect)
+            .arg(video_dim_disp.width()).arg(video_dim_disp.height())
+            .arg(aspect)
             .arg(toString(video_codec_id)).arg(toString(av_codec_id)));
 
     QMutexLocker locker(&global_lock);
 
     bool cid_changed = (video_codec_id != av_codec_id);
-    bool res_changed = input_size     != window.GetActualVideoDim();
+    bool res_changed = video_dim_disp   != window.GetActualVideoDim();
     bool asp_changed = aspect         != window.GetVideoAspect();
 
     if (!res_changed && !cid_changed)
@@ -265,7 +267,8 @@ bool VideoOutputXv::InputChanged(const QSize &input_size,
         return true;
     }
 
-    VideoOutput::InputChanged(input_size, aspect, av_codec_id, codec_private,
+    VideoOutput::InputChanged(video_dim_buf, video_dim_disp,
+                              aspect, av_codec_id, codec_private,
                               aspect_only);
 
     bool delete_pause_frame = cid_changed;
@@ -870,7 +873,9 @@ bool VideoOutputXv::InitSetupBuffers(void)
  *
  * \return success or failure.
  */
-bool VideoOutputXv::Init(int width, int height, float aspect,
+bool VideoOutputXv::Init(const QSize &video_dim_buf,
+                         const QSize &video_dim_disp,
+                         float aspect,
                          WId winid, const QRect &win_rect, MythCodecID codec_id)
 {
     window.SetNeedRepaint(true);
@@ -892,7 +897,7 @@ bool VideoOutputXv::Init(int width, int height, float aspect,
     Colormap cmap = XDefaultColormap(disp->GetDisplay(), disp->GetScreen());
     XColor colour, colour_exact;
     QString name = toXString(db_letterbox_colour);
-    QByteArray ascii_name =  name.toAscii();
+    QByteArray ascii_name =  name.toLatin1();
     const char *cname = ascii_name.constData();
     if (XAllocNamedColor(disp->GetDisplay(), cmap, cname, &colour, &colour_exact))
         XJ_letterbox_colour = colour.pixel;
@@ -900,10 +905,12 @@ bool VideoOutputXv::Init(int width, int height, float aspect,
     XJ_started = true;
 
     // Basic setup
-    VideoOutput::Init(width, height, aspect,winid, win_rect,codec_id);
+    VideoOutput::Init(video_dim_buf, video_dim_disp,
+                      aspect, winid, win_rect, codec_id);
 
     // Set resolution/measurements (check XRandR, Xinerama, config settings)
-    InitDisplayMeasurements(width, height, true);
+    InitDisplayMeasurements(video_dim_disp.width(), video_dim_disp.height(),
+                            true);
 
     if (!InitSetupBuffers())
         return false;
@@ -1803,6 +1810,8 @@ void VideoOutputXv::ProcessFrame(VideoFrame *frame, OSD *osd,
         pauseframe = true;
     }
 
+    CropToDisplay(frame);
+
     bool safepauseframe = pauseframe && !IsBobDeint();
     if (!pauseframe || safepauseframe)
     {
@@ -1847,7 +1856,7 @@ int VideoOutputXv::SetPictureAttribute(
 int VideoOutputXv::SetXVPictureAttribute(PictureAttribute attribute, int newValue)
 {
     QString attrName = toXVString(attribute);
-    QByteArray ascii_attr_name =  attrName.toAscii();
+    QByteArray ascii_attr_name =  attrName.toLatin1();
     const char *cname = ascii_attr_name.constData();
 
     if (attrName.isEmpty())
@@ -1895,7 +1904,7 @@ void VideoOutputXv::InitPictureAttributes(void)
         for (uint i = 0; i < kPictureAttribute_MAX; i++)
         {
             QString attrName = toXVString((PictureAttribute)i);
-            QByteArray ascii_attr_name =  attrName.toAscii();
+            QByteArray ascii_attr_name =  attrName.toLatin1();
             const char *cname = ascii_attr_name.constData();
 
             if (attrName.isEmpty())
