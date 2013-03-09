@@ -1085,8 +1085,8 @@ int64_t AudioOutputBase::GetAudiotime(void)
               .arg(soundcard_buffer)
               .arg(main_buffer+soundcard_buffer)
               .arg(samplerate).arg(obpf).arg(bytes_per_frame).arg(stretchfactor)
-              .arg((main_buffer + soundcard_buffer) * eff_stretchfactor)
-              .arg(((main_buffer + soundcard_buffer) * eff_stretchfactor ) /
+              .arg((int64_t)(main_buffer + soundcard_buffer) * eff_stretchfactor)
+              .arg(((int64_t)(main_buffer + soundcard_buffer) * eff_stretchfactor ) /
                    (effdsp * obpf))
               );
 
@@ -1122,7 +1122,7 @@ void AudioOutputBase::SetAudiotime(int frames, int64_t timecode)
     }
 
     audbuf_timecode =
-        timecode + (effdsp ? ((frames + processframes_unstretched * 100000) +
+        timecode + (effdsp ? ((frames + processframes_unstretched) * 100000 +
                     (processframes_stretched * eff_stretchfactor)
                    ) / effdsp : 0);
 
@@ -1318,7 +1318,8 @@ bool AudioOutputBase::AddFrames(void *in_buffer, int in_frames,
 bool AudioOutputBase::AddData(void *in_buffer, int in_len,
                               int64_t timecode, int /*in_frames*/)
 {
-    int frames   = in_len / source_bytes_per_frame;
+    int in_frames= in_len / source_bytes_per_frame;
+    int frames   = in_frames;
     void *buffer = in_buffer;
     int bpf      = bytes_per_frame;
     int len      = in_len;
@@ -1431,7 +1432,6 @@ bool AudioOutputBase::AddData(void *in_buffer, int in_len,
     }
 
     int frames_remaining = frames;
-    int frames_final = 0;
     int maxframes = (kAudioSRCInputSize / source_channels) & ~0xf;
     int offset = 0;
 
@@ -1489,7 +1489,6 @@ bool AudioOutputBase::AddData(void *in_buffer, int in_len,
         }
 
         frames = len / bpf;
-        frames_final += frames;
 
         bdiff = kAudioRingBufferSize - waud;
         if ((len % bpf) != 0 && bdiff < len)
@@ -1588,7 +1587,7 @@ bool AudioOutputBase::AddData(void *in_buffer, int in_len,
         waud = org_waud;
     }
 
-    SetAudiotime(frames_final, timecode);
+    SetAudiotime(in_frames, timecode);
 
     return true;
 }
