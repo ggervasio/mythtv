@@ -970,7 +970,7 @@ void PlaybackBox::ItemLoaded(MythUIButtonListItem *item)
                 item->DisplayState(sit.value(), "subtitletypes");
         }
 
-        item->DisplayState(pginfo->GetCategoryType(), "categorytype");
+        item->DisplayState(pginfo->GetCategoryTypeString(), "categorytype");
 
         // Mark this button list item as initialized.
         item->SetText("yes", "is_item_initialized");
@@ -1238,7 +1238,7 @@ void PlaybackBox::updateIcons(const ProgramInfo *pginfo)
     iconState = dynamic_cast<MythUIStateType *>(GetChild("categorytype"));
     if (iconState)
     {
-        if (!(pginfo && iconState->DisplayState(pginfo->GetCategoryType())))
+        if (!(pginfo && iconState->DisplayState(pginfo->GetCategoryTypeString())))
             iconState->Reset();
     }
 }
