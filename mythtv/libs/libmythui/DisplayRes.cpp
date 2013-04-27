@@ -52,6 +52,8 @@ bool DisplayRes::Initialize(void)
     double tAspect = 0.0;
     double tRate = 0.0;
 
+    m_last.Init();
+    m_curMode = GUI;
     m_pixelAspectRatio = 1.0;
 
     // Initialise DESKTOP mode
@@ -61,9 +63,6 @@ bool DisplayRes::Initialize(void)
     LOG(VB_GENERAL, LOG_NOTICE, QString("Desktop video mode: %1x%2 %3 Hz")
         .arg(tW).arg(tH).arg(tRate, 0, 'f', 3));
 
-    m_last = m_mode[DESKTOP];
-    m_curMode = DESKTOP;
-
     // Initialize GUI mode
     m_mode[GUI].Init();
     tW = tH = 0;
@@ -71,6 +70,11 @@ bool DisplayRes::Initialize(void)
     GetMythDB()->GetResolutionSetting("DisplaySize", tW_mm, tH_mm);
     m_mode[GUI] = DisplayResScreen(tW, tH, tW_mm, tH_mm, -1.0, tRate);
 
+    if (m_mode[DESKTOP] == m_mode[GUI] && tRate == 0)
+    {
+            // same resolution as current desktop
+        m_last = m_mode[DESKTOP];
+    }
 
     // Initialize default VIDEO mode
     tW = tH = 0;
@@ -142,20 +146,18 @@ bool DisplayRes::SwitchToVideo(int iwidth, int iheight, double frate)
         LOG(VB_PLAYBACK, LOG_INFO,
             QString("Trying to match best refresh rate %1Hz")
             .arg(frate, 0, 'f', 3));
-        next.AddRefreshRate(frate);
+        next.SetRefreshRate(frate);
     }
 
     // need to change video mode?
     DisplayResScreen::FindBestMatch(GetVideoModes(), next, target_rate);
-    next.ClearRefreshRates();
-    next.AddRefreshRate(target_rate);
 
-    bool chg = !(next.Width() == m_last.Width()) ||
-               !(next.Height() == m_last.Height()) ||
+    bool chg = !(next == m_last) ||
                !(DisplayResScreen::compare_rates(m_last.RefreshRate(),
                                                  target_rate));
-
-    LOG(VB_PLAYBACK, LOG_INFO, QString("Trying %1x%2 %3 Hz")
+    
+    LOG(VB_GENERAL, LOG_INFO, QString("%1 %2x%3 %4 Hz")
+        .arg(chg ? "Changing to" : "Using")
         .arg(next.Width()).arg(next.Height())
         .arg(target_rate, 0, 'f', 3));
 
@@ -171,6 +173,7 @@ bool DisplayRes::SwitchToVideo(int iwidth, int iheight, double frate)
     m_curMode = next_mode;
 
     m_last = next;
+    m_last.SetRefreshRate(target_rate);
 
     LOG(VB_PLAYBACK, LOG_INFO,
         QString("SwitchToVideo: Video size %1 x %2: \n"
@@ -185,39 +188,38 @@ bool DisplayRes::SwitchToVideo(int iwidth, int iheight, double frate)
 bool DisplayRes::SwitchToGUI(tmode next_mode)
 {
     DisplayResScreen next = m_mode[next_mode];
-
-    // If GuiVidModeRefreshRate is 0, assume last refresh rate is good enough.
     double target_rate;
-    if ((int) next.RefreshRate() == 0)
-        target_rate = m_last.RefreshRate();
-    else
-        target_rate = next.RefreshRate();
 
     // need to change video mode?
+    // If GuiVidModeRefreshRate is 0, assume any refresh rate is good enough.
+    if (next.RefreshRate() == 0)
+    {
+        next.SetRefreshRate(m_last.RefreshRate());
+    }
+
     DisplayResScreen::FindBestMatch(GetVideoModes(), next, target_rate);
-    next.ClearRefreshRates();
-    next.AddRefreshRate(target_rate);
-
-    bool chg = !(next.Width() == m_last.Width()) ||
-               !(next.Height() == m_last.Height()) ||
+    bool chg = !(next == m_last) ||
                !(DisplayResScreen::compare_rates(m_last.RefreshRate(),
-                                                  target_rate));
+                                                 target_rate));
 
-    LOG(VB_GENERAL, LOG_INFO, QString("Trying %1x%2 %3 Hz")
-        .arg(next.Width()).arg(next.Height()).arg(target_rate, 0, 'f', 3));
+    LOG(VB_GENERAL, LOG_INFO, QString("%1 %2x%3 %4 Hz")
+        .arg(chg ? "Changing to" : "Using")
+        .arg(next.Width()).arg(next.Height())
+        .arg(target_rate, 0, 'f', 3));
 
     if (chg && !SwitchToVideoMode(next.Width(), next.Height(), target_rate))
     {
         LOG(VB_GENERAL, LOG_ERR,
             QString("SwitchToGUI: xrandr failed for %1x%2 %3  Hz")
             .arg(next.Width()).arg(next.Height())
-            .arg(target_rate, 0, 'f', 3));
+            .arg(next.RefreshRate(), 0, 'f', 3));
         return false;
     }
 
     m_curMode = next_mode;
 
     m_last = next;
+    m_last.SetRefreshRate(target_rate);
 
     LOG(VB_GENERAL, LOG_INFO, QString("SwitchToGUI: Switched to %1x%2 %3 Hz")
         .arg(GetWidth()).arg(GetHeight()).arg(GetRefreshRate(), 0, 'f', 3));

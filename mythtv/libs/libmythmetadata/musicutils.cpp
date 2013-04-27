@@ -10,15 +10,36 @@
 #include <mythdirs.h>
 #include <mythlogging.h>
 #include <mythcorecontext.h>
+#include <remotefile.h>
 
 extern "C" {
 #include <libavformat/avformat.h>
 #include <libavcodec/avcodec.h>
 }
 
-// mythmusic
-#include "metadata.h"
+// libmythmetadata
+#include "musicmetadata.h"
 #include "musicutils.h"
+
+static QString musicDirectory;
+
+QString getMusicDirectory(void)
+{
+    if (musicDirectory.isEmpty())
+    {
+        musicDirectory = gCoreContext->GetSetting("MusicLocation");
+        musicDirectory = QDir::cleanPath(musicDirectory);
+        if (!musicDirectory.isEmpty() && !musicDirectory.endsWith("/"))
+            musicDirectory += "/";
+    }
+
+    return musicDirectory;
+}
+
+void setMusicDirectory(const QString &musicDir)
+{
+    musicDirectory = musicDir;
+}
 
 static QRegExp badChars = QRegExp("(/|\\\\|:|\'|\"|\\?|\\|)");
 
@@ -32,7 +53,27 @@ QString fixFilename(const QString &filename)
 QString findIcon(const QString &type, const QString &name)
 {
     QString cleanName = fixFilename(name);
-    QString file = GetConfDir() + QString("/MythMusic/Icons/%1/%2").arg(type).arg(cleanName);
+    QString file = QString("Icons/%1/%2").arg(type).arg(cleanName);
+
+    // first look in the 'MusicArt' storage group
+    QString filename = gCoreContext->GenMythURL(gCoreContext->GetSetting("MasterServerIP"),
+                                                gCoreContext->GetNumSetting("MasterServerPort"),
+                                                file, "MusicArt");
+
+    if (RemoteFile::Exists(filename + ".jpg"))
+        return filename + ".jpg";
+
+    if (RemoteFile::Exists(filename + ".jpeg"))
+        return filename + ".jpeg";
+
+    if (RemoteFile::Exists(filename + ".png"))
+        return filename + ".png";
+
+    if (RemoteFile::Exists(filename + ".gif"))
+        return filename + ".gif";
+
+    // not found so try the local config directory
+    file = GetConfDir() + "MythMusic/" + file;
 
     if (QFile::exists(file + ".jpg"))
         return file + ".jpg";
@@ -45,6 +86,8 @@ QString findIcon(const QString &type, const QString &name)
 
     if (QFile::exists(file + ".gif"))
         return file + ".gif";
+
+    LOG(VB_FILE, LOG_INFO, QString("findicon: not found for type: %1, name: %2").arg(type).arg(name));
 
     return QString();
 }
@@ -139,9 +182,9 @@ inline QString fixFileToken_sl(QString token)
     return token;
 }
 
-QString filenameFromMetadata(Metadata *track, bool createDir)
+QString filenameFromMetadata(MusicMetadata *track, bool createDir)
 {
-    QDir directoryQD(gMusicData->musicDir);
+    QDir directoryQD(getMusicDirectory());
     QString filename;
     QString fntempl = gCoreContext->GetSetting("FilenameTemplate");
     bool no_ws = gCoreContext->GetNumSetting("NoWhitespace", 0);
@@ -202,9 +245,9 @@ QString filenameFromMetadata(Metadata *track, bool createDir)
     if (createDir)
     {
         QFileInfo fi(filename);
-        if (!directoryQD.mkpath(gMusicData->musicDir + fi.path()))
+        if (!directoryQD.mkpath(getMusicDirectory() + fi.path()))
             LOG(VB_GENERAL, LOG_ERR,
-                QString("Ripper: Failed to create directory path: '%1'").arg(gMusicData->musicDir + filename));
+                QString("filenameFromMetadata: Failed to create directory path: '%1'").arg(getMusicDirectory() + filename));
     }
 
     return filename;
