@@ -22,6 +22,7 @@ using namespace std;
 #include "mythlogging.h"
 #include "myth_imgconvert.h"
 #include "programinfo.h"
+#include "audiooutpututil.h"
 
 #include "minilzo.h"
 
@@ -56,7 +57,8 @@ NuppelDecoder::NuppelDecoder(MythPlayer *parent,
     memset(&extradata, 0, sizeof(extendeddata));
     memset(&tmppicture, 0, sizeof(AVPicture));
     planes[0] = planes[1] = planes[2] = 0;
-    m_audioFrame = avcodec_alloc_frame();
+    audioSamples = (uint8_t *)av_mallocz(AVCODEC_MAX_AUDIO_FRAME_SIZE *
+                                         sizeof(int32_t));
 
     // set parent class variables
     positionMapType = MARK_KEYFRAME;
@@ -95,7 +97,7 @@ NuppelDecoder::~NuppelDecoder()
     if (strm_buf)
         delete [] strm_buf;
 
-    av_free(m_audioFrame);
+    av_free(audioSamples);
 
     while (!StoredData.empty())
     {
@@ -1267,32 +1269,28 @@ bool NuppelDecoder::GetFrame(DecodeType decodetype)
                 av_init_packet(&pkt);
                 pkt.data = strm;
                 pkt.size = frameheader.packetlength;
-                int ret = 0;
 
                 QMutexLocker locker(avcodeclock);
 
                 while (pkt.size > 0)
                 {
-                    int got_frame = 0;
-                    ret = avcodec_decode_audio4(mpa_audctx, m_audioFrame,
-                                                &got_frame, &pkt);
+                    int data_size;
+                    int ret = 0;
+                    ret = AudioOutputUtil::DecodeAudio(mpa_audctx,
+                                                       audioSamples,
+                                                       data_size,
+                                                       &pkt);
+                    if (ret < 0)
+                        break;
 
-                    if (got_frame && ret > 0)
-                    {
-                        int data_size =
-                            av_samples_get_buffer_size(NULL,
-                                                       mpa_audctx->channels,
-                                                       m_audioFrame->nb_samples,
-                                                       mpa_audctx->sample_fmt,
-                                                       1);
-                        m_audio->AddAudioData(
-                            (char *)m_audioFrame->extended_data[0],
-                            data_size, frameheader.timecode, 0);
-                    }
+                    m_audio->AddAudioData((char *)audioSamples,
+                                          data_size, frameheader.timecode, 0);
 
                     pkt.size -= ret;
                     pkt.data += ret;
                 }
+
+                av_free_packet(&pkt);
             }
             else
             {
