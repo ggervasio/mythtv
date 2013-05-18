@@ -107,6 +107,7 @@ static QNetworkAccessManager *GetNetworkAccessManager(void)
 
     networkManager = new MythNetworkAccessManager();
     LOG(VB_GENERAL, LOG_DEBUG, "Copying DLManager's Cookie Jar");
+    GetMythDownloadManager()->loadCookieJar(GetConfDir() + "/MythBrowser/cookiejar.txt");
     networkManager->setCookieJar(GetMythDownloadManager()->copyCookieJar());
 
     atexit(DestroyNetworkAccessManager);
@@ -243,7 +244,7 @@ void BrowserApi::customEvent(QEvent *e)
         MythEvent *me = (MythEvent *)e;
         QString message = me->Message();
 
-        if (message.left(13) != "MUSIC_CONTROL")
+        if (!message.startsWith("MUSIC_CONTROL"))
             return;
 
         QStringList tokens = message.simplified().split(" ");
@@ -271,6 +272,7 @@ MythWebPage::~MythWebPage()
 {
     LOG(VB_GENERAL, LOG_DEBUG, "Refreshing DLManager's Cookie Jar");
     GetMythDownloadManager()->refreshCookieJar(networkManager->cookieJar());
+    GetMythDownloadManager()->saveCookieJar(GetConfDir() + "/MythBrowser/cookiejar.txt");
 }
 
 bool MythWebPage::supportsExtension(Extension extension) const
@@ -447,12 +449,6 @@ void MythWebView::keyPressEvent(QKeyEvent *event)
         // handled properly by the various mythui handlers
         QCoreApplication::postEvent(GetMythMainWindow(), new QKeyEvent(*event));
     }
-}
-
-void MythWebView::wheelEvent(QWheelEvent *event)
-{
-    event->accept();
-    QCoreApplication::postEvent(GetMythMainWindow(), new QWheelEvent(*event));
 }
 
 void MythWebView::handleUnsupportedContent(QNetworkReply *reply)
@@ -1151,17 +1147,27 @@ void MythUIWebBrowser::ZoomOut(void)
 
 /** \fn MythUIWebBrowser::SetZoom(float)
  *  \brief Set the text size to specific size
- *  \param zoom The size to use. Useful values are between 0.2 and 5.0
+ *  \param zoom The size to use. Useful values are between 0.3 and 5.0
  */
 void MythUIWebBrowser::SetZoom(float zoom)
 {
     if (!m_browser)
         return;
 
+    if (zoom < 0.3)
+        zoom = 0.3;
+
+    if (zoom > 5.0)
+        zoom = 5.0;
+
     m_zoom = zoom;
     m_browser->setZoomFactor(m_zoom);
     ResetScrollBars();
     UpdateBuffer();
+
+    slotStatusBarMessage(tr("Zoom: %1%").arg(m_zoom * 100));
+
+    gCoreContext->SaveSetting("WebBrowserZoomLevel", QString("%1").arg(m_zoom));
 }
 
 void MythUIWebBrowser::SetDefaultSaveDirectory(const QString &saveDir)

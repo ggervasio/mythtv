@@ -110,7 +110,7 @@ class NuppelDecoder : public DecoderBase
     AVCodec *mpa_audcodec;
     AVCodecContext *mpa_audctx;
     AVPicture tmppicture;
-    uint8_t *audioSamples;
+    uint8_t *m_audioSamples;
 
     bool directrendering;
 

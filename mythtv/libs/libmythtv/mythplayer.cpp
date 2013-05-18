@@ -1048,7 +1048,7 @@ void MythPlayer::InitFilters(void)
         }
         else
         {
-            if ((filters.length() > 1) && (filters.right(1) != ","))
+            if ((filters.length() > 1) && (!filters.endsWith(",")))
                 filters += ",";
             filters += videoFiltersForProgram.mid(1);
         }
@@ -3967,11 +3967,11 @@ void MythPlayer::DisableEdit(int howToSave)
         SetOSDStatus(tr("Paused"), kOSDTimeout_None);
 }
 
-bool MythPlayer::HandleProgramEditorActions(QStringList &actions,
-                                             long long frame)
+bool MythPlayer::HandleProgramEditorActions(QStringList &actions)
 {
     bool handled = false;
     bool refresh = true;
+    long long frame = GetFramesPlayed();
 
     for (int i = 0; i < actions.size() && !handled; i++)
     {
@@ -4077,7 +4077,7 @@ bool MythPlayer::HandleProgramEditorActions(QStringList &actions,
         {
             QString undoMessage = deleteMap.GetUndoMessage();
             QString redoMessage = deleteMap.GetRedoMessage();
-            handled = deleteMap.HandleAction(action, frame, framesPlayed);
+            handled = deleteMap.HandleAction(action, frame);
             if (handled && (action == "CUTTOBEGINNING" ||
                 action == "CUTTOEND" || action == "NEWCUT"))
             {

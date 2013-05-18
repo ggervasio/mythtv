@@ -1983,9 +1983,18 @@ int AvFormatDecoder::ScanStreams(bool novideo)
                 continue;
         }
 
+        if (enc->codec && enc->codec->id != enc->codec_id)
+        {
+            LOG(VB_PLAYBACK, LOG_INFO, LOC +
+                QString("Already opened codec not matching (%1 vs %2). Reopening")
+                .arg(ff_codec_id_string(enc->codec_id))
+                .arg(ff_codec_id_string(enc->codec->id)));
+            avcodec_close(enc);
+        }
+
         if (!enc->codec)
         {
-            if (OpenAVCodec(enc, codec) < 0)
+            if (!OpenAVCodec(enc, codec))
                 continue;
         }
 
@@ -2244,7 +2253,7 @@ int AvFormatDecoder::ScanStreams(bool novideo)
             {
                 QMutexLocker locker(avcodeclock);
 
-                if (OpenAVCodec(enc, codec) < 0)
+                if (!OpenAVCodec(enc, codec))
                 {
                     scanerror = -1;
                     break;
@@ -3979,7 +3988,7 @@ int AvFormatDecoder::AutoSelectTrack(uint type)
 }
 
 static vector<int> filter_lang(const sinfo_vec_t &tracks, int lang_key,
-                               const vector<int> ftype)
+                               const vector<int> &ftype)
 {
     vector<int> ret;
 

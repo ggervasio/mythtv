@@ -57,8 +57,8 @@ NuppelDecoder::NuppelDecoder(MythPlayer *parent,
     memset(&extradata, 0, sizeof(extendeddata));
     memset(&tmppicture, 0, sizeof(AVPicture));
     planes[0] = planes[1] = planes[2] = 0;
-    audioSamples = (uint8_t *)av_mallocz(AVCODEC_MAX_AUDIO_FRAME_SIZE *
-                                         sizeof(int32_t));
+    m_audioSamples = (uint8_t *)av_mallocz(AVCODEC_MAX_AUDIO_FRAME_SIZE *
+                                           sizeof(int32_t));
 
     // set parent class variables
     positionMapType = MARK_KEYFRAME;
@@ -97,7 +97,7 @@ NuppelDecoder::~NuppelDecoder()
     if (strm_buf)
         delete [] strm_buf;
 
-    av_free(audioSamples);
+    av_free(m_audioSamples);
 
     while (!StoredData.empty())
     {
@@ -1269,25 +1269,29 @@ bool NuppelDecoder::GetFrame(DecodeType decodetype)
                 av_init_packet(&pkt);
                 pkt.data = strm;
                 pkt.size = frameheader.packetlength;
+                int ret = 0;
 
                 QMutexLocker locker(avcodeclock);
 
                 while (pkt.size > 0)
                 {
-                    int data_size;
-                    int ret = 0;
-                    ret = AudioOutputUtil::DecodeAudio(mpa_audctx,
-                                                       audioSamples,
-                                                       data_size,
-                                                       &pkt);
-                    if (ret < 0)
-                        break;
+                    int data_size = 0;
 
-                    m_audio->AddAudioData((char *)audioSamples,
-                                          data_size, frameheader.timecode, 0);
+                    ret = AudioOutputUtil::DecodeAudio(mpa_audctx, m_audioSamples,
+                                                       data_size, &pkt);
+                    if (ret < 0)
+                    {
+                        LOG(VB_GENERAL, LOG_ERR, LOC + "Unknown audio decoding error");
+                        return false;
+                    }
 
                     pkt.size -= ret;
                     pkt.data += ret;
+                    if (data_size <= 0)
+                        continue;
+
+                    m_audio->AddAudioData((char *)m_audioSamples, data_size,
+                                          frameheader.timecode, 0);
                 }
 
                 av_free_packet(&pkt);
