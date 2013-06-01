@@ -237,7 +237,7 @@ MythPlayer::MythPlayer(PlayerFlags flags)
 
     defaultDisplayAspect =
         gCoreContext->GetFloatSettingOnHost("XineramaMonitorAspectRatio",
-                                            gCoreContext->GetHostName(), 1.3333);
+                                            gCoreContext->GetHostName(), 1.7777);
     captionsEnabledbyDefault = gCoreContext->GetNumSetting("DefaultCCMode");
     decode_extra_audio = gCoreContext->GetNumSetting("DecodeExtraAudio", 0);
     itvEnabled         = gCoreContext->GetNumSetting("EnableMHEG", 0);
@@ -891,7 +891,7 @@ void MythPlayer::CreateDecoder(char *testbuf, int testreadsize)
 int MythPlayer::OpenFile(uint retries)
 {
     // Disable hardware acceleration for second PBP
-    if ((player_ctx->IsPBP() && !player_ctx->IsPrimaryPBP()) &&
+    if (player_ctx && (player_ctx->IsPBP() && !player_ctx->IsPrimaryPBP()) &&
         FlagIsSet(kDecodeAllowGPU))
     {
         playerFlags = (PlayerFlags)(playerFlags - kDecodeAllowGPU);
@@ -2524,7 +2524,8 @@ void MythPlayer::SwitchToProgram(void)
     {
         // Restore original ringbuffer
         ICRingBuffer *ic = dynamic_cast< ICRingBuffer* >(player_ctx->buffer);
-        player_ctx->buffer = ic->Take();
+        if (ic) // should always be true
+            player_ctx->buffer = ic->Take();
         delete ic;
     }
 
@@ -2666,7 +2667,8 @@ void MythPlayer::JumpToProgram(void)
     {
         // Restore original ringbuffer
         ICRingBuffer *ic = dynamic_cast< ICRingBuffer* >(player_ctx->buffer);
-        player_ctx->buffer = ic->Take();
+        if (ic) // should always be true
+            player_ctx->buffer = ic->Take();
         delete ic;
     }
 

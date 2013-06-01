@@ -569,6 +569,8 @@ void TV::InitKeys(void)
             "List upcoming episodes"), "O");
     REG_KEY("TV Frontend", ACTION_VIEWSCHEDULED, QT_TRANSLATE_NOOP("MythControls",
             "List scheduled upcoming episodes"), "");
+    REG_KEY("TV Frontend", ACTION_PREVRECORDED, QT_TRANSLATE_NOOP("MythControls",
+            "List previously recorded episodes"), "");
     REG_KEY("TV Frontend", "DETAILS", QT_TRANSLATE_NOOP("MythControls",
             "Show details"), "U");
     REG_KEY("TV Frontend", "VIEWCARD", QT_TRANSLATE_NOOP("MythControls",
@@ -808,6 +810,8 @@ void TV::InitKeys(void)
             "Display menu of recorded programs to jump to"), "");
     REG_KEY("TV Playback", ACTION_VIEWSCHEDULED, QT_TRANSLATE_NOOP("MythControls",
             "Display scheduled recording list"), "");
+    REG_KEY("TV Playback", ACTION_PREVRECORDED, QT_TRANSLATE_NOOP("MythControls",
+            "Display previously recorded episodes"), "");
     REG_KEY("TV Playback", ACTION_SIGNALMON, QT_TRANSLATE_NOOP("MythControls",
             "Monitor Signal Quality"), "Alt+F7");
     REG_KEY("TV Playback", ACTION_JUMPTODVDROOTMENU,
@@ -883,6 +887,8 @@ void TV::InitKeys(void)
             "Jump back 10x the normal amount"), ",,<");
     REG_KEY("TV Editing", ACTION_BIGJUMPFWD,  QT_TRANSLATE_NOOP("MythControls",
             "Jump forward 10x the normal amount"), ">,.");
+    REG_KEY("TV Editing", ACTION_MENUCOMPACT, QT_TRANSLATE_NOOP("MythControls",
+            "Cut point editor compact menu"), "Alt+M");
 
     /* Teletext keys */
     REG_KEY("Teletext Menu", ACTION_NEXTPAGE,    QT_TRANSLATE_NOOP("MythControls",
@@ -2254,6 +2260,8 @@ void TV::HandleStateChange(PlayerContext *mctx, PlayerContext *ctx)
                     ctx->SetRecorder(testrec);
                     ctx->recorder->Setup();
                 }
+                else
+                    delete testrec; // If testrec isn't a valid recorder ...
             }
             else if (getit)
                 chanid = 0;
@@ -3767,6 +3775,11 @@ bool TV::ProcessKeypress(PlayerContext *actx, QKeyEvent *e)
             if (has_action("MENU", actions))
             {
                 ShowOSDCutpoint(actx, "EDIT_CUT_POINTS");
+                handled = true;
+            }
+            if (has_action(ACTION_MENUCOMPACT, actions))
+            {
+                ShowOSDCutpoint(actx, "EDIT_CUT_POINTS_COMPACT");
                 handled = true;
             }
             if (has_action("ESCAPE", actions))
@@ -10011,29 +10024,55 @@ void TV::ShowOSDCutpoint(PlayerContext *ctx, const QString &type)
     {
         if (!m_cutlistMenu.IsLoaded())
         {
-            m_cutlistMenu.Load("menu_cutlist.xml",
-                               tr("Edit Cut Points"),
-                               // XXX which translation context to use?
-                               metaObject()->className(),
-                               "TV Editing");
+            m_cutlistMenu.LoadFromFile("menu_cutlist.xml",
+                                       tr("Edit Cut Points"),
+                                       // XXX which translation context to use?
+                                       metaObject()->className(),
+                                       "TV Editing");
         }
         if (m_cutlistMenu.IsLoaded())
             PlaybackMenuShow(m_cutlistMenu,
-                             m_cutlistMenu.GetRoot(), QDomNode());
+                             m_cutlistMenu.GetRoot(),
+                             QDomNode());
+    }
+    else if (type == "EDIT_CUT_POINTS_COMPACT")
+    {
+        if (!m_cutlistCompactMenu.IsLoaded())
+        {
+            m_cutlistCompactMenu.LoadFromFile("menu_cutlist_compact.xml",
+                                              tr("Edit Cut Points"),
+                                              // XXX which translation context to use?
+                                              metaObject()->className(),
+                                              "TV Editing");
+        }
+        if (m_cutlistCompactMenu.IsLoaded())
+            PlaybackMenuShow(m_cutlistCompactMenu,
+                             m_cutlistCompactMenu.GetRoot(),
+                             QDomNode());
     }
     else if (type == "EXIT_EDIT_MODE")
     {
-        if (!m_cutlistExitMenu.IsLoaded())
+        OSD *osd = GetOSDLock(ctx);
+        if (!osd)
         {
-            m_cutlistExitMenu.Load("menu_cutlist_exit.xml",
-                                   tr("Exit Recording Editor"),
-                                   // XXX which translation context to use?
-                                   metaObject()->className(),
-                                   "TV Editing");
+            ReturnOSDLock(ctx, osd);
+            return;
         }
-        if (m_cutlistExitMenu.IsLoaded())
-            PlaybackMenuShow(m_cutlistExitMenu,
-                             m_cutlistExitMenu.GetRoot(), QDomNode());
+        osd->DialogShow(OSD_DLG_CUTPOINT,
+                        QObject::tr("Exit Recording Editor"));
+        osd->DialogAddButton(QObject::tr("Save Cuts and Exit"),
+                             "DIALOG_CUTPOINT_SAVEEXIT_0");
+        osd->DialogAddButton(QObject::tr("Exit Without Saving"),
+                             "DIALOG_CUTPOINT_REVERTEXIT_0");
+        osd->DialogAddButton(QObject::tr("Save Cuts"),
+                             "DIALOG_CUTPOINT_SAVEMAP_0");
+        osd->DialogAddButton(QObject::tr("Undo Changes"),
+                             "DIALOG_CUTPOINT_REVERT_0");
+        osd->DialogBack("", "DIALOG_CUTPOINT_DONOTHING_0", true);
+        QHash<QString,QString> map;
+        map.insert("title", tr("Edit"));
+        osd->SetText("osd_program_editor", map, kOSDTimeout_None);
+        ReturnOSDLock(ctx, osd);
     }
 }
 
@@ -10044,7 +10083,10 @@ bool TV::HandleOSDCutpoint(PlayerContext *ctx, QString action)
         return res;
 
     OSD *osd = GetOSDLock(ctx);
-    if (osd)
+    if (action == "DONOTHING" && osd)
+    {
+    }
+    else if (osd)
     {
         QStringList actions(action);
         if (!ctx->player->HandleProgramEditorActions(actions))
@@ -10881,20 +10923,29 @@ void TV::HandleOSDInfo(PlayerContext *ctx, QString action)
     }
 }
 
-bool MenuBase::Load(const QString &filename,
-                          const QString &menuname,
-                          const char *translationContext,
-                          const QString &keyBindingContext)
+bool MenuBase::LoadFromFile(const QString &filename,
+                            const QString &menuname,
+                            const char *translationContext,
+                            const QString &keyBindingContext)
 {
-    return LoadHelper(filename, menuname, translationContext,
-                      keyBindingContext, 0);
+    return LoadFileHelper(filename, menuname, translationContext,
+                          keyBindingContext, 0);
 }
 
-bool MenuBase::LoadHelper(const QString &filename,
-                          const QString &menuname,
-                          const char *translationContext,
-                          const QString &keyBindingContext,
-                          int includeLevel)
+bool MenuBase::LoadFromString(const QString &text,
+                              const QString &menuname,
+                              const char *translationContext,
+                              const QString &keyBindingContext)
+{
+    return LoadStringHelper(text, menuname, translationContext,
+                            keyBindingContext, 0);
+}
+
+bool MenuBase::LoadFileHelper(const QString &filename,
+                              const QString &menuname,
+                              const char *translationContext,
+                              const QString &keyBindingContext,
+                              int includeLevel)
 {
     bool result = false;
 
@@ -10935,6 +10986,29 @@ bool MenuBase::LoadHelper(const QString &filename,
     return result;
 }
 
+bool MenuBase::LoadStringHelper(const QString &text,
+                                const QString &menuname,
+                                const char *translationContext,
+                                const QString &keyBindingContext,
+                                int includeLevel)
+{
+    bool result = false;
+    m_document = new QDomDocument();
+    if (m_document->setContent(text))
+    {
+        result = true;
+        QDomElement root = GetRoot();
+        m_menuName = Translate(root.attribute("text", menuname));
+        ProcessIncludes(root, includeLevel);
+    }
+    else
+    {
+        delete m_document;
+        m_document = NULL;
+    }
+    return result;
+}
+
 void MenuBase::ProcessIncludes(QDomElement &root, int includeLevel)
 {
     const int maxInclude = 10;
@@ -10957,11 +11031,12 @@ void MenuBase::ProcessIncludes(QDomElement &root, int includeLevel)
                     return;
                 }
                 MenuBase menu;
-                if (menu.LoadHelper(include,
-                                    include, // fallback menu name is filename
-                                    m_translationContext,
-                                    m_keyBindingContext,
-                                    includeLevel + 1))
+                if (menu.LoadFileHelper(include,
+                                        include, // fallback menu name
+                                                 // is filename
+                                        m_translationContext,
+                                        m_keyBindingContext,
+                                        includeLevel + 1))
                 {
                     QDomNode newChild = menu.GetRoot();
                     newChild = m_document->importNode(newChild, true);
@@ -11020,25 +11095,35 @@ bool MenuBase::Show(const QDomNode &node,
                 (show == "active" ? kMenuShowActive :
                  show == "inactive" ? kMenuShowInactive : kMenuShowAlways);
             QString current = e.attribute("current", "");
-            bool currentActive = (current == "active") && !hasSelected;
+            MenuCurrentContext currentContext;
+            if ((current == "active") && !hasSelected)
+                currentContext = kMenuCurrentActive;
+            else if (((current.startsWith("y") ||
+                       current.startsWith("t") ||
+                       current == "1")) && !hasSelected)
+                currentContext = kMenuCurrentAlways;
+            else
+                currentContext = kMenuCurrentDefault;
             if (e.tagName() == "menu")
             {
+                if (hasSelected && n == selected)
+                    currentContext = kMenuCurrentAlways;
                 MenuItemContext c(*this, n, text,
-                                  (hasSelected && n == selected),
+                                  currentContext,
                                   doDisplay);
                 displayed |= displayer.MenuItemDisplay(c);
             }
             else if (e.tagName() == "item")
             {
                 QString action = e.attribute("action", "");
-                MenuItemContext c(*this, n, showContext, currentActive,
+                MenuItemContext c(*this, n, showContext, currentContext,
                                   action, text, doDisplay);
                 displayed |= displayer.MenuItemDisplay(c);
             }
             else if (e.tagName() == "itemlist")
             {
                 QString actiongroup = e.attribute("actiongroup", "");
-                MenuItemContext c(*this, n, showContext, currentActive,
+                MenuItemContext c(*this, n, showContext, currentContext,
                                   actiongroup, doDisplay);
                 displayed |= displayer.MenuItemDisplay(c);
             }
@@ -11078,8 +11163,12 @@ static void addButton(const MenuItemContext &c, OSD *osd, bool active,
                         defaultTextActive : defaultTextInactive;
                 if (!textArg.isEmpty())
                     text = text.arg(textArg);
-                osd->DialogAddButton(text, action, isMenu,
-                                     active && c.m_setCurrentActive);
+                bool current = false;
+                if (c.m_currentContext == kMenuCurrentActive)
+                    current = active;
+                else if (c.m_currentContext == kMenuCurrentAlways)
+                    current = true;
+                osd->DialogAddButton(text, action, isMenu, current);
             }
         }
     }
@@ -11097,17 +11186,16 @@ static void addButton(const MenuItemContext &c, OSD *osd, bool active,
 bool TV::MenuItemDisplay(const MenuItemContext &c)
 {
     if (&c.m_menu == &m_playbackMenu ||
-        &c.m_menu == &m_compactMenu)
+        &c.m_menu == &m_playbackCompactMenu)
     {
         return MenuItemDisplayPlayback(c);
     }
     else if (&c.m_menu == &m_cutlistMenu ||
-             &c.m_menu == &m_cutlistExitMenu)
+             &c.m_menu == &m_cutlistCompactMenu)
     {
         return MenuItemDisplayCutlist(c);
     }
-    else
-        return false;
+    return false;
 }
 
 bool TV::MenuItemDisplayCutlist(const MenuItemContext &c)
@@ -11128,7 +11216,8 @@ bool TV::MenuItemDisplayCutlist(const MenuItemContext &c)
         {
             QVariant v;
             v.setValue(MenuNodeTuple(c.m_menu, c.m_node));
-            osd->DialogAddButton(c.m_menuName, v, true, c.m_setCurrentActive);
+            osd->DialogAddButton(c.m_menuName, v, true,
+                                 c.m_currentContext != kMenuCurrentDefault);
         }
         return result;
     }
@@ -11194,23 +11283,19 @@ bool TV::MenuItemDisplayCutlist(const MenuItemContext &c)
         }
         else if (actionName == "DIALOG_CUTPOINT_UNDO_0")
         {
-            if (ctx->player->DeleteMapHasUndo())
-            {
-                //: %1 is the undo message
-                QString text = tr("Undo - %1");
-                addButton(c, osd, active, result, actionName, text, "", false,
-                          ctx->player->DeleteMapGetUndoMessage());
-            }
+            active = ctx->player->DeleteMapHasUndo();
+            //: %1 is the undo message
+            QString text = tr("Undo - %1");
+            addButton(c, osd, active, result, actionName, text, "", false,
+                      ctx->player->DeleteMapGetUndoMessage());
         }
         else if (actionName == "DIALOG_CUTPOINT_REDO_0")
         {
-            if (ctx->player->DeleteMapHasRedo())
-            {
-                //: %1 is the redo message
-                QString text = tr("Redo - %1");
-                addButton(c, osd, active, result, actionName, text, "", false,
-                          ctx->player->DeleteMapGetRedoMessage());
-            }
+            active = ctx->player->DeleteMapHasRedo();
+            //: %1 is the redo message
+            QString text = tr("Redo - %1");
+            addButton(c, osd, active, result, actionName, text, "", false,
+                      ctx->player->DeleteMapGetRedoMessage());
         }
         else if (actionName == "DIALOG_CUTPOINT_CLEARMAP_0")
         {
@@ -11281,7 +11366,8 @@ bool TV::MenuItemDisplayPlayback(const MenuItemContext &c)
         {
             QVariant v;
             v.setValue(MenuNodeTuple(c.m_menu, c.m_node));
-            osd->DialogAddButton(c.m_menuName, v, true, c.m_setCurrentActive);
+            osd->DialogAddButton(c.m_menuName, v, true,
+                                 c.m_currentContext != kMenuCurrentDefault);
         }
         return result;
     }
@@ -11336,7 +11422,7 @@ bool TV::MenuItemDisplayPlayback(const MenuItemContext &c)
                     active = m_tvm_studio_levels;
                     if ((PictureAttribute)i == kPictureAttribute_StudioLevels)
                         BUTTON(ACTION_TOGGLESTUDIOLEVELS,
-                               toString((AdjustFillMode) i));
+                               toString((PictureAttribute) i));
                     else
                         BUTTON(action, toString((PictureAttribute) i));
                 }
@@ -12009,7 +12095,7 @@ void TV::PlaybackMenuInit(const MenuBase &menu)
 {
     m_tvmCtx = GetPlayerReadLock(-1, __FILE__, __LINE__);
     m_tvmOsd = GetOSDLock(m_tvmCtx);
-    if (&menu != &m_playbackMenu && &menu != &m_compactMenu)
+    if (&menu != &m_playbackMenu && &menu != &m_playbackCompactMenu)
         return;
 
     PlayerContext *ctx = m_tvmCtx;
@@ -12050,7 +12136,8 @@ void TV::PlaybackMenuInit(const MenuBase &menu)
     m_tvm_isbd              = (ctx->buffer && ctx->buffer->IsBD() &&
                                ctx->buffer->BD()->IsHDMVNavigation());
     m_tvm_jump              = (!m_tvm_num_chapters && !m_tvm_isdvd &&
-                               !m_tvm_isbd && ctx->buffer->IsSeekingAllowed());
+                               !m_tvm_isbd && ctx->buffer &&
+                               ctx->buffer->IsSeekingAllowed());
     m_tvm_islivetv          = StateIsLiveTV(m_tvm_state);
     m_tvm_previouschan      = false;
 
@@ -12169,9 +12256,9 @@ void TV::PlaybackMenuShow(const MenuBase &menu,
     if (m_tvmOsd)
     {
         bool isPlayback = (&menu == &m_playbackMenu ||
-                           &menu == &m_compactMenu);
+                           &menu == &m_playbackCompactMenu);
         bool isCutlist = (&menu == &m_cutlistMenu ||
-                          &menu == &m_cutlistExitMenu);
+                          &menu == &m_cutlistCompactMenu);
         m_tvmOsd->DialogShow(isPlayback ? OSD_DLG_MENU :
                              isCutlist ? OSD_DLG_CUTPOINT :
                              "???",
@@ -12240,6 +12327,7 @@ void TV::MenuStrings(void) const
 
     // Cutlist editor menu
     tr("Edit Cut Points");
+    tr("Edit Cut Points (Compact)");
     tr("Cut List Options");
 }
 
@@ -12247,20 +12335,22 @@ void TV::ShowOSDMenu(const PlayerContext *ctx, bool isCompact)
 {
     if (!m_playbackMenu.IsLoaded())
     {
-        m_playbackMenu.Load("menu_playback.xml",
-                            tr("Playback Menu"),
-                            metaObject()->className(),
-                            "TV Playback");
-        m_compactMenu.Load("menu_playback_compact.xml",
-                           tr("Playback Compact Menu"),
-                           metaObject()->className(),
-                           "TV Playback");
+        m_playbackMenu.LoadFromFile("menu_playback.xml",
+                                    tr("Playback Menu"),
+                                    metaObject()->className(),
+                                    "TV Playback");
+        m_playbackCompactMenu.LoadFromFile("menu_playback_compact.xml",
+                                           tr("Playback Compact Menu"),
+                                           metaObject()->className(),
+                                           "TV Playback");
     }
-    if (isCompact && m_compactMenu.IsLoaded())
-        PlaybackMenuShow(m_compactMenu, m_compactMenu.GetRoot(),
+    if (isCompact && m_playbackCompactMenu.IsLoaded())
+        PlaybackMenuShow(m_playbackCompactMenu,
+                         m_playbackCompactMenu.GetRoot(),
                          QDomNode());
     else if (m_playbackMenu.IsLoaded())
-        PlaybackMenuShow(m_playbackMenu, m_playbackMenu.GetRoot(),
+        PlaybackMenuShow(m_playbackMenu,
+                         m_playbackMenu.GetRoot(),
                          QDomNode());
 }
 
