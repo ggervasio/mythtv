@@ -14,15 +14,17 @@ TARGET = test_mythsystem
 DEPENDPATH += . ../.. ../../logging
 INCLUDEPATH += . ../.. ../../logging
 LIBS += -L../.. -lmythbase-$$LIBVERSION
-LIBS += -Wl,-rpath,$${PWD}/../..
+LIBS += -Wl,$$_RPATH_$${PWD}/../..
 
 contains(QMAKE_CXX, "g++") {
   QMAKE_CXXFLAGS += -O0 -fprofile-arcs -ftest-coverage 
   QMAKE_LFLAGS += -fprofile-arcs 
 }
-QMAKE_LFLAGS += -Wl,-rpath=$(PWD)/../../../../external/zeromq/src/.libs/
-QMAKE_LFLAGS += -Wl,-rpath=$(PWD)/../../../../external/nzmqt/src/
-QMAKE_LFLAGS += -Wl,-rpath=$(PWD)/../../../../external/qjson/lib/
+
+QMAKE_LFLAGS += -Wl,$$_RPATH_$(PWD)/../../../../external/zeromq/src/.libs/
+QMAKE_LFLAGS += -Wl,$$_RPATH_$(PWD)/../../../../external/nzmqt/src/
+QMAKE_LFLAGS += -Wl,$$_RPATH_$(PWD)/../../../../external/qjson/lib/
+QMAKE_LFLAGS += -Wl,$$_RPATH_$(PWD)/../..
 
 # Input
 HEADERS += test_mythsystem.h

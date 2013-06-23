@@ -21,7 +21,7 @@ using namespace std;
 #include "referencecounter.h"
 #include "mythmiscutil.h"
 #include "mythconfig.h"
-#include "mythsystem.h"
+#include "mythsystemlegacy.h"
 #include "tv.h"
 #include "proglist.h"
 #include "progfind.h"
@@ -113,6 +113,9 @@ static void resetAllKeys(void);
 void handleSIGUSR1(void);
 void handleSIGUSR2(void);
 
+#if CONFIG_DARWIN
+static bool gLoaded = false;
+#endif
 
 namespace
 {
@@ -296,31 +299,40 @@ static void startAppearWiz(void)
     int curW = gCoreContext->GetNumSetting("GuiWidth", 0);
     int curH = gCoreContext->GetNumSetting("GuiHeight", 0);
 
-    MythSystem *wizard = new MythSystem(
-                    GetInstallPrefix() + "/bin/mythscreenwizard",
-                    QStringList(),
-                    kMSNoRunShell | kMSDisableUDPListener | kMSPropagateLogs);
-    wizard->Run();
+    bool isWindowed =
+            (gCoreContext->GetNumSetting("RunFrontendInWindow", 0) == 1);
 
     bool reload = false;
 
-    if (!wizard->Wait())
+    if (isWindowed)
+        ShowOkPopup(QObject::tr("The ScreenSetupWizard cannot be used while "
+                              "mythfrontend is operating in windowed mode."));
+    else
     {
-        // no reported errors, check for changed geometry parameters
-        gCoreContext->ClearSettingsCache("GuiOffsetX");
-        gCoreContext->ClearSettingsCache("GuiOffsetY");
-        gCoreContext->ClearSettingsCache("GuiWidth");
-        gCoreContext->ClearSettingsCache("GuiHeight");
+        MythSystemLegacy *wizard = new MythSystemLegacy(
+            GetInstallPrefix() + "/bin/mythscreenwizard",
+            QStringList(),
+            kMSDisableUDPListener | kMSPropagateLogs);
+        wizard->Run();
 
-        if ((curX != gCoreContext->GetNumSetting("GuiOffsetX", 0)) ||
-            (curY != gCoreContext->GetNumSetting("GuiOffsetY", 0)) ||
-            (curW != gCoreContext->GetNumSetting("GuiWidth", 0)) ||
-            (curH != gCoreContext->GetNumSetting("GuiHeight", 0)))
-                reload = true;
+        if (!wizard->Wait())
+        {
+            // no reported errors, check for changed geometry parameters
+            gCoreContext->ClearSettingsCache("GuiOffsetX");
+            gCoreContext->ClearSettingsCache("GuiOffsetY");
+            gCoreContext->ClearSettingsCache("GuiWidth");
+            gCoreContext->ClearSettingsCache("GuiHeight");
+
+            if ((curX != gCoreContext->GetNumSetting("GuiOffsetX", 0)) ||
+                (curY != gCoreContext->GetNumSetting("GuiOffsetY", 0)) ||
+                (curW != gCoreContext->GetNumSetting("GuiWidth", 0)) ||
+                (curH != gCoreContext->GetNumSetting("GuiHeight", 0)))
+                    reload = true;
+        }
+
+        delete wizard;
+        wizard = NULL;
     }
-
-    delete wizard;
-    wizard = NULL;
 
     if (reload)
         GetMythMainWindow()->JumpTo("Reload Theme");
@@ -1109,7 +1121,7 @@ static int internal_play_media(const QString &mrl, const QString &plot,
 
     pginfo->SetProgramInfoType(pginfo->DiscoverProgramInfoType());
 
-    int64_t pos = 0;
+    bool bookmarkPresent = false;
 
     if (pginfo->IsVideoDVD())
     {
@@ -1121,11 +1133,7 @@ static int internal_play_media(const QString &mrl, const QString &plot,
             if (dvd->GetNameAndSerialNum(name, serialid))
             {
                 QStringList fields = pginfo->QueryDVDBookmark(serialid);
-                if (!fields.empty())
-                {
-                    QStringList::Iterator it = fields.begin();
-                    pos = (int64_t)((*++it).toLongLong() & 0xffffffffLL);
-                }
+                bookmarkPresent = (fields.count() > 0);
             }
         }
         else
@@ -1138,9 +1146,9 @@ static int internal_play_media(const QString &mrl, const QString &plot,
         delete dvd;
     }
     else if (pginfo->IsVideo())
-        pos = pginfo->QueryBookmark();
+        bookmarkPresent = (pginfo->QueryBookmark() > 0);
 
-    if (useBookmark && pos > 0)
+    if (useBookmark && bookmarkPresent)
     {
         MythScreenStack *mainStack = GetMythMainWindow()->GetMainStack();
         BookmarkDialog *bookmarkdialog = new BookmarkDialog(pginfo, mainStack);
@@ -1225,7 +1233,7 @@ static int reloadTheme(void)
         menu->Close();
     }
 #if CONFIG_DARWIN
-    GetMythMainWindow()->Init(OPENGL_PAINTER);
+    GetMythMainWindow()->Init(gLoaded ? OPENGL_PAINTER : QT_PAINTER);
 #else
     GetMythMainWindow()->Init();
 #endif
@@ -1548,7 +1556,11 @@ int main(int argc, char **argv)
         return GENERIC_EXIT_OK;
     }
 
-    setuid(getuid());
+    if (setuid(getuid()) != 0)
+    {
+        LOG(VB_GENERAL, LOG_ERR, "Failed to setuid(), exiting.");
+        return GENERIC_EXIT_NOT_OK;
+    }
 
 #ifdef USING_LIBDNS_SD
     // this needs to come after gCoreContext has been initialised
@@ -1605,7 +1617,7 @@ int main(int argc, char **argv)
 
     MythMainWindow *mainWindow = GetMythMainWindow();
 #if CONFIG_DARWIN
-    mainWindow->Init(OPENGL_PAINTER);
+    mainWindow->Init(QT_PAINTER);
 #else
     mainWindow->Init();
 #endif
@@ -1665,20 +1677,17 @@ int main(int argc, char **argv)
                    .arg(port));
     }
 
-#ifdef __linux__
-#ifdef CONFIG_BINDINGS_PYTHON
-    HardwareProfile *profile = new HardwareProfile();
-    if (profile && profile->NeedsUpdate())
-        profile->SubmitProfile();
-    delete profile;
+#if CONFIG_DARWIN
+    GetMythMainWindow()->SetEffectsEnabled(false);
+    GetMythMainWindow()->Init(OPENGL_PAINTER);
+    GetMythMainWindow()->ReinitDone();
+    GetMythMainWindow()->SetEffectsEnabled(true);
+    gLoaded = true;
 #endif
-#endif
-
     if (!RunMenu(themedir, themename) && !resetTheme(themedir, themename))
     {
         return GENERIC_EXIT_NO_THEME;
     }
-
     ThemeUpdateChecker *themeUpdateChecker = NULL;
     if (gCoreContext->GetNumSetting("ThemeUpdateNofications", 1))
         themeUpdateChecker = new ThemeUpdateChecker();
@@ -1689,6 +1698,15 @@ int main(int argc, char **argv)
 
     PreviewGeneratorQueue::CreatePreviewGeneratorQueue(
         PreviewGenerator::kRemote, 50, 60);
+
+    HouseKeeper *housekeeping = new HouseKeeper();
+#ifdef __linux__
+ #ifdef CONFIG_BINDINGS_PYTHON
+    housekeeping->RegisterTask(new HardwareProfileTask());
+ #endif
+#endif
+    housekeeping->Start();
+
 
     if (cmdline.toBool("runplugin"))
     {
@@ -1730,6 +1748,8 @@ int main(int argc, char **argv)
     int ret = qApp->exec();
 
     PreviewGeneratorQueue::TeardownPreviewGeneratorQueue();
+
+    delete housekeeping;
 
     if (themeUpdateChecker)
         delete themeUpdateChecker;
