@@ -4146,8 +4146,8 @@ void TVRec::TuningNewRecorder(MPEGStreamData *streamData)
         }
 #ifdef CC_DUMP
         QString textfname = QString("%1.txd").arg(rec->GetPathname());
-        genOpt.textfd = open(textfname.toAscii(), 
-                             O_WRONLY|O_TRUNC|O_CREAT|O_LARGEFILE, 
+        genOpt.textfd = open(textfname.toAscii(),
+                             O_WRONLY|O_TRUNC|O_CREAT|O_LARGEFILE,
                              0644);
         if (genOpt.textfd <= 0)
         {
@@ -4710,25 +4710,25 @@ RecordingInfo *TVRec::SwitchRecordingRingBuffer(const RecordingInfo &rcinfo)
         ri->SetRecordingStatus(rsRecording);
 
 #ifdef CC_DUMP
-    	if (genOpt.textfd > 0)
-    	{
-    	    close(genOpt.textfd);
-    	    genOpt.textfd = -1;
-    	}
+        if (genOpt.textfd > 0)
+        {
+            close(genOpt.textfd);
+            genOpt.textfd = -1;
+        }
 
-    	QString textfname = QString("%1.txd").arg(ri->GetPathname());
-    	genOpt.textfd = open(textfname.toAscii(), 
-    	                     O_WRONLY|O_TRUNC|O_CREAT|O_LARGEFILE, 
-    	                     0644);
-    	if (genOpt.textfd <= 0)
-    	{
+        QString textfname = QString("%1.txd").arg(ri->GetPathname());
+        genOpt.textfd = open(textfname.toAscii(),
+                             O_WRONLY|O_TRUNC|O_CREAT|O_LARGEFILE,
+                             0644);
+        if (genOpt.textfd <= 0)
+        {
             LOG(VB_GENERAL, LOG_ERR, LOC + "ERROR opening text dump file");
-    	    perror(textfname.toAscii());
-    	}
-    	else
-    	{
-    	    static const char finfo[12] = "MythTVCC-02";
-    	    write(genOpt.textfd, finfo, 12);
+            perror(textfname.toAscii());
+        }
+        else
+        {
+            static const char finfo[12] = "MythTVCC-02";
+            write(genOpt.textfd, finfo, 12);
         }
 #endif
 
