@@ -3751,7 +3751,8 @@ void PlaybackBox::processNetworkControlCommand(const QString &command)
 
                 pginfo.SetPathname(pginfo.GetPlaybackURL());
 
-                PlayX(pginfo, true, true);
+                bool ignoreBookmark = (tokens[1] == "PLAY");
+                PlayX(pginfo, ignoreBookmark, true);
             }
             else
             {

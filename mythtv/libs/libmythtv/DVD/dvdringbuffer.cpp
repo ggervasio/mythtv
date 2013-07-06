@@ -442,6 +442,13 @@ bool DVDRingBuffer::OpenFile(const QString &lfilename, uint retry_ms)
 
     m_context = new MythDVDContext();
 
+    // Set preferred languages
+    QString lang = gCoreContext->GetSetting("Language").section('_', 0, 0);
+
+    dvdnav_menu_language_select(m_dvdnav, lang.toLatin1().data());
+    dvdnav_audio_language_select(m_dvdnav, lang.toLatin1().data());
+    dvdnav_spu_language_select(m_dvdnav, lang.toLatin1().data());
+
     dvdnav_set_readahead_flag(m_dvdnav, 0);
     dvdnav_set_PGC_positioning_flag(m_dvdnav, 1);
 
@@ -494,8 +501,16 @@ bool DVDRingBuffer::StartFromBeginning(void)
 
     if (m_dvdnav)
     {
+        // Set preferred languages
+        QString lang = gCoreContext->GetSetting("Language").section('_', 0, 0);
+        LOG(VB_PLAYBACK, LOG_INFO, LOC + QString("Setting DVD languages to %1")
+            .arg(lang));
+
         QMutexLocker lock(&m_seekLock);
         dvdnav_reset(m_dvdnav);
+        dvdnav_menu_language_select(m_dvdnav, lang.toLatin1().data());
+        dvdnav_audio_language_select(m_dvdnav, lang.toLatin1().data());
+        dvdnav_spu_language_select(m_dvdnav, lang.toLatin1().data());
         dvdnav_first_play(m_dvdnav);
         m_audioStreamsChanged = true;
     }
@@ -638,6 +653,7 @@ int DVDRingBuffer::safe_read(void *data, uint sz)
     char           *dest         = (char*) data;
     int             offset       = 0;
     bool            bReprocessing = false;
+    bool            stillSeen    = false;
 
     if (m_gotStop)
     {
@@ -702,9 +718,6 @@ int DVDRingBuffer::safe_read(void *data, uint sz)
                 dvdnav_cell_change_event_t *cell_event =
                     (dvdnav_cell_change_event_t*) (blockBuf);
 
-                // a menu is anything that isn't in the VTS domain
-                m_inMenu = !dvdnav_is_domain_vts(m_dvdnav);
-
                 // update information for the current cell
                 m_cellChanged = true;
                 if (m_pgcLength != cell_event->pgc_length)
@@ -721,6 +734,7 @@ int DVDRingBuffer::safe_read(void *data, uint sz)
                 uint32_t pos;
                 uint32_t length;
                 m_still = dvdnav_get_next_still_flag(m_dvdnav);
+                m_titleParts = 0;
                 dvdnav_current_title_info(m_dvdnav, &m_title, &m_part);
                 dvdnav_get_number_of_parts(m_dvdnav, m_title, &m_titleParts);
                 dvdnav_get_position(m_dvdnav, &pos, &length);
@@ -785,13 +799,6 @@ int DVDRingBuffer::safe_read(void *data, uint sz)
                 m_buttonSeenInCell = false;
 
                 IncrementButtonVersion;
-                if (m_inMenu)
-                {
-                    m_autoselectsubtitle = true;
-                    GetMythUI()->RestoreScreensaver();
-                }
-                else
-                    GetMythUI()->DisableScreensaver();
 
                 // release buffer
                 if (blockBuf != m_dvdBlockWriteBuf)
@@ -874,8 +881,12 @@ int DVDRingBuffer::safe_read(void *data, uint sz)
             case DVDNAV_NAV_PACKET:
             {
                 QMutexLocker lock(&m_seekLock);
+                bool lastInMenu = m_inMenu;
 
+                // retrieve the latest Presentation Control and
+                // Data Search Information structures
                 pci_t *pci = dvdnav_get_current_nav_pci(m_dvdnav);
+                dsi_t *dsi = dvdnav_get_current_nav_dsi(m_dvdnav);
 
                 // If the start PTS of this block is not the
                 // same as the end PTS of the last block,
@@ -898,91 +909,116 @@ int DVDRingBuffer::safe_read(void *data, uint sz)
                 }
 
                 m_endPts = pci->pci_gi.vobu_e_ptm;
+                m_inMenu = (pci->hli.hl_gi.btn_ns > 0);
 
-                QMutexLocker contextLocker(&m_contextLock);
-                if (m_context)
-                    m_context->DecrRef();
-
-                m_context = new MythDVDContext();
-
-                m_context->m_pci = *pci;
-
-                m_context->m_pci.pci_gi.vobu_s_ptm = AdjustTimestamp(m_context->m_pci.pci_gi.vobu_s_ptm);
-                m_context->m_pci.pci_gi.vobu_e_ptm = AdjustTimestamp(m_context->m_pci.pci_gi.vobu_e_ptm);
-
-                if (pci->pci_gi.vobu_se_e_ptm != 0)
-                    m_context->m_pci.pci_gi.vobu_se_e_ptm = AdjustTimestamp(m_context->m_pci.pci_gi.vobu_se_e_ptm);
-
-                // get the latest nav
-                m_lastNav = (dvdnav_t *)blockBuf;
-
-                // retrieve the latest Data Search Information
-                dsi_t *dsi = dvdnav_get_current_nav_dsi(m_dvdnav);
-
-                m_context->m_dsi = *dsi;
-
-                // if we are in a looping menu, we don't want to reset the
-                // selected button when we restart
-                m_vobid  = dsi->dsi_gi.vobu_vob_idn;
-                m_cellid = dsi->dsi_gi.vobu_c_idn;
-                if ((m_lastvobid == m_vobid) && (m_lastcellid == m_cellid)
-                     && m_lastButtonSeenInCell)
+                if (m_inMenu && (dsi->synci.sp_synca[0] & 0x80000000) && !m_buttonExists)
                 {
-                    m_cellRepeated = true;
+                    LOG(VB_PLAYBACK, LOG_DEBUG, LOC + QString("Jumped into middle of menu: lba %1, dest %2")
+                        .arg(pci->pci_gi.nv_pck_lbn)
+                        .arg(pci->pci_gi.nv_pck_lbn - (dsi->synci.sp_synca[0] & 0x7fffffff)));
+
+                    // We're in a menu, the subpicture packets are somewhere behind us
+                    // and we've not decoded any subpicture.
+                    // That probably means we've jumped into the middle of a menu.
+                    // We'd better jump back to get the subpicture packet(s) otherwise
+                    // there's no menu highlight to show.
+                    m_seeking = false;
+                    dvdnav_sector_search(m_dvdnav, pci->pci_gi.nv_pck_lbn - (dsi->synci.sp_synca[0] & 0x7fffffff), SEEK_SET);
                 }
-
-                // update our status
-                m_currentTime = dvdnav_get_current_time(m_dvdnav);
-                m_currentpos = GetReadPosition();
-
-                if (m_seeking)
+                else
                 {
-                    int relativetime =
-                        (int)((m_seektime - m_currentTime)/ 90000);
-                    if (abs(relativetime) <= 1)
+                    QMutexLocker contextLocker(&m_contextLock);
+                    if (m_context)
+                        m_context->DecrRef();
+
+                    m_context = new MythDVDContext();
+
+                    m_context->m_pci = *pci;
+
+                    m_context->m_pci.pci_gi.vobu_s_ptm = AdjustTimestamp(m_context->m_pci.pci_gi.vobu_s_ptm);
+                    m_context->m_pci.pci_gi.vobu_e_ptm = AdjustTimestamp(m_context->m_pci.pci_gi.vobu_e_ptm);
+
+                    if (pci->pci_gi.vobu_se_e_ptm != 0)
+                        m_context->m_pci.pci_gi.vobu_se_e_ptm = AdjustTimestamp(m_context->m_pci.pci_gi.vobu_se_e_ptm);
+
+                    // get the latest nav
+                    m_lastNav = (dvdnav_t *)blockBuf;
+
+                    m_context->m_dsi = *dsi;
+
+                    if (m_inMenu != lastInMenu)
                     {
-                        m_seeking = false;
-                        m_seektime = 0;
+                        if (m_inMenu)
+                        {
+                            m_autoselectsubtitle = true;
+                            GetMythUI()->RestoreScreensaver();
+                        }
+                        else
+                            GetMythUI()->DisableScreensaver();
                     }
-                    else
+
+                    // if we are in a looping menu, we don't want to reset the
+                    // selected button when we restart
+                    m_vobid  = dsi->dsi_gi.vobu_vob_idn;
+                    m_cellid = dsi->dsi_gi.vobu_c_idn;
+                    if ((m_lastvobid == m_vobid) && (m_lastcellid == m_cellid)
+                         && m_lastButtonSeenInCell)
                     {
-                        dvdnav_relative_time_search(m_dvdnav, relativetime * 2);
+                        m_cellRepeated = true;
+                    }
+
+                    // update our status
+                    m_currentTime = dvdnav_get_current_time(m_dvdnav);
+                    m_currentpos = GetReadPosition();
+
+                    if (m_seeking)
+                    {
+                        int relativetime =
+                            (int)((m_seektime - m_currentTime)/ 90000);
+                        if (abs(relativetime) <= 1)
+                        {
+                            m_seeking = false;
+                            m_seektime = 0;
+                        }
+                        else
+                        {
+                            dvdnav_relative_time_search(m_dvdnav, relativetime * 2);
+                        }
+                    }
+
+                    // update the button stream number if this is the
+                    // first NAV pack containing button information
+                    if ( (pci->hli.hl_gi.hli_ss & 0x03) == 0x01 )
+                    {
+                        m_buttonStreamID = 32;
+                        int aspect = dvdnav_get_video_aspect(m_dvdnav);
+
+                        // workaround where dvd menu is
+                        // present in VTS_DOMAIN. dvdnav adds 0x80 to stream id
+                        // proper fix should be put in dvdnav sometime
+                        int8_t spustream = dvdnav_get_active_spu_stream(m_dvdnav) & 0x7f;
+
+                        if (aspect != 0 && spustream > 0)
+                            m_buttonStreamID += spustream;
+
+                        m_buttonSeenInCell = true;
+                    }
+
+                    // debug
+                    LOG(VB_PLAYBACK, LOG_DEBUG, LOC + QString("DVDNAV_NAV_PACKET - time:%1, lba:%2, vob:%3, cell:%4, seeking:%5, seektime:%6")
+                        .arg(m_context->GetStartPTS())
+                        .arg(m_context->GetLBA())
+                        .arg(m_vobid)
+                        .arg(m_cellid)
+                        .arg(m_seeking)
+                        .arg(m_seektime));
+
+                    if (!m_seeking)
+                    {
+                        memcpy(dest + offset, blockBuf, DVD_BLOCK_SIZE);
+                        tot += DVD_BLOCK_SIZE;
                     }
                 }
-
-                // update the button stream number if this is the
-                // first NAV pack containing button information
-                if ( (pci->hli.hl_gi.hli_ss & 0x03) == 0x01 )
-                {
-                    m_buttonStreamID = 32;
-                    int aspect = dvdnav_get_video_aspect(m_dvdnav);
-
-                    // workaround where dvd menu is
-                    // present in VTS_DOMAIN. dvdnav adds 0x80 to stream id
-                    // proper fix should be put in dvdnav sometime
-                    int8_t spustream = dvdnav_get_active_spu_stream(m_dvdnav) & 0x7f;
-
-                    if (aspect != 0 && spustream > 0)
-                        m_buttonStreamID += spustream;
-
-                    m_buttonSeenInCell = true;
-                }
-
-                // debug
-                LOG(VB_PLAYBACK, LOG_DEBUG, LOC + QString("DVDNAV_NAV_PACKET - time:%1, lba:%2, vob:%3, cell:%4, seeking:%5, seektime:%6")
-                    .arg(m_context->GetStartPTS())
-                    .arg(m_context->GetLBA())
-                    .arg(m_vobid)
-                    .arg(m_cellid)
-                    .arg(m_seeking)
-                    .arg(m_seektime));
-
-                if (!m_seeking)
-                {
-                    memcpy(dest + offset, blockBuf, DVD_BLOCK_SIZE);
-                    tot += DVD_BLOCK_SIZE;
-                }
-
                 // release buffer
                 if (blockBuf != m_dvdBlockWriteBuf)
                     dvdnav_free_cache_block(m_dvdnav, blockBuf);
@@ -1114,7 +1150,12 @@ int DVDRingBuffer::safe_read(void *data, uint sz)
                 }
 
                 // debug
-                LOG(VB_PLAYBACK, LOG_DEBUG, LOC + "DVDNAV_STILL_FRAME");
+                if (!stillSeen)
+                {
+                    LOG(VB_PLAYBACK, LOG_DEBUG, LOC + QString("DVDNAV_STILL_FRAME (%1)")
+                        .arg(still->length));
+                    stillSeen = true;
+                }
 
                 // release buffer
                 if (blockBuf != m_dvdBlockWriteBuf)
@@ -1840,7 +1881,17 @@ uint DVDRingBuffer::GetSubtitleLanguage(int id)
  */
 int DVDRingBuffer::GetSubtitleTrackNum(uint stream_id)
 {
-    return dvdnav_get_spu_logical_stream(m_dvdnav, stream_id);
+    int logstream = -1;
+
+    // VM always sets stream_id to zero if we're not in the VTS
+    // domain and always returns 0 (instead of -1) if nothing has
+    // been found, so only try to retrieve the logical stream if
+    // we *are* in the VTS domain or we *are* trying to map stream
+    // 0.
+    if (dvdnav_is_domain_vts(m_dvdnav) || (stream_id == 0))
+        logstream = dvdnav_get_spu_logical_stream(m_dvdnav, stream_id);
+
+    return logstream;
 }
 
 /** \brief converts the subtitle/audio lang code to iso639.

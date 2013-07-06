@@ -10,6 +10,7 @@
 #include <QMap>
 
 // MythTV headers
+#include "mythtimer.h"
 #include "mthread.h"
 #include "inputinfo.h"
 #include "inputgroupmap.h"
@@ -331,6 +332,8 @@ class MTV_PUBLIC TVRec : public SignalMonitorListener, public QRunnable
     ChannelBase      *channel;
     SignalMonitor    *signalMonitor;
     EITScanner       *scanner;
+
+    QDateTime         signalMonitorDeadline;
 
     // Various threads
     /// Event processing thread, runs TVRec::run().

@@ -97,15 +97,18 @@ void SubtitleReader::FreeAVSubtitle(const AVSubtitle &subtitle)
         av_free(subtitle.rects);
 }
 
-bool SubtitleReader::LoadExternalSubtitles(const QString &subtitleFileName)
+void SubtitleReader::LoadExternalSubtitles(const QString &subtitleFileName,
+                                           bool isInProgress)
 {
     m_TextSubtitles.Clear();
-    return TextSubtitleParser::LoadSubtitles(subtitleFileName, m_TextSubtitles);
+    m_TextSubtitles.SetInProgress(isInProgress);
+    TextSubtitleParser::LoadSubtitles(subtitleFileName, m_TextSubtitles,
+                                      false);
 }
 
 bool SubtitleReader::HasTextSubtitles(void)
 {
-    return m_TextSubtitles.GetSubtitleCount() > 0;
+    return m_TextSubtitles.GetSubtitleCount() >= 0;
 }
 
 QStringList SubtitleReader::GetRawTextSubtitles(uint64_t &duration)

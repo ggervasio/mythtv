@@ -182,8 +182,14 @@ class MTV_PUBLIC MythPlayer
     uint64_t GetTotalFrameCount(void) const   { return totalFrames; }
     uint64_t GetCurrentFrameCount(void) const;
     uint64_t GetFramesPlayed(void) const      { return framesPlayed; }
-    virtual  int64_t GetSecondsPlayed(bool honorCutList);
-    virtual  int64_t GetTotalSeconds(void) const;
+    // GetSecondsPlayed() and GetTotalSeconds() internally calculate
+    // in terms of milliseconds and divide the result by 1000.  This
+    // divisor can be passed in as an argument, e.g. pass divisor=1 to
+    // return the time in milliseconds.
+    virtual  int64_t GetSecondsPlayed(bool honorCutList,
+                                      int divisor = 1000) const;
+    virtual  int64_t GetTotalSeconds(bool honorCutList,
+                                     int divisor = 1000) const;
     virtual  uint64_t GetBookmark(void);
     QString   GetError(void) const;
     bool      IsErrorRecoverable(void) const
@@ -321,6 +327,7 @@ class MTV_PUBLIC MythPlayer
     // DVD public stuff
     virtual bool GoToMenu(QString str)          { return false;     }
     virtual void GoToDVDProgram(bool direction) { (void) direction; }
+    virtual bool IsInStillFrame() const         { return false;     }
 
     // Position Map Stuff
     bool PosMapFromEnc(uint64_t start,

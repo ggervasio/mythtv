@@ -83,6 +83,8 @@ using namespace std;
 #include "mythpainter_d3d9.h"
 #endif
 
+#include "mythuinotificationcenter.h"
+
 #define GESTURE_TIMEOUT 1000
 #define STANDBY_TIMEOUT 90 // Minutes
 
@@ -584,6 +586,8 @@ MythMainWindow::~MythMainWindow()
 #endif
 
     delete d;
+
+    delete MythUINotificationCenter::GetInstance();
 }
 
 MythPainter *MythMainWindow::GetCurrentPainter(void)
@@ -1086,6 +1090,9 @@ void MythMainWindow::Init(QString forcedpainter)
         d->m_themeBase->Reload();
     else
         d->m_themeBase = new MythThemeBase();
+
+    // Will create Notification Center singleton
+    (void)MythUINotificationCenter::GetInstance();
 }
 
 void MythMainWindow::InitKeys()
@@ -2403,6 +2410,10 @@ void MythMainWindow::customEvent(QEvent *ce)
 
         if (!message.isEmpty())
             ShowOkPopup(message);
+    }
+    else if ((MythEvent::Type)(ce->type()) == MythUINotificationCenterEvent::kEventType)
+    {
+        MythUINotificationCenter::GetInstance()->ProcessQueue();
     }
 }
 

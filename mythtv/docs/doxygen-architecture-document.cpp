@@ -176,11 +176,7 @@ There are also a few simple \ref testing "testing shortcuts".
 
       This library does not depend on any of our libraries.
 
-  <dt>libmythlivemedia       <dd>Support for the FreeBox recorder device.
-
-      This library does not depend on any of our libraries.
-
-  <dt>libmythhdhomerun
+  <dt>libhdhomerun
       <dd>Interface to the SiliconDust HDHomeRun EtherNet connected TV tuner
       products.
 
@@ -276,7 +272,7 @@ These tools are in the packaging repository:
 <dl>
   <dt>osx-packager-qtsdk.pl
       <dd>Downloads and builds all dependencies, then the source, of %MythTV
-          and all the official plugins, on Mac OS 10.7 and 10.8
+          and all the official plugins, on Mac OS 10.5 and later
   <dt>osx-packager.pl   <dd>Downloads and builds all dependencies, then the
                             source, of %MythTV and all the official plugins,
                             on Mac OS (10.3?, 10.4?,) 10.5 and 10.6
