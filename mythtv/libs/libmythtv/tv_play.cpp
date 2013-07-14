@@ -51,6 +51,7 @@ using namespace std;
 #include "channelutil.h"
 #include "compat.h"
 #include "mythuihelper.h"
+#include "mythuinotificationcenter.h"
 #include "mythdialogbox.h"
 #include "mythmainwindow.h"
 #include "mythscreenstack.h"
@@ -96,6 +97,8 @@ using namespace std;
     if (osd) \
         osd->HideWindow(WINDOW); \
     ReturnOSDLock(CTX, osd); }
+
+static const QString _Location = TV::tr("TV Player");
 
 const int  TV::kInitFFRWSpeed                = 0;
 const uint TV::kInputKeysMax                 = 6;
@@ -1061,11 +1064,11 @@ TV::TV(void)
     setObjectName("TV");
     keyRepeatTimer.start();
 
-    sleep_times.push_back(SleepTimerInfo(QObject::tr("Off"),       0));
-    sleep_times.push_back(SleepTimerInfo(QObject::tr("30m"),   30*60));
-    sleep_times.push_back(SleepTimerInfo(QObject::tr("1h"),    60*60));
-    sleep_times.push_back(SleepTimerInfo(QObject::tr("1h30m"), 90*60));
-    sleep_times.push_back(SleepTimerInfo(QObject::tr("2h"),   120*60));
+    sleep_times.push_back(SleepTimerInfo(tr("Off",   "Sleep timer"),       0));
+    sleep_times.push_back(SleepTimerInfo(tr("30m",   "Sleep timer"),   30*60));
+    sleep_times.push_back(SleepTimerInfo(tr("1h",    "Sleep timer"),    60*60));
+    sleep_times.push_back(SleepTimerInfo(tr("1h30m", "Sleep timer"), 90*60));
+    sleep_times.push_back(SleepTimerInfo(tr("2h",    "Sleep timer"),   120*60));
 
     playerLock.lockForWrite();
     player.push_back(new PlayerContext(kPlayerInUseID));
@@ -1959,7 +1962,7 @@ void TV::ShowOSDAskAllow(PlayerContext *ctx)
     {
         if (conflict_count > 1)
         {
-            message = QObject::tr(
+            message = tr(
                 "MythTV wants to record these programs in %d seconds:");
             message += "\n";
         }
@@ -1985,7 +1988,7 @@ void TV::ShowOSDAskAllow(PlayerContext *ctx)
 
             if (conflict_count > 1)
             {
-                message += QObject::tr("\"%1\" on %2").arg(title).arg(channel);
+                message += tr("\"%1\" on %2").arg(title).arg(channel);
                 message += "\n";
             }
             else
@@ -1998,7 +2001,7 @@ void TV::ShowOSDAskAllow(PlayerContext *ctx)
         if (conflict_count > 1)
         {
             message += "\n";
-            message += QObject::tr("Do you want to:");
+            message += tr("Do you want to:");
         }
 
         bool all_have_later = true;
@@ -2150,7 +2153,7 @@ TVState TV::RemoveRecording(TVState state)
 static QString tv_i18n(const QString &msg)
 {
     QByteArray msg_arr = msg.toLatin1();
-    QString msg_i18n = QObject::tr(msg_arr.constData());
+    QString msg_i18n = TV::tr(msg_arr.constData());
     QByteArray msg_i18n_arr = msg_i18n.toLatin1();
     return (msg_arr == msg_i18n_arr) ? msg_i18n : msg;
 }
@@ -2167,6 +2170,9 @@ void TV::HandleStateChange(PlayerContext *mctx, PlayerContext *ctx)
 {
     LOG(VB_PLAYBACK, LOG_INFO, LOC + QString("HandleStateChange(%1) -- begin")
             .arg(find_player_index(ctx)));
+
+    if (!ctx)   // can never happen, but keep coverity happy
+        return;
 
     if (ctx->IsErrored())
     {
@@ -2349,7 +2355,15 @@ void TV::HandleStateChange(PlayerContext *mctx, PlayerContext *ctx)
         QString playbackURL = ctx->playingInfo->GetPlaybackURL(true);
         ctx->UnlockPlayingInfo(__FILE__, __LINE__);
 
-        ctx->SetRingBuffer(RingBuffer::Create(playbackURL, false));
+        RingBuffer *buffer = RingBuffer::Create(playbackURL, false);
+        if (buffer && !buffer->GetLastError().isEmpty())
+        {
+            ShowNotificationError(tr("Can't start playback"),
+                                  _Location, buffer->GetLastError());
+            delete buffer;
+            buffer = NULL;
+        }
+        ctx->SetRingBuffer(buffer);
 
         if (ctx->buffer && ctx->buffer->IsOpen())
         {
@@ -2397,6 +2411,15 @@ void TV::HandleStateChange(PlayerContext *mctx, PlayerContext *ctx)
         {
             SET_LAST();
             SetErrored(ctx);
+            if (ctx->IsPlayerErrored())
+            {
+                ShowNotificationError(ctx->player->GetError(),
+                                      _Location,
+                                      buffer->GetFilename());
+                // We're going to display this error as notification
+                // no need to display it later as popup
+                ctx->player->ResetErrored();
+            }
         }
         else if (mctx != ctx)
         {
@@ -4443,14 +4466,11 @@ bool TV::ActiveHandleAction(PlayerContext *ctx,
             else
             {
                 // If it's a DVD, and we're not trying to execute a
-                // jumppoint, and it's not in a menu, then first try
-                // jumping to the title or root menu.
+                // jumppoint, try to back up.
                 if (isDVD &&
                     !GetMythMainWindow()->IsExitingToMain() &&
                     has_action("BACK", actions) &&
-                    !ctx->buffer->DVD()->IsInMenu() &&
-                    (ctx->player->GoToMenu("title") ||
-                     ctx->player->GoToMenu("root")))
+                    ctx->buffer->DVD()->GoBack())
                 {
                     return handled;
                 }
@@ -4678,17 +4698,17 @@ void TV::SetBookmark(PlayerContext *ctx, bool clear)
         if (clear)
         {
             ctx->player->SetBookmark(true);
-            SetOSDMessage(ctx, QObject::tr("Bookmark Cleared"));
+            SetOSDMessage(ctx, tr("Bookmark Cleared"));
         }
         else if (IsBookmarkAllowed(ctx))
         {
             ctx->player->SetBookmark();
             osdInfo info;
             ctx->CalcPlayerSliderPosition(info);
-            info.text["title"] = QObject::tr("Position");
+            info.text["title"] = tr("Position");
             UpdateOSDStatus(ctx, info, kOSDFunctionalType_Default,
                             kOSDTimeout_Med);
-            SetOSDMessage(ctx, QObject::tr("Bookmark Saved"));
+            SetOSDMessage(ctx, tr("Bookmark Saved"));
         }
     }
     ctx->UnlockDeletePlayer(__FILE__, __LINE__);
@@ -7745,7 +7765,7 @@ bool TV::ClearOSD(const PlayerContext *ctx)
     if (osd)
     {
         osd->DialogQuit();
-        osd->HideAll();
+        osd->HideAll(true, NULL, true); // pop OSD screen
         res = true;
     }
     ReturnOSDLock(ctx, osd);
@@ -8963,7 +8983,7 @@ void TV::ShowOSDSleep(void)
     OSD *osd = GetOSDLock(mctx);
     if (osd)
     {
-        QString message = QObject::tr(
+        QString message = tr(
             "MythTV was set to sleep after %1 minutes and "
             "will exit in %d seconds.\n"
             "Do you wish to continue watching?")
@@ -9027,7 +9047,7 @@ void TV::ShowOSDIdle(void)
     OSD *osd = GetOSDLock(mctx);
     if (osd)
     {
-        QString message = QObject::tr(
+        QString message = tr(
             "MythTV has been idle for %1 minutes and "
             "will exit in %d seconds. Are you still watching?")
             .arg(db_idle_timeout * (1.0f/60000.0f));
@@ -10031,14 +10051,14 @@ void TV::ShowOSDCutpoint(PlayerContext *ctx, const QString &type)
             return;
         }
         osd->DialogShow(OSD_DLG_CUTPOINT,
-                        QObject::tr("Exit Recording Editor"));
-        osd->DialogAddButton(QObject::tr("Save Cuts and Exit"),
+                        tr("Exit Recording Editor"));
+        osd->DialogAddButton(tr("Save Cuts and Exit"),
                              "DIALOG_CUTPOINT_SAVEEXIT_0");
-        osd->DialogAddButton(QObject::tr("Exit Without Saving"),
+        osd->DialogAddButton(tr("Exit Without Saving"),
                              "DIALOG_CUTPOINT_REVERTEXIT_0");
-        osd->DialogAddButton(QObject::tr("Save Cuts"),
+        osd->DialogAddButton(tr("Save Cuts"),
                              "DIALOG_CUTPOINT_SAVEMAP_0");
-        osd->DialogAddButton(QObject::tr("Undo Changes"),
+        osd->DialogAddButton(tr("Undo Changes"),
                              "DIALOG_CUTPOINT_REVERT_0");
         osd->DialogBack("", "DIALOG_CUTPOINT_DONOTHING_0", true);
         QHash<QString,QString> map;
@@ -10285,7 +10305,7 @@ void TV::ChannelEditXDSFill(const PlayerContext *ctx, InfoMap &infoMap) const
     QMap<QString,bool> modifiable;
     if (!(modifiable["callsign"] = infoMap["callsign"].isEmpty()))
     {
-        QString unsetsign = QObject::tr("UNKNOWN%1", "Synthesized callsign");
+        QString unsetsign = tr("UNKNOWN%1", "Synthesized callsign");
         uint    unsetcmpl = unsetsign.length() - 2;
         unsetsign = unsetsign.left(unsetcmpl);
         if (infoMap["callsign"].left(unsetcmpl) == unsetsign) // was unsetcmpl????
@@ -13081,7 +13101,7 @@ void TV::ShowOSDPromptDeleteRecording(PlayerContext *ctx, QString title,
         OSD *osd = GetOSDLock(ctx);
         if (osd && !osd->DialogVisible())
         {
-            QString message = QObject::tr("Cannot delete program ") +
+            QString message = tr("Cannot delete program ") +
                 QString("%1 ")
                 .arg(pginfo.GetTitle());
 
@@ -13090,11 +13110,11 @@ void TV::ShowOSDPromptDeleteRecording(PlayerContext *ctx, QString title,
 
             if (!pginfo.IsRecording())
             {
-                message += QObject::tr("because it is not a recording.");
+                message += tr("because it is not a recording.");
             }
             else
             {
-                message += QObject::tr("because it is in use by");
+                message += tr("because it is in use by");
                 QStringList byWho;
                 pginfo.QueryIsInUse(byWho);
                 for (uint i = 0; i+2 < (uint)byWho.size(); i+=3)

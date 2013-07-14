@@ -17,6 +17,7 @@
 #include "mythuiexp.h"
 
 typedef QMap<QString,QString> DMAP;
+typedef unsigned int    VNMask;
 
 class MUI_PUBLIC MythNotification : public MythEvent
 {
@@ -142,21 +143,24 @@ public:
      */
     void SetStyle(const QString &style)     { m_style = style; }
     /**
+     * define a bitmask of Visibility
+     */
+    void SetVisibility(VNMask n)            { m_visibility = n; }
+    /**
      * For future use, not implemented at this stage
      */
-    void SetVisibility(Visibility n)        { m_visibility = n; }
-    void SetPriority(Priority n)            { m_priority = n; }
+    void SetPriority(Priority n)              { m_priority = n; }
 
     // Getter
-    int         GetId(void)                 { return m_id; }
-    void       *GetParent(void)             { return m_parent; }
-    bool        GetFullScreen(void)         { return m_fullScreen; }
-    QString     GetDescription(void)        { return m_description; }
-    DMAP        GetMetaData(void)           { return m_metadata; }
-    int         GetDuration(void)           { return m_duration; };
-    QString     GetStyle(void)              { return m_style; }
-    Visibility  GetVisibility(void)         { return m_visibility; }
-    Priority    GetPriority(void)           { return m_priority; }
+    int         GetId(void) const           { return m_id; }
+    void       *GetParent(void) const       { return m_parent; }
+    bool        GetFullScreen(void) const   { return m_fullScreen; }
+    QString     GetDescription(void) const  { return m_description; }
+    DMAP        GetMetaData(void) const     { return m_metadata; }
+    int         GetDuration(void) const     { return m_duration; };
+    QString     GetStyle(void) const        { return m_style; }
+    VNMask      GetVisibility(void) const   { return m_visibility; }
+    Priority    GetPriority(void) const     { return m_priority; }
 
 protected:
     MythNotification(const MythNotification &o)
@@ -178,7 +182,7 @@ protected:
     int         m_duration;
     DMAP        m_metadata;
     QString     m_style;
-    Visibility  m_visibility;
+    VNMask      m_visibility;
     Priority    m_priority;
 };
 
@@ -218,8 +222,8 @@ public:
     void SetImagePath(const QString &image) { m_imagePath = image; }
 
     //Getter
-    QImage GetImage(void)                   { return m_image; }
-    QString GetImagePath(void)              { return m_imagePath; }
+    QImage GetImage(void) const             { return m_image; }
+    QString GetImagePath(void) const        { return m_imagePath; }
 
 protected:
     MythImageNotification(const MythImageNotification &o)
@@ -271,8 +275,8 @@ public:
     void SetProgressText(const QString &text) { m_progressText = text; }
 
     //Getter
-    float GetProgress(void)                 { return m_progress; }
-    QString GetProgressText(void)           { return m_progressText; }
+    float GetProgress(void) const           { return m_progress; }
+    QString GetProgressText(void) const     { return m_progressText; }
 
     // utility methods
     static QString stringFromSeconds(int time);
@@ -334,4 +338,24 @@ protected:
     MythMediaNotification &operator=(const MythMediaNotification&);
 };
 
+class MUI_PUBLIC MythErrorNotification : public MythImageNotification
+{
+public:
+    MythErrorNotification(const QString &title, const QString &author,
+                          const QString &details = QString())
+        : MythNotification(title, author, details), MythImageNotification(New, "error.png")
+    {
+        SetDuration(10);
+    }
+
+    virtual MythEvent *clone(void) const { return new MythErrorNotification(*this); }
+
+protected:
+    MythErrorNotification(const MythErrorNotification &o)
+        : MythNotification(o), MythImageNotification(o)
+    {
+    }
+
+    MythErrorNotification &operator=(const MythErrorNotification&);
+};
 #endif /* defined(__MythTV__mythnotification__) */
