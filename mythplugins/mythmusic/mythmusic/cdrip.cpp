@@ -247,7 +247,7 @@ void CDRipperThread::run(void)
 
     if (LCD *lcd = LCD::Get())
     {
-        QString lcd_tots = QObject::tr("Importing ") + tots;
+        QString lcd_tots = tr("Importing %1").arg(tots);
         QList<LCDTextItem> textItems;
         textItems.append(LCDTextItem(1, ALIGN_CENTERED,
                                          lcd_tots, "Generic", false));
@@ -672,7 +672,6 @@ void Ripper::ScanFinished()
     bool isCompilation = false;
     if (m_decoder)
     {
-        QString label;
         MusicMetadata *metadata;
 
         m_artistName.clear();
@@ -1116,7 +1115,6 @@ void Ripper::updateTrackList(void)
     if (m_tracks->isEmpty())
         return;
 
-    QString tmptitle;
     if (m_trackList)
     {
         m_trackList->Reset();
