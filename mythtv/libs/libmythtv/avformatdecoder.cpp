@@ -697,6 +697,8 @@ void AvFormatDecoder::SeekReset(long long newKey, uint skipFrames,
 
     DecoderBase::SeekReset(newKey, skipFrames, doflush, discardFrames);
 
+    QMutexLocker locker(avcodeclock);
+
     if (doflush)
     {
         lastapts = 0;
@@ -876,8 +878,8 @@ extern "C" void HandleStreamChange(void *data)
         QString("streams_changed 0x%1 -- stream count %2")
             .arg((uint64_t)data,0,16).arg(cnt));
 
-    QMutexLocker locker(avcodeclock);
     decoder->SeekReset(0, 0, true, true);
+    QMutexLocker locker(avcodeclock);
     decoder->ScanStreams(false);
 }
 
@@ -892,8 +894,8 @@ extern "C" void HandleDVDStreamChange(void *data)
         QString("streams_changed 0x%1 -- stream count %2")
             .arg((uint64_t)data,0,16).arg(cnt));
 
-    QMutexLocker locker(avcodeclock);
     //decoder->SeekReset(0, 0, true, true);
+    QMutexLocker locker(avcodeclock);
     decoder->ScanStreams(true);
 }
 
@@ -4681,7 +4683,8 @@ bool AvFormatDecoder::GetFrame(DecodeType decodetype)
             }
 
             int retval = 0;
-            if (!ic || ((retval = ReadPacket(ic, pkt)) < 0))
+            avcodeclock->lock();
+            if (!ic || ((retval = ReadPacket(ic, pkt, storevideoframes)) < 0))
             {
                 if (retval == -EAGAIN)
                     continue;
@@ -4690,8 +4693,10 @@ bool AvFormatDecoder::GetFrame(DecodeType decodetype)
                 delete pkt;
                 errno = -retval;
                 LOG(VB_GENERAL, LOG_ERR, QString("decoding error") + ENO);
+                avcodeclock->unlock();
                 return false;
             }
+            avcodeclock->unlock();
 
             if (waitingForChange && pkt->pos >= readAdjust)
                 FileChanged();
@@ -4856,7 +4861,7 @@ bool AvFormatDecoder::GetFrame(DecodeType decodetype)
     return true;
 }
 
-int AvFormatDecoder::ReadPacket(AVFormatContext *ctx, AVPacket *pkt)
+int AvFormatDecoder::ReadPacket(AVFormatContext *ctx, AVPacket *pkt, bool &/*storePacket*/)
 {
     return av_read_frame(ctx, pkt);
 }

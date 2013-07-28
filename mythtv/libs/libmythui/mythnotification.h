@@ -123,7 +123,7 @@ public:
     /**
      * contains the parent address. Required if id is set
      * Id provided must match the parent address as provided during the
-     * MythUINotificationCenter registration, otherwise the id value will be
+     * MythNotificationCenter registration, otherwise the id value will be
      * ignored
      */
     void SetParent(void *parent)            { m_parent = parent; }
@@ -145,7 +145,7 @@ public:
     void SetMetaData(const DMAP &data)      { m_metadata = data; }
     /**
      * contains a duration during which the notification will be displayed for.
-     * The duration is informative only as the MythUINotificationCenter will
+     * The duration is informative only as the MythNotificationCenter will
      * determine automatically how long a notification can be displayed for
      * and will depend on priority, visibility and other factors
      */
@@ -190,8 +190,6 @@ protected:
         m_visibility(o.m_visibility),              m_priority(o.m_priority)
     {
     }
-
-    MythNotification &operator=(const MythNotification&);
 
 protected:
     int         m_id;
@@ -250,8 +248,6 @@ protected:
     {
     }
 
-    MythImageNotification &operator=(const MythImageNotification&);
-
 protected:
     QImage      m_image;
     QString     m_imagePath;
@@ -307,8 +303,6 @@ protected:
     {
     }
 
-    MythPlaybackNotification &operator=(const MythPlaybackNotification&);
-
 protected:
     float       m_progress;
     QString     m_progressText;
@@ -353,8 +347,6 @@ protected:
         : MythNotification(o), MythImageNotification(o), MythPlaybackNotification(o)
     {
     }
-
-    MythMediaNotification &operator=(const MythMediaNotification&);
 };
 
 class MUI_PUBLIC MythErrorNotification : public MythNotification
