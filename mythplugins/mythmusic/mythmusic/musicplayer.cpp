@@ -73,7 +73,7 @@ MusicPlayer::MusicPlayer(QObject *parent)
     m_isPlaying = false;
     m_playMode = PLAYMODE_TRACKS;
     m_canShowPlayer = true;
-    m_wasPlaying = true;
+    m_wasPlaying = false;
     m_updatedLastplay = false;
     m_allowRestorePos = true;
 
@@ -288,6 +288,8 @@ void MusicPlayer::stop(bool stopAll)
     OutputEvent oe(OutputEvent::Stopped);
     dispatch(oe);
 
+    gCoreContext->emitTVPlaybackStopped();
+
     GetMythMainWindow()->PauseIdleTimer(false);
 }
 
@@ -317,6 +319,8 @@ void MusicPlayer::play(void)
 
     stopDecoder();
 
+    // Notify others that we are about to play
+    gCoreContext->WantingPlayback(this);
 
     if (!m_output)
     {
@@ -476,7 +480,7 @@ void MusicPlayer::nextAuto(void)
     {
         delete m_oneshotMetadata;
         m_oneshotMetadata = NULL;
-        play();
+        stop(true);
         return;
     }
 
@@ -790,24 +794,33 @@ void MusicPlayer::customEvent(QEvent *event)
     }
     else if (event->type() == DecoderEvent::Finished)
     {
-        if (m_playMode == PLAYMODE_TRACKS && m_currentMetadata &&
-            m_currentTime != m_currentMetadata->Length() / 1000)
+        if (m_oneshotMetadata)
         {
-            LOG(VB_GENERAL, LOG_NOTICE, QString("MusicPlayer: Updating track length was %1s, should be %2s")
-                .arg(m_currentMetadata->Length() / 1000).arg(m_currentTime));
-
-            m_currentMetadata->setLength(m_currentTime * 1000);
-            m_currentMetadata->dumpToDatabase();
-
-            // this will update any track lengths displayed on screen
-            gPlayer->sendMetadataChangedEvent(m_currentMetadata->ID());
-
-            // this will force the playlist stats to update
-            MusicPlayerEvent me(MusicPlayerEvent::TrackChangeEvent, m_currentTrack);
-            dispatch(me);
+            delete m_oneshotMetadata;
+            m_oneshotMetadata = NULL;
+            stop(true);
         }
+        else
+        {
+            if (m_playMode == PLAYMODE_TRACKS && m_currentMetadata &&
+                m_currentTime != m_currentMetadata->Length() / 1000)
+            {
+                LOG(VB_GENERAL, LOG_NOTICE, QString("MusicPlayer: Updating track length was %1s, should be %2s")
+                    .arg(m_currentMetadata->Length() / 1000).arg(m_currentTime));
 
-        nextAuto();
+                m_currentMetadata->setLength(m_currentTime * 1000);
+                m_currentMetadata->dumpToDatabase();
+
+                // this will update any track lengths displayed on screen
+                gPlayer->sendMetadataChangedEvent(m_currentMetadata->ID());
+
+                // this will force the playlist stats to update
+                MusicPlayerEvent me(MusicPlayerEvent::TrackChangeEvent, m_currentTrack);
+                dispatch(me);
+            }
+
+            nextAuto();
+        }
     }
     else if (event->type() == DecoderEvent::Stopped)
     {
@@ -1368,6 +1381,13 @@ void MusicPlayer::decoderHandlerReady(void)
         cddecoder->setDevice(gCDdevice);
 #endif
 
+    // Decoder thread can't be running while being initialized
+    if (getDecoder()->isRunning())
+    {
+        getDecoder()->stop();
+        getDecoder()->wait();
+    }
+
     getDecoder()->setOutput(m_output);
     //getDecoder()-> setBlockSize(2 * 1024);
     getDecoder()->addListener(this);
@@ -1400,7 +1420,7 @@ void MusicPlayer::decoderHandlerReady(void)
 
         getDecoder()->start();
 
-        if (m_resumeMode == RESUME_EXACT &&
+        if (!m_oneshotMetadata && m_resumeMode == RESUME_EXACT &&
             gCoreContext->GetNumSetting("MusicBookmarkPosition", 0) > 0)
         {
             seek(gCoreContext->GetNumSetting("MusicBookmarkPosition", 0));

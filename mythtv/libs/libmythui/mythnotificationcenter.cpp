@@ -6,12 +6,14 @@
 //  Copyright (c) 2013 Bubblestuff Pty Ltd. All rights reserved.
 //
 
+// Qt headers
 #include <QCoreApplication>
 #include <QEvent>
 #include <QObject>
 #include <QThread>
 #include <QTimer>
 
+// MythTV headers
 #include "mythcorecontext.h"
 #include "mythmainwindow.h"
 
@@ -409,7 +411,7 @@ void MythNotificationScreen::Init(void)
         else if (!m_image.isNull())
         {
             // We don't have a path to the image, but the image itself
-            MythImage *img = new MythImage(m_artworkImage->GetPainter());
+            MythImage *img = m_artworkImage->GetPainter()->GetFormatImage();
             img->Assign(m_image);
             m_artworkImage->SetImage(img);
             img->DecrRef();
@@ -1494,7 +1496,8 @@ void ShowNotification(MythNotification::Type type,
     DMAP data;
 
     data["minm"] = msg;
-    data["asar"] = origin.isNull() ? QObject::tr("MythTV") : origin;
+    data["asar"] = origin.isNull() ? QCoreApplication::translate("(Common)",
+                                                                 "MythTV") : origin;
     data["asal"] = detail;
     data["asfm"] = extra;
 
