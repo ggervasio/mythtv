@@ -15,9 +15,13 @@ using std::getenv;
 #include <QNetworkReply>
 #include <QNetworkProxy>
 #include <QNetworkDiskCache>
+#ifndef QT_NO_OPENSSL
 #include <QSslConfiguration>
 #include <QSslError>
 #include <QSslSocket>
+#include <QSslKey>
+#endif
+#include <QFile>
 #include <QUrl>
 #include <QThread>
 #include <QMutexLocker>
@@ -45,6 +49,7 @@ using std::getenv;
  */
 static QAtomicInt s_nRequest(1); // Unique NetStream request ID
 static QMutex s_mtx; // Guard local static data e.g. NAMThread singleton
+const qint64 kMaxBuffer = 4 * 1024 * 1024L; // 0= unlimited, 1MB => 4secs @ 1.5Mbps
 
 
 /*
@@ -87,14 +92,16 @@ public:
 /**
  * Network streaming request
  */
-NetStream::NetStream(const QUrl &url, EMode mode /*= kPreferCache*/) :
+NetStream::NetStream(const QUrl &url, EMode mode /*= kPreferCache*/,
+        const QByteArray &cert) :
     m_id(s_nRequest.fetchAndAddRelaxed(1)),
     m_state(kClosed),
     m_pending(0),
     m_reply(0),
     m_nRedirections(0),
     m_size(-1),
-    m_pos(0)
+    m_pos(0),
+    m_cert(cert)
 {
     setObjectName("NetStream " + url.toString());
 
@@ -169,7 +176,7 @@ bool NetStream::Request(const QUrl& url)
 
     if (m_reply)
     {
-        // Abort the current request
+        // Abort the current reply
         // NB the abort method appears to only work if called from NAMThread
         m_reply->disconnect(this);
         NAMThread::PostEvent(new NetStreamAbort(m_id, m_reply));
@@ -187,19 +194,75 @@ bool NetStream::Request(const QUrl& url)
         m_request.setRawHeader("Range", QString("bytes=%1-").arg(m_pos).toLatin1());
 
 #ifndef QT_NO_OPENSSL
-#if 1 // The BBC use a self certified cert so don't verify it
     if (m_request.url().scheme() == "https")
     {
-        // TODO use cert from carousel auth.tls.<x>
         QSslConfiguration ssl(QSslConfiguration::defaultConfiguration());
-        ssl.setPeerVerifyMode(QSslSocket::VerifyNone);
+
+        QList<QSslCertificate> clist;
+        if (!m_cert.isEmpty())
+        {
+            clist = QSslCertificate::fromData(m_cert, QSsl::Der);
+            if (clist.isEmpty())
+                LOG(VB_GENERAL, LOG_WARNING, LOC + QString("Invalid certificate: %1")
+                    .arg(m_cert.toPercentEncoding().constData()) );
+        }
+
+        if (clist.isEmpty())
+            // The BBC servers use a self certified cert so don't verify it
+            ssl.setPeerVerifyMode(QSslSocket::VerifyNone);
+        else
+            ssl.setCaCertificates(clist);
+
+        // We need to provide a client certificate for the BBC,  See:
+        // openssl s_client -state -prexit -connect securegate.iplayer.bbc.co.uk:443
+        // for a list of accepted certificates
+        QString fname = gCoreContext->GetSetting("MhegClientCert", "");
+        if (!fname.isEmpty())
+        {
+            QFile f(QFile::exists(fname) ? fname : GetShareDir() + fname);
+            if (f.open(QIODevice::ReadOnly))
+            {
+                QSslCertificate cert(&f, QSsl::Pem);
+                if (!cert.isNull())
+                    ssl.setLocalCertificate(cert);
+                else
+                    LOG(VB_GENERAL, LOG_WARNING, LOC +
+                        QString("'%1' is an invalid certificate").arg(f.fileName()) );
+            }
+            else
+                LOG(VB_GENERAL, LOG_WARNING, LOC +
+                    QString("Opening client certificate '%1': %2")
+                    .arg(f.fileName()).arg(f.errorString()) );
+
+            // Get the private key
+            fname = gCoreContext->GetSetting("MhegClientKey", "");
+            if (!fname.isEmpty())
+            {
+                QFile f(QFile::exists(fname) ? fname : GetShareDir() + fname);
+                if (f.open(QIODevice::ReadOnly))
+                {
+                    QSslKey key(&f, QSsl::Rsa, QSsl::Pem, QSsl::PrivateKey,
+                        gCoreContext->GetSetting("MhegClientKeyPass", "").toAscii());
+                    if (!key.isNull())
+                        ssl.setPrivateKey(key);
+                    else
+                        LOG(VB_GENERAL, LOG_WARNING, LOC +
+                            QString("'%1' is an invalid key").arg(f.fileName()) );
+                }
+                else
+                    LOG(VB_GENERAL, LOG_WARNING, LOC +
+                        QString("Opening private key '%1': %2")
+                        .arg(f.fileName()).arg(f.errorString()) );
+            }
+        }
+
         m_request.setSslConfiguration(ssl);
     }
 #endif
-#endif
 
-    LOG(VB_FILE, LOG_INFO, LOC + QString("(%1) Requesting %2 from %3")
-        .arg(m_id).arg(m_request.url().toString()).arg(Source(m_request)) );
+    LOG(VB_FILE, LOG_INFO, LOC + QString("(%1) Request %2 bytes=%3- from %4")
+        .arg(m_id).arg(m_request.url().toString())
+        .arg(m_pos).arg(Source(m_request)) );
     m_pending = new NetStreamRequest(m_id, m_request);
     NAMThread::PostEvent(m_pending);
     return true;
@@ -217,12 +280,13 @@ void NetStream::slotRequestStarted(int id, QNetworkReply *reply)
 
     if (!m_reply)
     {
-        LOG(VB_FILE, LOG_DEBUG, LOC + QString("(%1) Started %2-").arg(m_id).arg(m_pos) );
+        LOG(VB_FILE, LOG_INFO, LOC + QString("(%1) Started 0x%2")
+            .arg(m_id).arg(quintptr(reply),0,16) );
 
         m_reply = reply;
         m_state = kStarted;
 
-        reply->setReadBufferSize(4*1024*1024L); // 0= unlimited, 1MB => 4secs @ 1.5Mbps
+        reply->setReadBufferSize(kMaxBuffer);
 
         // NB The following signals must be Qt::DirectConnection 'cos this slot
         // was connected Qt::DirectConnection so the current thread is NAMThread
@@ -296,23 +360,28 @@ void NetStream::slotReadyRead()
 
     if (m_reply)
     {
-        LOG(VB_FILE, LOG_DEBUG, LOC + QString("(%1) Ready %2 bytes")
-            .arg(m_id).arg(m_reply->bytesAvailable()) );
+        qint64 avail = m_reply->bytesAvailable();
+        LOG(VB_FILE, (avail <= 2 * kMaxBuffer) ? LOG_DEBUG :
+                (avail <= 4 * kMaxBuffer) ? LOG_INFO : LOG_WARNING,
+             LOC + QString("(%1) Ready 0x%2, %3 bytes available").arg(m_id)
+                .arg(quintptr(m_reply),0,16).arg(avail) );
 
-        if (m_size < 0)
+        if (m_size < 0 || m_state < kReady)
         {
             qlonglong first, last, len = ContentRange(m_reply, first, last);
             if (len >= 0)
             {
                 m_size = len;
-                LOG(VB_FILE, LOG_INFO, LOC + QString("(%1) range %2-%3/%4")
-                    .arg(m_id).arg(first).arg(last).arg(len) );
+                LOG(VB_FILE, LOG_INFO, LOC + QString("(%1) Ready 0x%2, range %3-%4/%5")
+                    .arg(m_id).arg(quintptr(m_reply),0,16).arg(first).arg(last).arg(len) );
             }
             else
             {
                 m_size = ContentLength(m_reply);
-                LOG(VB_FILE, LOG_INFO, LOC + QString("(%1) content length %2")
-                    .arg(m_id).arg(m_size) );
+                if (m_state < kReady || m_size >= 0)
+                    LOG(VB_FILE, LOG_INFO, LOC +
+                        QString("(%1) Ready 0x%2, content length %3")
+                        .arg(m_id).arg(quintptr(m_reply),0,16).arg(m_size) );
             }
         }
 
@@ -374,8 +443,11 @@ void NetStream::slotFinished()
 
         if (m_state == kFinished)
         {
-            LOG(VB_FILE, LOG_INFO, LOC + QString("(%1) Finished %2/%3 bytes from %4")
-                .arg(m_id).arg(m_pos).arg(m_size).arg(Source(m_reply)) );
+            if (m_size < 0)
+                m_size = m_pos + m_reply->size();
+
+            LOG(VB_FILE, LOG_INFO, LOC + QString("(%1) Finished 0x%2 %3/%4 bytes from %5")
+                .arg(m_id).arg(quintptr(m_reply),0,16).arg(m_pos).arg(m_size).arg(Source(m_reply)) );
 
             locker.unlock();
             emit Finished(this);
@@ -456,9 +528,12 @@ void NetStream::Abort()
         m_pending = 0;
     }
 
-    if (m_reply && m_reply->isRunning())
+    if (m_reply)
     {
-        LOG(VB_FILE, LOG_INFO, LOC + QString("(%1) Abort").arg(m_id) );
+        if (m_state >= kStarted && m_state < kFinished)
+            LOG(VB_FILE, LOG_INFO, LOC + QString("(%1) Abort 0x%2")
+                .arg(m_id).arg(quintptr(m_reply),0,16) );
+
         NAMThread::PostEvent(new NetStreamAbort(m_id, m_reply));
         // NAMthread will delete the reply
         m_reply = 0;
@@ -483,6 +558,9 @@ int NetStream::safe_read(void *data, unsigned sz, unsigned millisecs /* = 0 */)
         m_ready.wait(&m_mutex, millisecs - elapsed);
     }
 
+    locker.unlock();
+    QMutexLocker lockNAM(NAMThread::GetMutex());
+    locker.relock();
     if (!m_reply)
         return -1;
 
@@ -651,7 +729,7 @@ NAMThread & NAMThread::manager()
     return thread;
 }
 
-NAMThread::NAMThread() : m_bQuit(false), m_nam(0)
+NAMThread::NAMThread() : m_bQuit(false), m_mutexNAM(QMutex::Recursive), m_nam(0)
 {
     setObjectName("NAMThread");
 
@@ -683,8 +761,7 @@ void NAMThread::run()
         QDesktopServices::storageLocation(QDesktopServices::CacheLocation) );
     m_nam->setCache(cache.take());
 
-    // Setup a network proxy e.g. for TOR: socks://localhost:9050
-    // TODO get this from mythdb
+    // Setup a network proxy
     QString proxy(getenv("HTTP_PROXY"));
     if (!proxy.isEmpty())
     {
@@ -715,18 +792,25 @@ void NAMThread::run()
 
     m_running.release();
 
+    QMutexLocker lockNAM(&m_mutexNAM);
     while(!m_bQuit)
     {
         // Process NAM events
         QCoreApplication::processEvents();
 
+        lockNAM.unlock();
+
         QMutexLocker locker(&m_mutex);
         m_work.wait(&m_mutex, 100);
+
+        lockNAM.relock();
+
         while (!m_workQ.isEmpty())
         {
             QScopedPointer< QEvent > ev(m_workQ.dequeue());
             locker.unlock();
             NewRequest(ev.data());
+            locker.relock();
         }
     }
 
@@ -745,12 +829,10 @@ void NAMThread::quit()
     QThread::quit();
 }
 
-// static
-void NAMThread::PostEvent(QEvent *event)
+void NAMThread::Post(QEvent *event)
 {
-    NAMThread &m = manager();
-    QMutexLocker locker(&m.m_mutex);
-    m.m_workQ.enqueue(event);
+    QMutexLocker locker(&m_mutex);
+    m_workQ.enqueue(event);
 }
 
 bool NAMThread::NewRequest(QEvent *event)
@@ -777,8 +859,9 @@ bool NAMThread::StartRequest(NetStreamRequest *p)
 
     if (!p->m_bCancelled)
     {
-        LOG(VB_FILE, LOG_DEBUG, LOC + QString("(%1) StartRequest").arg(p->m_id) );
         QNetworkReply *reply = m_nam->get(p->m_req);
+        LOG(VB_FILE, LOG_DEBUG, LOC + QString("(%1) StartRequest 0x%2")
+            .arg(p->m_id).arg(quintptr(reply),0,16) );
         emit requestStarted(p->m_id, reply);
     }
     else
@@ -794,7 +877,8 @@ bool NAMThread::AbortRequest(NetStreamAbort *p)
         return false;
     }
 
-    LOG(VB_FILE, LOG_INFO, LOC + QString("(%1) AbortRequest").arg(p->m_id) );
+    LOG(VB_FILE, LOG_DEBUG, LOC + QString("(%1) AbortRequest 0x%2").arg(p->m_id)
+        .arg(quintptr(p->m_reply),0,16) );
     p->m_reply->abort();
     p->m_reply->disconnect();
     delete p->m_reply;

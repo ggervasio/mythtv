@@ -21,7 +21,7 @@ from __future__ import unicode_literals
 # For this script to work you need to have...
 # Python - v2.6 or later
 # mythtv python bindings installed
-# python-imaging (PIL)
+# python-imaging (PIL) or Pillow the fork of PIL
 # dvdauthor - v0.6.14
 # dvd+rw-tools - v7.1
 # cdrtools - v3.01
@@ -35,6 +35,9 @@ from __future__ import unicode_literals
 # Optional (alternate demuxer)
 # ProjectX - >=0.91
 
+# Optional (to lower the ionice level)
+# psutil
+
 #******************************************************************************
 #******************************************************************************
 #******************************************************************************
@@ -46,7 +49,7 @@ from __future__ import unicode_literals
 
 
 # version of script - change after each update
-VERSION="0.1.20130811-1"
+VERSION="0.1.20130907-2"
 
 # keep all temporary files for debugging purposes
 # set this to True before a first run through when testing
@@ -85,10 +88,10 @@ import getopt
 import traceback
 import signal
 import xml.dom.minidom
-import Image
-import ImageDraw
-import ImageFont
-import ImageColor
+from PIL import Image
+from PIL import ImageDraw
+from PIL import ImageFont
+from PIL import ImageColor
 import unicodedata
 import time
 import datetime
@@ -193,6 +196,7 @@ cpuCount = 1
 
 DB = MythTV.MythDB()
 MVID = MythTV.MythVideo(db=DB)
+Video = MythTV.Video
 
 configHostname = DB.gethostname()
 
@@ -1491,7 +1495,7 @@ def getFileInformation(file, folder):
 def WriteXMLToFile(myDOM, filename):
     #Save the XML file to disk for use later on
     f=open(filename, 'w')
-    f.write(myDOM.toxml("UTF-8"))
+    f.write(myDOM.toprettyxml(indent="    ", encoding="UTF-8"))
     f.close()
 
 
@@ -1518,11 +1522,11 @@ def preProcessFile(file, folder, count):
     else:
         fatalError("Unknown type of video file it must be 'recording', 'video' or 'file'.")
 
-    if doesFileExist(mediafile) == False:
-        fatalError("Source file does not exist: " + mediafile)
-
     if file.hasAttribute("localfilename"):
         mediafile = file.attributes["localfilename"].value
+
+    if doesFileExist(mediafile) == False:
+        fatalError("Source file does not exist: " + mediafile)
 
     getStreamInformation(mediafile, os.path.join(folder, "streaminfo.xml"), 0)
     copy(os.path.join(folder, "streaminfo.xml"), os.path.join(folder, "streaminfo_orig.xml"))
@@ -1706,8 +1710,11 @@ def getVideoSize(xmlFilename):
 def runMythtranscode(chanid, starttime, destination, usecutlist, localfile):
     """Use mythtranscode to cut commercials and/or clean up an mpeg2 file"""
 
-    rec = DB.searchRecorded(chanid=chanid, starttime=starttime).next()
-    cutlist = rec.markup.getcutlist()
+    try:
+        rec = DB.searchRecorded(chanid=chanid, starttime=starttime).next()
+        cutlist = rec.markup.getcutlist()
+    except StopIteration:
+        cutlist = []
 
     cutlist_s = ""
     if usecutlist and len(cutlist):
@@ -4827,7 +4834,8 @@ def copyRemote(files, tmpPath):
         filename = os.path.basename(tmpfile)
 
         res = runCommand("mytharchivehelper -q -q --isremote --infile " + quoteCmdArg(tmpfile))
-        if res == 2:
+        #If User wants to, copy remote files to a tmp dir
+        if res == 2 and copyremoteFiles==True:
             # file is on a remote filesystem so copy it to a local file
             write("Copying file from " + tmpfile)
             write("to " + os.path.join(localTmpPath, filename))
@@ -4838,6 +4846,18 @@ def copyRemote(files, tmpPath):
 
             # update node
             node.setAttribute("localfilename", os.path.join(localTmpPath, filename))
+        elif res == 3:
+            # file is on a remote myth backend so copy it to a local file
+            write("Copying file from " + tmpfile)
+            localfile = os.path.join(localTmpPath, filename)
+            write("to " + localfile)
+
+            # Copy file
+            if not doesFileExist(localfile):
+                runCommand("mythutil --copyfile --infile " + quoteCmdArg(tmpfile) + " --outfile " + quoteCmdArg(localfile))
+
+            # update node
+            node.setAttribute("localfilename", localfile)
     return files
 
 #############################################################
@@ -4901,13 +4921,9 @@ def processJob(job):
             if debug_secondrunthrough==False:
                 #Delete all the temporary files that currently exist
                 deleteEverythingInFolder(getTempPath())
-
-            #If User wants to, copy remote files to a tmp dir
-            if copyremoteFiles==True:
-                if debug_secondrunthrough==False:
-                    localCopyFolder=os.path.join(getTempPath(),"localcopy")
-                    os.makedirs(localCopyFolder)
-                files=copyRemote(files,getTempPath())
+                localCopyFolder=os.path.join(getTempPath(),"localcopy")
+                os.makedirs(localCopyFolder)
+            files=copyRemote(files,getTempPath())
 
             #First pass through the files to be recorded - sense check
             #we dont want to find half way through this long process that
@@ -5186,6 +5202,15 @@ def main():
 
     nicelevel = os.nice(nicelevel)
     write( "Setting process priority to %s" % nicelevel)
+
+    try:
+        import psutil
+    except ImportError:
+        write( "Cannot change ionice level")
+    else:
+        write( "Setting ionice level to idle")
+        p = psutil.Process(os.getpid())
+        p.set_ionice(psutil.IOPRIO_CLASS_IDLE)
 
     import errno
 

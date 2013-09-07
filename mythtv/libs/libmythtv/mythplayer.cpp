@@ -935,7 +935,8 @@ int MythPlayer::OpenFile(uint retries)
         MythTimer peekTimer; peekTimer.start();
         while (player_ctx->buffer->Peek(testbuf, testreadsize) != testreadsize)
         {
-            if (peekTimer.elapsed() > 1000 || bigTimer.elapsed() > timeout)
+            // NB need to allow for streams encountering network congestion
+            if (peekTimer.elapsed() > 5000  || bigTimer.elapsed() > timeout)
             {
                 LOG(VB_GENERAL, LOG_ERR, LOC +
                     QString("OpenFile(): Could not read first %1 bytes of '%2'")
@@ -3236,7 +3237,7 @@ void MythPlayer::DecoderLoop(bool pause)
                 if (((uint64_t)decoderSeek < framesPlayed) && decoder)
                     decoder->DoRewind(decoderSeek);
                 else if (decoder)
-                    decoder->DoFastForward(decoderSeek);
+                    decoder->DoFastForward(decoderSeek, !transcoding);
                 decoderSeek = -1;
                 decoderSeekLock.unlock();
             }
@@ -4437,12 +4438,8 @@ void MythPlayer::SeekForScreenGrab(uint64_t &number, uint64_t frameNum,
         }
     }
 
-    // Only do seek if we have position map
-    if (hasFullPositionMap)
-    {
-        DiscardVideoFrame(videoOutput->GetLastDecodedFrame());
-        DoJumpToFrame(number, kInaccuracyNone);
-    }
+    DiscardVideoFrame(videoOutput->GetLastDecodedFrame());
+    DoJumpToFrame(number, kInaccuracyNone);
 }
 
 /** \fn MythPlayer::GetRawVideoFrame(long long)
@@ -4502,16 +4499,17 @@ void MythPlayer::GetCodecDescription(InfoMap &infoMap)
     infoMap["videoheight"]    = QString::number(height);
     infoMap["videoframerate"] = QString::number(video_frame_rate, 'f', 2);
 
-    if (height < 480)
+    if (width < 640)
         return;
 
     bool interlaced = is_interlaced(m_scan);
-    if (height == 480 || height == 576)
-        infoMap["videodescrip"] = "SD";
+    if (width == 1920 || height == 1080 || height == 1088)
+        infoMap["videodescrip"] = interlaced ? "HD_1080_I" : "HD_1080_P";
     else if (height == 720 && !interlaced)
         infoMap["videodescrip"] = "HD_720_P";
-    else if (height == 1080 || height == 1088)
-        infoMap["videodescrip"] = interlaced ? "HD_1080_I" : "HD_1080_P";
+    else if (height >= 720)
+        infoMap["videodescrip"] = "HD";
+    else infoMap["videodescrip"] = "SD";
 }
 
 bool MythPlayer::GetRawAudioState(void) const
@@ -5004,8 +5002,7 @@ InteractiveTV *MythPlayer::GetInteractiveTV(void)
     {
         QMutexLocker locker1(&osdLock);
         QMutexLocker locker2(&itvLock);
-        if (osd)
-            interactiveTV = new InteractiveTV(this);
+        interactiveTV = new InteractiveTV(this);
     }
 #endif // USING_MHEG
     return interactiveTV;

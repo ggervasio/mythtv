@@ -64,7 +64,7 @@ static inline bool isCached(const QString& csPath)
 }
 
 // Is a file ready to read?
-bool MHInteractionChannel::CheckFile(const QString& csPath)
+bool MHInteractionChannel::CheckFile(const QString& csPath, const QByteArray &cert)
 {
     QMutexLocker locker(&m_mutex);
 
@@ -82,7 +82,7 @@ bool MHInteractionChannel::CheckFile(const QString& csPath)
 
     // Queue a request
     LOG(VB_MHEG, LOG_DEBUG, LOC + QString("CheckFile queue %1").arg(csPath));
-    QScopedPointer< NetStream > p(new NetStream(csPath));
+    QScopedPointer< NetStream > p(new NetStream(csPath, NetStream::kPreferCache, cert));
     if (!p || !p->IsOpen())
     {
         LOG(VB_MHEG, LOG_WARNING, LOC + QString("CheckFile failed %1").arg(csPath) );
@@ -97,7 +97,8 @@ bool MHInteractionChannel::CheckFile(const QString& csPath)
 
 // Read a file. -1= error, 0= OK, 1= not ready
 MHInteractionChannel::EResult
-MHInteractionChannel::GetFile(const QString &csPath, QByteArray &data)
+MHInteractionChannel::GetFile(const QString &csPath, QByteArray &data,
+        const QByteArray &cert /*=QByteArray()*/)
 {
     QMutexLocker locker(&m_mutex);
 
@@ -125,6 +126,8 @@ MHInteractionChannel::GetFile(const QString &csPath, QByteArray &data)
     {
         LOG(VB_MHEG, LOG_DEBUG, LOC + QString("GetFile cache read %1").arg(csPath) );
 
+        locker.unlock();
+
         NetStream req(csPath, NetStream::kAlwaysCache);
         if (req.WaitTillFinished(3000) && req.GetError() == QNetworkReply::NoError)
         {
@@ -137,11 +140,12 @@ MHInteractionChannel::GetFile(const QString &csPath, QByteArray &data)
         LOG(VB_MHEG, LOG_WARNING, LOC + QString("GetFile cache read failed %1").arg(csPath) );
         //return kError;
         // Retry
+        locker.relock();
     }
 
     // Queue a download
     LOG(VB_MHEG, LOG_DEBUG, LOC + QString("GetFile queue %1").arg(csPath) );
-    p.reset(new NetStream(csPath));
+    p.reset(new NetStream(csPath, NetStream::kPreferCache, cert));
     if (!p || !p->IsOpen())
     {
         LOG(VB_MHEG, LOG_WARNING, LOC + QString("GetFile failed %1").arg(csPath) );
@@ -161,11 +165,11 @@ void MHInteractionChannel::slotFinished(QObject *obj)
     if (!p)
         return;
 
-    QString url = p->Url().toString();
+    QByteArray url = p->Url().toEncoded();
 
     if (p->GetError() == QNetworkReply::NoError)
     {
-        LOG(VB_MHEG, LOG_DEBUG, LOC + QString("Finished %1").arg(url) );
+        LOG(VB_MHEG, LOG_DEBUG, LOC + QString("Finished %1").arg(url.constData()) );
     }
     else
     {
@@ -176,8 +180,9 @@ void MHInteractionChannel::slotFinished(QObject *obj)
 
     QMutexLocker locker(&m_mutex);
 
-    m_pending.remove(url);
-    m_finished.insert(url, p);
+    if (m_pending.remove(url.constData()) < 1)
+        LOG(VB_GENERAL, LOG_WARNING, LOC + QString("Finished %1 wasn't pending").arg(url.constData()) );
+    m_finished.insert(url.constData(), p);
 }
 
 /* End of file */

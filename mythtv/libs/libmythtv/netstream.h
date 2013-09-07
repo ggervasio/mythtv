@@ -33,7 +33,8 @@ class NetStream : public QObject
 
 public:
     enum EMode { kNeverCache, kPreferCache, kAlwaysCache };
-    NetStream(const QUrl &, EMode mode = kPreferCache);
+    NetStream(const QUrl &, EMode mode = kPreferCache,
+              const QByteArray &cert = QByteArray());
     virtual ~NetStream();
 
 public:
@@ -99,6 +100,7 @@ private:
     int m_nRedirections;
     qlonglong m_size;
     qlonglong m_pos;
+    QByteArray m_cert;
     QWaitCondition m_ready;
     QWaitCondition m_finished;
 };
@@ -118,7 +120,10 @@ public:
     static NAMThread & manager(); // Singleton
     virtual ~NAMThread();
 
-    static void PostEvent(QEvent *);
+    static inline void PostEvent(QEvent *e) { manager().Post(e); }
+    void Post(QEvent *event);
+
+    static inline QMutex* GetMutex() { return &manager().m_mutexNAM; }
 
     static bool isAvailable(); // is network usable
     static QDateTime GetLastModified(const QString &url);
@@ -141,8 +146,9 @@ private:
 
     volatile bool m_bQuit;
     QSemaphore m_running;
-    mutable QMutex m_mutex; // Protects r/w access to the following data
+    mutable QMutex m_mutexNAM; // Provides recursive access to m_nam
     QNetworkAccessManager *m_nam;
+    mutable QMutex m_mutex; // Protects r/w access to the following data
     QQueue< QEvent * > m_workQ;
     QWaitCondition m_work;
 };
