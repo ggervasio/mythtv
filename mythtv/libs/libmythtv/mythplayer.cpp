@@ -935,8 +935,7 @@ int MythPlayer::OpenFile(uint retries)
         MythTimer peekTimer; peekTimer.start();
         while (player_ctx->buffer->Peek(testbuf, testreadsize) != testreadsize)
         {
-            // NB need to allow for streams encountering network congestion
-            if (peekTimer.elapsed() > 5000  || bigTimer.elapsed() > timeout)
+            if (peekTimer.elapsed() > 1000 || bigTimer.elapsed() > timeout)
             {
                 LOG(VB_GENERAL, LOG_ERR, LOC +
                     QString("OpenFile(): Could not read first %1 bytes of '%2'")
@@ -3155,6 +3154,7 @@ void MythPlayer::DecoderEnd(void)
         LOG(VB_GENERAL, LOG_ERR, LOC + "Failed to stop decoder loop.");
     else
         LOG(VB_PLAYBACK, LOG_INFO, LOC + "Exited decoder loop.");
+    SetDecoder(NULL);
 }
 
 void MythPlayer::DecoderPauseCheck(void)

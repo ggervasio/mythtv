@@ -49,7 +49,7 @@ from __future__ import unicode_literals
 
 
 # version of script - change after each update
-VERSION="0.1.20130907-2"
+VERSION="0.1.20130911-5"
 
 # keep all temporary files for debugging purposes
 # set this to True before a first run through when testing
@@ -74,8 +74,8 @@ useSyncOffset = True
 # chapter marks will be set to the cut point end marks
 addCutlistChapters = False
 
-# by default we always convert any audio tracks to ac3 for better compatibility
-encodetoac3 = True
+# change this to True to always convert any audio tracks to ac3 for better compatibility
+encodetoac3 = False
 
 #*********************************************************************************
 #Dont change the stuff below!!
@@ -630,7 +630,7 @@ def getAudioParams(folder):
 # of a video file from its stream info file
 
 def getVideoParams(folder):
-    """Returns the video resolution, fps and aspect ratio for the video file from the streamindo.xml file"""
+    """Returns the video resolution, fps and aspect ratio for the video file from the streaminfo.xml file"""
 
     #open the XML containing information about this file
     infoDOM = xml.dom.minidom.parse(os.path.join(folder, 'streaminfo.xml'))
@@ -735,6 +735,20 @@ def frameToTime(frame, fps):
     mins %= 60
 
     return '%02d:%02d:%02d' % (hour, mins, sec)
+
+#############################################################
+# Convert a time string of format 00:00:00 to number of seconds
+
+def timeStringToSeconds(formatedtime):
+    parts = string.split(formatedtime, ':')
+    if len(parts) != 3:
+        return 0
+
+    sec = int(parts[2])
+    mins = int(parts[1])
+    hour = int(parts[0])
+
+    return sec + (mins * 60) + (hour * 60 * 60)
 
 #############################################################
 # Creates a set of chapter points evenly spread thoughout a file
@@ -2109,10 +2123,7 @@ def encodeNuvToMPEG2(chanid, starttime, mediafile, destvideofile, folder, profil
     outaudiosamplerate = 48000
     outaudiocodec = "ac3"
     deinterlace = 0
-    croptop = 0
-    cropright = 0
-    cropbottom = 0
-    cropleft = 0
+    filter = ""
     qmin = 5
     qmax = 31
     qdiff = 31
@@ -2136,14 +2147,8 @@ def encodeNuvToMPEG2(chanid, starttime, mediafile, destvideofile, folder, profil
             outvideores = value
         if name == "-deinterlace":
             deinterlace = 1
-        if name == "-croptop":
-            croptop = value
-        if name == "-cropright":
-            cropright = value
-        if name == "-cropbottom":
-            cropbottom = value
-        if name == "-cropleft":
-           cropleft = value
+        if name == "-filter:v":
+            filter = " -filter:v " + quoteCmdArg(value) + " "
         if name == "-qmin":
            qmin = value
         if name == "-qmax":
@@ -2192,7 +2197,7 @@ def encodeNuvToMPEG2(chanid, starttime, mediafile, destvideofile, folder, profil
     command += "-aspect %s -r %s " % (aspectratio, fps)
     if (deinterlace == 1):
         command += "-deinterlace "
-    command += "-croptop %s -cropright %s -cropbottom %s -cropleft %s " % (croptop, cropright, cropbottom, cropleft)
+    command += "%s" % filter
     command += "-s %s -b %s -vcodec mpeg2video " % (outvideores, outvideobitrate)
     command += "-qmin %s -qmax %s -qdiff %s " % (qmin, qmax, qdiff)
     command += "-ab %s -ar %s -acodec %s " % (outaudiobitrate, outaudiosamplerate, outaudiocodec)
@@ -2733,7 +2738,6 @@ def createDVDAuthorXML(screensize, numberofitems):
 
         #Pick the correct intro movie based on video format ntsc/pal
         vob = dvddom.createElement("vob")
-        vob.setAttribute("pause","")
         vob.setAttribute("file",os.path.join(getThemeFile(themeName, videomode + '_' + introFile)))
         pgc.appendChild(vob)
         del vob
@@ -2751,7 +2755,6 @@ def createDVDAuthorXML(screensize, numberofitems):
         #For each menu page we need to create a new PGC structure
         menupgc = dvddom.createElement("pgc")
         menus_element.appendChild(menupgc)
-        menupgc.setAttribute("pause","inf")
 
         menupgc.appendChild( dvddom.createComment("Menu Page %s" % page) )
 
@@ -2763,7 +2766,7 @@ def createDVDAuthorXML(screensize, numberofitems):
 
         vob = dvddom.createElement("vob")
         vob.setAttribute("file",os.path.join(getTempPath(),"menu-%s.mpg" % page))
-        menupgc.appendChild(vob)    
+        menupgc.appendChild(vob)
 
         #Loop menu forever
         post = dvddom.createElement("post")
@@ -2830,7 +2833,6 @@ def createDVDAuthorXML(screensize, numberofitems):
             if wantChapterMenu:
                 mymenupgc = dvddom.createElement("pgc")
                 menus.appendChild(mymenupgc)
-                mymenupgc.setAttribute("pause","inf")
 
                 pre = dvddom.createElement("pre")
                 mymenupgc.appendChild(pre)
@@ -2852,16 +2854,14 @@ def createDVDAuthorXML(screensize, numberofitems):
                 # throws of the chapter selection - so make sure we add it if needed so we
                 # can compensate for it in the chapter selection menu 
                 firstChapter = 0
-                thumbNode = infoDOM.getElementsByTagName("thumblist")
-                if thumbNode.length > 0:
-                    thumblist = getText(thumbNode[0])
-                    chapterlist = string.split(thumblist, ",")
-                    if chapterlist[0] != '00:00:00':
-                        firstChapter = 1
-                x=1
-                while x<=chapters:
+                thumblist = createVideoChapters(itemnum, chapters, getLengthOfVideo(itemnum), False)
+                chapterlist = string.split(thumblist, ",")
+                if chapterlist[0] != '00:00:00':
+                    firstChapter = 1
+                x = 1
+                while x <= chapters:
                     #Add this recording to this page's menu...
-                    button=dvddom.createElement("button")
+                    button = dvddom.createElement("button")
                     button.setAttribute("name","%s" % x)
                     if wantDetailsPage: 
                         button.appendChild(dvddom.createTextNode("jump title %s chapter %s;" % (1, firstChapter + x + 1)))
@@ -2870,7 +2870,7 @@ def createDVDAuthorXML(screensize, numberofitems):
 
                     mymenupgc.appendChild(button)
                     del button
-                    x+=1
+                    x += 1
 
                 #add the titlemenu button if required
                 submenunode = themeDOM.getElementsByTagName("submenu")
@@ -2910,7 +2910,6 @@ def createDVDAuthorXML(screensize, numberofitems):
 
             pgc = dvddom.createElement("pgc")
             titles.appendChild(pgc)
-            #pgc.setAttribute("pause","inf")
 
             if wantDetailsPage:
                 #add the detail page intro for this item
@@ -2920,11 +2919,11 @@ def createDVDAuthorXML(screensize, numberofitems):
 
             vob = dvddom.createElement("vob")
             if wantChapterMenu:
-                vob.setAttribute("chapters",
-                    createVideoChapters(itemnum,
-                                        chapters,
-                                        getLengthOfVideo(itemnum),
-                                        False))
+                thumblist = createVideoChapters(itemnum, chapters, getLengthOfVideo(itemnum), False)
+                chapterlist = string.split(thumblist, ",")
+                if chapterlist[0] != '00:00:00':
+                    thumblist = '00:00:00,' + thumblist
+                vob.setAttribute("chapters", thumblist)
             else:
                 vob.setAttribute("chapters", 
                     createVideoChaptersFixedLength(itemnum,
@@ -3106,7 +3105,6 @@ def createDVDAuthorXMLNoMenus(screensize, numberofitems):
 
     # create menu 2 - dummy menu that allows us to jump to each titleset in sequence
     menu_pgc = dvddom.createElement("pgc")
-    menu_pgc.setAttribute("pause", "0")
 
     preText = "if (g1==0) g1=1;"
     for i in range(numberofitems):
@@ -3133,7 +3131,6 @@ def createDVDAuthorXMLNoMenus(screensize, numberofitems):
         menu = dvddom.createElement("menus")
         menupgc = dvddom.createElement("pgc")
         menu.appendChild(menupgc)
-        menupgc.setAttribute("pause","0")
         titleset.appendChild(menu)
 
         if wantDetailsPage:
@@ -3770,7 +3767,6 @@ def createChapterMenu(screensize, screendpi, numberofitems):
 
         haspreview = False
 
-        previewsegment=int(getLengthOfVideo(page) / itemsperpage)
         previewtime = 0
         previewchapter = 0
         previewx = []
@@ -3781,6 +3777,8 @@ def createChapterMenu(screensize, screendpi, numberofitems):
 
         while previewchapter < itemsperpage:
             menuitem=menuitems[ previewchapter ]
+
+            previewtime = timeStringToSeconds(chapterlist[previewchapter])
 
             #generate the preview if required (px=9999 means not required)
             px, py, pw, ph, maskimage = generateVideoPreview(page, previewchapter, menuitem, previewtime, menulength, previewfolder)
@@ -3794,7 +3792,6 @@ def createChapterMenu(screensize, screendpi, numberofitems):
                 haspreview = True
 
             previewchapter+=1
-            previewtime+=previewsegment
 
         #Loop through all the items on this menu page
         chapter=0
@@ -5020,20 +5017,22 @@ def processJob(job):
             if infoDOM.documentElement.tagName != "fileinfo":
                 fatalError("The info.xml file (%s) doesn't look right" % os.path.join(folder,"info.xml"))
             title = expandItemText(infoDOM,"%title",1,0,0,0,0)
-
             # replace all non-ascii-characters
-            title.encode('ascii', 'replace').decode('ascii', 'replace')
-            title.strip()
+            title = title.encode('ascii', 'replace').decode('ascii', 'replace')
+            title = title.strip()
+
             # replace not-allowed characters
             index = 0
             title_new = ''
-            while (index < len(title)) and (index<=7):
+            while (index < len(title)) and (index < 32):
                 if title[index].isalnum and title[index] != ' ':
                     title_new += title[index]
                 else:
                     title_new += '_'
                 index = index + 1
+
             title = title_new.upper()
+
             if len(title) < 1:
                 title = 'UNNAMED'
 

@@ -15,6 +15,7 @@
 #include "mythdirs.h"
 #include "myth_imgconvert.h"
 #include "mythlogging.h"
+#include "mythmainwindow.h"
 
 static bool       ft_loaded = false;
 static FT_Library ft_library;
@@ -162,8 +163,13 @@ void MHIContext::Restart(int chanid, int sourceid, bool isLive)
         QString("[mhi] Restart ch=%1 source=%2 live=%3 tuneinfo=0x%4")
         .arg(chanid).arg(sourceid).arg(isLive).arg(tuneinfo,0,16));
 
-    m_currentSource = sourceid;
-    m_currentStream = chanid ? chanid : -1;
+    if (m_currentSource != (int)sourceid)
+    {
+        m_currentSource = sourceid;
+        QMutexLocker locker(&m_channelMutex);
+        m_channelCache.clear();
+    }
+    m_currentStream = (chanid) ? (int)chanid : -1;
     if (!(tuneinfo & kTuneKeepChnl))
         m_currentChannel = m_currentStream;
 
@@ -431,13 +437,10 @@ bool MHIContext::GetCarouselData(QString objectPath, QByteArray &result)
     // same thread this is safe.  Otherwise we need to make a deep copy of
     // the result.
 
-    QMutexLocker locker(&m_runLock);
     bool bReported = false;
     QTime t; t.start();
     while (!m_stop)
     {
-        locker.unlock();
-
         if (isIC)
         {
             switch (m_ic.GetFile(objectPath, result, cert))
@@ -484,9 +487,7 @@ bool MHIContext::GetCarouselData(QString objectPath, QByteArray &result)
         // some more packets.  We should eventually find out if this item is
         // present.
         ProcessDSMCCQueue();
-
-        locker.relock();
-        m_engine_wait.wait(locker.mutex(), 300);
+        m_engine_wait.wait(&m_runLock, 300);
     }
     return false; // Stop has been set.  Say the object isn't present.
 }
@@ -512,8 +513,9 @@ private:
 void MHKeyLookup::key(const QString &name, int code, int r1,
     int r2, int r3, int r4, int r5, int r6, int r7, int r8, int r9)
 {
-    m_map.insert(key_t(name,r1), code);
-    if (r2 > 0) 
+    if (r1 > 0)
+      m_map.insert(key_t(name,r1), code);
+    if (r2 > 0)
         m_map.insert(key_t(name,r2), code);
     if (r3 > 0) 
         m_map.insert(key_t(name,r3), code);
@@ -533,6 +535,13 @@ void MHKeyLookup::key(const QString &name, int code, int r1,
 
 MHKeyLookup::MHKeyLookup()
 {
+    // Use a modification of the standard key mapping for RC's with a single
+    // stop button which is used for both Esc and TEXTEXIT (Back).
+    // This mapping doesn't pass Esc to the MHEG app in registers 3 or 5 and
+    // hence allows the user to exit playback when the red button icon is shown
+    QStringList keylist = GET_KEY("TV Playback", "TEXTEXIT").split(QChar(','));
+    bool strict = !keylist.contains("Esc", Qt::CaseInsensitive);
+
     // This supports the UK and NZ key profile registers.
     // The UK uses 3, 4 and 5 and NZ 13, 14 and 15.  These are
     // similar but the NZ profile also provides an EPG key.
@@ -553,7 +562,7 @@ MHKeyLookup::MHKeyLookup()
     key(ACTION_8,           13, 4,6,7,14);
     key(ACTION_9,           14, 4,6,7,14);
     key(ACTION_SELECT,      15, 4,5,6,7,14,15);
-    key(ACTION_TEXTEXIT,    16, 3,4,5,6,7,13,14,15); // 16= Cancel
+    key(ACTION_TEXTEXIT,    16, strict ? 3 : 0,4,strict ? 5 : 0,6,7,13,14,15); // 16= Cancel
     // 17= help
     // 18..99 reserved by DAVIC
     key(ACTION_MENURED,    100, 3,4,5,6,7,13,14,15);
@@ -593,9 +602,10 @@ bool MHIContext::OfferKey(QString key)
         .arg(key).arg(action).arg(m_keyQueue.size()) );
     { QMutexLocker locker(&m_keyLock);
     m_keyQueue.enqueue(action);}
-    QMutexLocker locker2(&m_runLock);
     m_engine_wait.wakeAll();
-    return true;
+    // Accept the key except 'exit' (16) in 'always available' (3) state.
+    // This allows re-use of Esc as TEXTEXIT for RC's with a single backup button
+    return action != 16 || m_keyProfile != 3;
 }
 
 // Called from MythPlayer::VideoStart and MythPlayer::ReinitOSD
@@ -802,6 +812,34 @@ void MHIContext::DrawVideo(const QRect &videoRect, const QRect &dispRect)
     }
 }
 
+// Caller must hold m_channelMutex
+bool MHIContext::LoadChannelCache()
+{
+    MSqlQuery query(MSqlQuery::InitCon());
+    query.prepare(
+        "SELECT networkid, serviceid, transportid, chanid "
+        "FROM channel, dtv_multiplex "
+        "WHERE channel.mplexid  = dtv_multiplex.mplexid "
+        "  AND channel.sourceid = dtv_multiplex.sourceid "
+        "  AND channel.sourceid = :SOURCEID ;" );
+    query.bindValue(":SOURCEID", m_currentSource);
+    if (!query.exec())
+    {
+        MythDB::DBError("MHIContext::LoadChannelCache", query);
+        return false;
+    }
+    else if (!query.isActive())
+        return false;
+    else while (query.next())
+    {
+        int nid = query.value(0).toInt();
+        int sid = query.value(1).toInt();
+        int tid = query.value(2).toInt();
+        int cid = query.value(3).toInt();
+        m_channelCache.insertMulti( Key_t(nid, sid), Val_t(tid, cid) );
+    }
+    return true;
+}
 
 // Tuning.  Get the index corresponding to a given channel.
 // The format of the service is dvb://netID.[transPortID].serviceID
@@ -813,52 +851,43 @@ int MHIContext::GetChannelIndex(const QString &str)
 {
     int nResult = -1;
 
-    if (str.startsWith("dvb://"))
+    do if (str.startsWith("dvb://"))
     {
         QStringList list = str.mid(6).split('.');
-        MSqlQuery query(MSqlQuery::InitCon());
         if (list.size() != 3)
-            goto get_channel_index_end; // Malformed.
+            break; // Malformed.
         // The various fields are expressed in hexadecimal.
         // Convert them to decimal for the DB.
         bool ok;
         int netID = list[0].toInt(&ok, 16);
         if (!ok)
-            goto get_channel_index_end;
+            break;
+        int transportID = !list[1].isEmpty() ? list[1].toInt(&ok, 16) : -1;
+        if (!ok)
+            break;
         int serviceID = list[2].toInt(&ok, 16);
         if (!ok)
-            goto get_channel_index_end;
-        // We only return channels that match the current capture source.
-        if (list[1].isEmpty()) // TransportID is not specified
+            break;
+
+        QMutexLocker locker(&m_channelMutex);
+        if (m_channelCache.isEmpty())
+            LoadChannelCache();
+
+        ChannelCache_t::const_iterator it = m_channelCache.find(
+            Key_t(netID,serviceID) );
+        if (it == m_channelCache.end())
+            break;
+        else if (transportID < 0)
+            nResult = Cid(it);
+        else do
         {
-            query.prepare(
-                "SELECT chanid "
-                "FROM channel, dtv_multiplex "
-                "WHERE networkid        = :NETID AND"
-                "      channel.mplexid  = dtv_multiplex.mplexid AND "
-                "      serviceid        = :SERVICEID AND "
-                "      channel.sourceid = :SOURCEID");
+            if (Tid(it) == transportID)
+            {
+                nResult = Cid(it);
+                break;
+            }
         }
-        else
-        {
-            int transportID = list[1].toInt(&ok, 16);
-            if (!ok)
-                goto get_channel_index_end;
-            query.prepare(
-                "SELECT chanid "
-                "FROM channel, dtv_multiplex "
-                "WHERE networkid        = :NETID AND"
-                "      channel.mplexid  = dtv_multiplex.mplexid AND "
-                "      serviceid        = :SERVICEID AND "
-                "      transportid      = :TRANSID AND "
-                "      channel.sourceid = :SOURCEID");
-            query.bindValue(":TRANSID", transportID);
-        }
-        query.bindValue(":NETID", netID);
-        query.bindValue(":SERVICEID", serviceID);
-        query.bindValue(":SOURCEID", m_currentSource);
-        if (query.exec() && query.isActive() && query.next())
-            nResult = query.value(0).toInt();
+        while (++it != m_channelCache.end());
     }
     else if (str.startsWith("rec://svc/lcn/"))
     {
@@ -866,7 +895,7 @@ int MHIContext::GetChannelIndex(const QString &str)
         bool ok;
         int channelNo = str.mid(14).toInt(&ok); // Decimal integer
         if (!ok)
-            goto get_channel_index_end;
+            break;
         MSqlQuery query(MSqlQuery::InitCon());
         query.prepare("SELECT chanid "
                       "FROM channel "
@@ -887,32 +916,35 @@ int MHIContext::GetChannelIndex(const QString &str)
             QString("[mhi] GetChannelIndex -- Unrecognized URL %1")
             .arg(str));
     }
+    while (0);
 
-  get_channel_index_end:
     LOG(VB_MHEG, LOG_INFO, QString("[mhi] GetChannelIndex %1 => %2")
         .arg(str).arg(nResult));
     return nResult;
+
 }
 
 // Get netId etc from the channel index.  This is the inverse of GetChannelIndex.
 bool MHIContext::GetServiceInfo(int channelId, int &netId, int &origNetId,
                                 int &transportId, int &serviceId)
 {
-    MSqlQuery query(MSqlQuery::InitCon());
-    query.prepare("SELECT networkid, transportid, serviceid "
-                  "FROM channel, dtv_multiplex "
-                  "WHERE chanid           = :CHANID AND "
-                  "      channel.mplexid  = dtv_multiplex.mplexid");
-    query.bindValue(":CHANID", channelId);
-    if (query.exec() && query.isActive() && query.next())
+    QMutexLocker locker(&m_channelMutex);
+    if (m_channelCache.isEmpty())
+        LoadChannelCache();
+
+    for ( ChannelCache_t::const_iterator it = m_channelCache.begin();
+        it != m_channelCache.end(); ++it)
     {
-        netId = query.value(0).toInt();
-        origNetId = netId; // We don't have this in the database.
-        transportId = query.value(1).toInt();
-        serviceId = query.value(2).toInt();
-        LOG(VB_MHEG, LOG_INFO, QString("[mhi] GetServiceInfo %1 => NID=%2 TID=%3 SID=%4")
-            .arg(channelId).arg(netId).arg(transportId).arg(serviceId));
-        return true;
+        if (Cid(it) == channelId)
+        {
+            transportId = Tid(it);
+            netId = Nid(it);
+            origNetId = netId; // We don't have this in the database.
+            serviceId = Sid(it);
+            LOG(VB_MHEG, LOG_INFO, QString("[mhi] GetServiceInfo %1 => NID=%2 TID=%3 SID=%4")
+                .arg(channelId).arg(netId).arg(transportId).arg(serviceId));
+            return true;
+        }
     }
 
     LOG(VB_MHEG, LOG_WARNING, QString("[mhi] GetServiceInfo %1 failed").arg(channelId));
@@ -997,7 +1029,7 @@ void MHIContext::EndStream()
 // Callback from MythPlayer when a stream starts or stops
 bool MHIContext::StreamStarted(bool bStarted)
 {
-    if (!m_engine || !m_notify)
+    if (!m_notify)
         return false;
 
     LOG(VB_MHEG, LOG_INFO, QString("[mhi] Stream 0x%1 %2")
@@ -1023,7 +1055,7 @@ bool MHIContext::BeginAudio(int tag)
         return m_parent->GetNVP()->SetAudioByComponentTag(tag);
     return false;
  }
-
+ 
 // Stop playing audio
 void MHIContext::StopAudio()
 {
@@ -1037,13 +1069,13 @@ bool MHIContext::BeginVideo(int tag)
 
     if (tag < 0)
         return true; // Leave it at the default.
-
+ 
     m_videoTag = tag;
     if (m_parent->GetNVP())
         return m_parent->GetNVP()->SetVideoByComponentTag(tag);
     return false;
 }
-
+ 
  // Stop displaying video
 void MHIContext::StopVideo()
 {
