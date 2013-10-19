@@ -165,6 +165,7 @@ MythPlayer::MythPlayer(PlayerFlags flags)
       fftime(0),
       // Playback misc.
       videobuf_retries(0),          framesPlayed(0),
+      framesPlayedExtra(0),
       totalFrames(0),               totalLength(0),
       totalDuration(0),
       rewindtime(0),
@@ -376,7 +377,7 @@ bool MythPlayer::Pause(void)
         if (FlagIsSet(kVideoIsNull) && decoder)
             decoder->UpdateFramesPlayed();
         else if (videoOutput && !FlagIsSet(kVideoIsNull))
-            framesPlayed = videoOutput->GetFramesPlayed();
+            framesPlayed = videoOutput->GetFramesPlayed() + framesPlayedExtra;
     }
     pauseLock.unlock();
     return already_paused;
@@ -1027,6 +1028,7 @@ int MythPlayer::OpenFile(uint retries)
 void MythPlayer::SetFramesPlayed(uint64_t played)
 {
     framesPlayed = played;
+    framesPlayedExtra = 0;
     if (videoOutput)
         videoOutput->SetFramesPlayed(played);
 }
@@ -1997,6 +1999,13 @@ void MythPlayer::AVSync(VideoFrame *buffer, bool limit_delay)
                     LOG(VB_PLAYBACK | VB_TIMESTAMP, LOG_INFO, LOC +
                         QString("A/V delay %1").arg(delta));
                     avsync_adjustment += frame_interval;
+                    // If we're duplicating a frame, it may be because
+                    // the container frame rate doesn't match the
+                    // stream frame rate.  In this case, we increment
+                    // the fake frame counter so that avformat
+                    // timestamp-based seeking will work.
+                    if (!decoder->HasPositionMap())
+                        ++framesPlayedExtra;
                 }
             }
             prevtc = timecode;
@@ -2404,7 +2413,7 @@ bool MythPlayer::VideoLoop(void)
     else if (decoder && decoder->GetEof() != kEofStateNone)
         ++framesPlayed;
     else
-        framesPlayed = videoOutput->GetFramesPlayed();
+        framesPlayed = videoOutput->GetFramesPlayed() + framesPlayedExtra;
     return !IsErrored();
 }
 
@@ -2490,7 +2499,7 @@ void MythPlayer::ResetPlaying(bool resetframes)
     ClearAfterSeek();
     ffrew_skip = 1;
     if (resetframes)
-        framesPlayed = 0;
+        framesPlayed = framesPlayedExtra = 0;
     if (decoder)
     {
         decoder->Reset(true, true, true);
@@ -2763,6 +2772,7 @@ bool MythPlayer::StartPlaying(void)
     }
 
     framesPlayed = 0;
+    framesPlayedExtra = 0;
     rewindtime = fftime = 0;
     next_play_speed = audio.GetStretchFactor();
     jumpchapter = 0;
@@ -4541,6 +4551,7 @@ void MythPlayer::InitForTranscode(bool copyaudio, bool copyvideo)
     }
 
     framesPlayed = 0;
+    framesPlayedExtra = 0;
     ClearAfterSeek();
 
     if (copyvideo && decoder)
@@ -4998,7 +5009,7 @@ int64_t MythPlayer::GetChapter(int chapter)
 InteractiveTV *MythPlayer::GetInteractiveTV(void)
 {
 #ifdef USING_MHEG
-    if (!interactiveTV && itvEnabled)
+    if (!interactiveTV && itvEnabled && !FlagIsSet(kNoITV))
     {
         QMutexLocker locker1(&osdLock);
         QMutexLocker locker2(&itvLock);

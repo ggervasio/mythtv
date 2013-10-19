@@ -1618,17 +1618,17 @@ void TV::GetStatus(void)
                 status.insert("brightness",
                   vo->GetPictureAttribute(kPictureAttribute_Brightness));
             }
-            if (supp & kPictureAttributeSupported_Brightness)
+            if (supp & kPictureAttributeSupported_Contrast)
             {
                 status.insert("contrast",
                   vo->GetPictureAttribute(kPictureAttribute_Contrast));
             }
-            if (supp & kPictureAttributeSupported_Brightness)
+            if (supp & kPictureAttributeSupported_Colour)
             {
                 status.insert("colour",
                   vo->GetPictureAttribute(kPictureAttribute_Colour));
             }
-            if (supp & kPictureAttributeSupported_Brightness)
+            if (supp & kPictureAttributeSupported_Hue)
             {
                 status.insert("hue",
                   vo->GetPictureAttribute(kPictureAttribute_Hue));
@@ -8574,7 +8574,7 @@ void TV::DoEditSchedule(int editType)
     const ProgramInfo pginfo(*actx->playingInfo);
     uint    chanid  = pginfo.GetChanID();
     QString channum = pginfo.GetChanNum();
-    QDateTime starttime = pginfo.GetScheduledStartTime();
+    QDateTime starttime = MythDate::current();
     actx->UnlockPlayingInfo(__FILE__, __LINE__);
 
     ClearOSD(actx);

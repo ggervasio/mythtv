@@ -425,16 +425,6 @@ void MainServer::NewConnection(int socketDescriptor)
 
 void MainServer::readyRead(MythSocket *sock)
 {
-    sockListLock.lockForRead();
-    PlaybackSock *testsock = GetPlaybackBySock(sock);
-    bool expecting_reply = testsock && testsock->isExpectingReply();
-    sockListLock.unlock();
-    if (expecting_reply)
-    {
-        LOG(VB_GENERAL, LOG_INFO, "readyRead ignoring, expecting reply");
-        return;
-    }
-
     threadPool.startReserved(
         new ProcessRequestRunnable(*this, sock),
         "ProcessRequest", PRT_TIMEOUT);
@@ -6267,6 +6257,9 @@ void MainServer::reconnectTimeout(void)
         }
     }
 
+    // Calling SendReceiveStringList() with callbacks enabled is asking for
+    // trouble, our reply might be swallowed by readyRead
+    masterServerSock->SetReadyReadCallbackEnabled(false);
     if (!masterServerSock->SendReceiveStringList(strlist, 1) ||
         (strlist[0] == "ERROR"))
     {
@@ -6288,6 +6281,7 @@ void MainServer::reconnectTimeout(void)
         masterServerReconnect->start(kMasterServerReconnectTimeout);
         return;
     }
+    masterServerSock->SetReadyReadCallbackEnabled(true);
 
     masterServer = new PlaybackSock(this, masterServerSock, server,
                                     kPBSEvents_Normal);
@@ -6300,7 +6294,7 @@ void MainServer::reconnectTimeout(void)
 
 // returns true, if a client (slavebackends are not counted!)
 // is connected by checking the lists.
-bool MainServer::isClientConnected()
+bool MainServer::isClientConnected(bool onlyBlockingClients)
 {
     bool foundClient = false;
 
@@ -6311,10 +6305,16 @@ bool MainServer::isClientConnected()
     vector<PlaybackSock *>::iterator it = playbackList.begin();
     for (; !foundClient && (it != playbackList.end()); ++it)
     {
-        // we simply ignore slaveBackends!
-        // and clients that don't want to block shutdown
-        if (!(*it)->isSlaveBackend() && (*it)->getBlockShutdown())
-            foundClient = true;
+        // Ignore slave backends
+        if ((*it)->isSlaveBackend())
+            continue;
+
+        // If we are only interested in blocking clients then ignore
+        // non-blocking ones
+        if (onlyBlockingClients && !(*it)->getBlockShutdown())
+            continue;
+
+        foundClient = true;
     }
 
     sockListLock.unlock();

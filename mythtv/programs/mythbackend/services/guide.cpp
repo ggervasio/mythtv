@@ -229,15 +229,41 @@ QFileInfo Guide::GetChannelIcon( int nChanId,
     if (sFileName.isEmpty())
         return QFileInfo();
 
-    if ((nWidth <= 0) && (nHeight <= 0))
+    // ------------------------------------------------------------------
+    // Search for the filename
+    // ------------------------------------------------------------------
+
+    StorageGroup storage( "ChannelIcons" );
+    QString sFullFileName = storage.FindFile( sFileName );
+
+    if (sFullFileName.isEmpty())
     {
-        // Use default pixmap
-        return QFileInfo( sFileName );  
+        LOG(VB_UPNP, LOG_ERR,
+            QString("GetImageFile - Unable to find %1.").arg(sFileName));
+
+        return QFileInfo();
     }
 
+    // ----------------------------------------------------------------------
+    // check to see if the file (still) exists
+    // ----------------------------------------------------------------------
+
+    if ((nWidth == 0) && (nHeight == 0))
+    {
+        if (QFile::exists( sFullFileName ))
+        {
+            return QFileInfo( sFullFileName );
+        }
+
+        LOG(VB_UPNP, LOG_ERR,
+            QString("GetImageFile - File Does not exist %1.").arg(sFullFileName));
+
+        return QFileInfo();
+    }
+    // -------------------------------------------------------------------
 
     QString sNewFileName = QString( "%1.%2x%3.png" )
-                              .arg( sFileName )
+                              .arg( sFullFileName )
                               .arg( nWidth    )
                               .arg( nHeight   );
 
@@ -254,7 +280,7 @@ QFileInfo Guide::GetChannelIcon( int nChanId,
 
     float fAspect = 0.0;
 
-    QImage *pImage = new QImage( sFileName );
+    QImage *pImage = new QImage( sFullFileName );
 
     if (!pImage)
         return QFileInfo();
