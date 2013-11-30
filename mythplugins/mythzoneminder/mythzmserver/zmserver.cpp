@@ -49,7 +49,7 @@
 #include "zmserver.h"
 
 // the version of the protocol we understand
-#define ZM_PROTOCOL_VERSION "9"
+#define ZM_PROTOCOL_VERSION "10"
 
 // the maximum image size we are ever likely to get from ZM
 #define MAX_IMAGE_SIZE  (2048*1536*3)
@@ -65,6 +65,18 @@
 #define ERROR_INVALID_POINTERS "Cannot get shared memory pointers"
 #define ERROR_INVALID_MONITOR_FUNCTION  "Invalid Monitor Function"
 #define ERROR_INVALID_MONITOR_ENABLE_VALUE "Invalid Monitor Enable Value"
+#define ERROR_NO_FRAMES         "No frames found for event"
+
+// Subpixel ordering (from zm_rgb.h)
+// Based on byte order naming. For example, for ARGB (on both little endian or big endian)
+// byte+0 should be alpha, byte+1 should be red, and so on.
+#define ZM_SUBPIX_ORDER_NONE 2
+#define ZM_SUBPIX_ORDER_RGB 6
+#define ZM_SUBPIX_ORDER_BGR 5
+#define ZM_SUBPIX_ORDER_BGRA 7
+#define ZM_SUBPIX_ORDER_RGBA 8
+#define ZM_SUBPIX_ORDER_ABGR 9
+#define ZM_SUBPIX_ORDER_ARGB 10
 
 MYSQL   g_dbConn;
 string  g_zmversion = "";
@@ -215,7 +227,7 @@ void kickDatabase(bool debug)
 MONITOR::MONITOR(void) :
     name(""), type(""), function(""), enabled(0), device(""), host(""),
     image_buffer_count(0),  width(0), height(0), bytes_per_pixel(3), mon_id(0),
-    shared_images(NULL), last_read(0), status(""), frame_size(0), palette(0),
+    shared_images(NULL), last_read(0), status(""), palette(0),
     controllable(0), trackMotion(0), mapFile(-1), shm_ptr(NULL),
     shared_data(NULL), shared_data26(NULL), id("")
 {
@@ -223,9 +235,8 @@ MONITOR::MONITOR(void) :
 
 void MONITOR::initMonitor(bool debug, string mmapPath, int shmKey)
 {
-    frame_size = width * height * bytes_per_pixel;
-
     int shared_data_size;
+    int frame_size = width * height * bytes_per_pixel;
 
     if (checkVersion(1, 26, 0))
     {
@@ -254,7 +265,7 @@ void MONITOR::initMonitor(bool debug, string mmapPath, int shmKey)
     if (mapFile >= 0)
     {
         if (debug)
-            cout << "Opened mmap file: " << mmap_filename << endl;
+            cout << "Opened mmap file: " << mmap_filename.str() << endl;
 
         shm_ptr = mmap(NULL, shared_data_size, PROT_READ,
                        MAP_SHARED, mapFile, 0x0);
@@ -384,6 +395,27 @@ int MONITOR::getState(void)
         return shared_data->state;
 
     return shared_data26->state;
+}
+
+int MONITOR::getSubpixelOrder(void)
+{
+    if (shared_data)
+    {
+        if (bytes_per_pixel == 1)
+            return ZM_SUBPIX_ORDER_NONE;
+        else
+            return ZM_SUBPIX_ORDER_RGB;
+    }
+
+    return shared_data26->format;
+}
+
+int MONITOR::getFrameSize(void)
+{
+    if (shared_data)
+        return width * height * bytes_per_pixel;
+
+    return shared_data26->imagesize;
 }
 
 ///////////////////////////////////////////////////////////////////////
@@ -1307,6 +1339,13 @@ void ZMServer::handleGetFrameList(vector<string> tokens)
     res = mysql_store_result(&g_dbConn);
     row = mysql_fetch_row(res);
 
+    // make sure we have some frames to display
+    if (row[1] == NULL || row[2] == NULL)
+    {
+        sendError(ERROR_NO_FRAMES);
+        return;
+    }
+
     string cause = row[0];
     double length = atof(row[1]);
     int frameCount = atoi(row[2]);
@@ -1713,14 +1752,101 @@ int ZMServer::getFrame(unsigned char *buffer, int bufferSize, MONITOR *monitor)
             break;
     }
 
-    unsigned char *data = monitor->shared_images +
-            monitor->frame_size * monitor->last_read;
-
     // FIXME: should do some sort of compression JPEG??
     // just copy the data to our buffer for now
-    memcpy(buffer, data, monitor->frame_size);
 
-    return monitor->frame_size;
+    // fixup the colours if necessary we aim to always send RGB24 images
+    unsigned char *data = monitor->shared_images + monitor->getFrameSize() * monitor->last_read;
+    unsigned int rpos = 0;
+    unsigned int wpos = 0;
+
+    switch (monitor->getSubpixelOrder())
+    {
+        case ZM_SUBPIX_ORDER_NONE:
+        {
+            for (wpos = 0, rpos = 0; wpos < (unsigned int) (monitor->width * monitor->height * 3); wpos += 3, rpos += 1)
+            {
+                buffer[wpos + 0] = data[rpos + 0]; // r
+                buffer[wpos + 1] = data[rpos + 0]; // g
+                buffer[wpos + 2] = data[rpos + 0]; // b
+            }
+
+            break;
+        }
+
+        case ZM_SUBPIX_ORDER_RGB:
+        {
+            for (wpos = 0, rpos = 0; wpos < (unsigned int) (monitor->width * monitor->height * 3); wpos += 3, rpos += 3)
+            {
+                buffer[wpos + 0] = data[rpos + 0]; // r
+                buffer[wpos + 1] = data[rpos + 1]; // g
+                buffer[wpos + 2] = data[rpos + 2]; // b
+            }
+
+            break;
+        }
+
+        case ZM_SUBPIX_ORDER_BGR:
+        {
+            for (wpos = 0, rpos = 0; wpos < (unsigned int) (monitor->width * monitor->height * 3); wpos += 3, rpos += 3)
+            {
+                buffer[wpos + 0] = data[rpos + 2]; // r
+                buffer[wpos + 1] = data[rpos + 1]; // g
+                buffer[wpos + 2] = data[rpos + 0]; // b
+            }
+
+            break;
+        }
+        case ZM_SUBPIX_ORDER_BGRA:
+        {
+            for (wpos = 0, rpos = 0; wpos < (unsigned int) (monitor->width * monitor->height * 3); wpos += 3, rpos += 4)
+            {
+                buffer[wpos + 0] = data[rpos + 2]; // r
+                buffer[wpos + 1] = data[rpos + 1]; // g
+                buffer[wpos + 2] = data[rpos + 0]; // b
+            }
+
+            break;
+        }
+
+        case ZM_SUBPIX_ORDER_RGBA:
+        {
+            for (wpos = 0, rpos = 0; wpos < (unsigned int) (monitor->width * monitor->height * 3); wpos += 3, rpos += 4)
+            {
+                buffer[wpos + 0] = data[rpos + 0]; // r
+                buffer[wpos + 1] = data[rpos + 1]; // g
+                buffer[wpos + 2] = data[rpos + 2]; // b
+            }
+
+            break;
+        }
+
+        case ZM_SUBPIX_ORDER_ABGR:
+        {
+            for (wpos = 0, rpos = 0; wpos < (unsigned int) (monitor->width * monitor->height * 3); wpos += 3, rpos += 4)
+            {
+                buffer[wpos + 0] = data[rpos + 3]; // r
+                buffer[wpos + 1] = data[rpos + 2]; // g
+                buffer[wpos + 2] = data[rpos + 1]; // b
+            }
+
+            break;
+        }
+
+        case ZM_SUBPIX_ORDER_ARGB:
+        {
+            for (wpos = 0, rpos = 0; wpos < (unsigned int) (monitor->width * monitor->height * 3); wpos += 3, rpos += 4)
+            {
+                buffer[wpos + 0] = data[rpos + 1]; // r
+                buffer[wpos + 1] = data[rpos + 2]; // g
+                buffer[wpos + 2] = data[rpos + 3]; // b
+            }
+
+            break;
+        }
+    }
+
+    return monitor->width * monitor->height * 3;
 }
 
 string ZMServer::getZMSetting(const string &setting)

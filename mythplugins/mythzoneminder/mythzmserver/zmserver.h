@@ -160,7 +160,9 @@ class MONITOR
 
     string getIdStr(void);
     int getLastWriteIndex(void);
+    int getSubpixelOrder(void);
     int getState(void);
+    int getFrameSize(void);
 
     string name;
     string type;
@@ -176,7 +178,6 @@ class MONITOR
     unsigned char *shared_images;
     int last_read;
     string status;
-    int frame_size;
     int palette;
     int controllable;
     int trackMotion;

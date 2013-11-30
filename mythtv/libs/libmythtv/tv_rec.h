@@ -334,6 +334,7 @@ class MTV_PUBLIC TVRec : public SignalMonitorListener, public QRunnable
     EITScanner       *scanner;
 
     QDateTime         signalMonitorDeadline;
+    uint              signalMonitorCheckCnt;
 
     // Various threads
     /// Event processing thread, runs TVRec::run().

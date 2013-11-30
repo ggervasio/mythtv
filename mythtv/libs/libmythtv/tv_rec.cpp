@@ -127,6 +127,8 @@ TVRec::TVRec(int capturecardnum)
 bool TVRec::CreateChannel(const QString &startchannel,
                           bool enter_power_save_mode)
 {
+    LOG(VB_CHANNEL, LOG_INFO, LOC + QString("CreateChannel(%1)")
+        .arg(startchannel));
     channel = ChannelBase::CreateChannel(
         this, genOpt, dvbOpt, fwOpt,
         startchannel, enter_power_save_mode, rbFileExt);
@@ -1166,7 +1168,7 @@ void TVRec::CloseChannel(void)
 {
     if (channel &&
         ((genOpt.cardtype == "DVB" && dvbOpt.dvb_on_demand) ||
-         CardUtil::IsV4L(genOpt.cardtype)))
+         genOpt.cardtype == "FREEBOX" || CardUtil::IsV4L(genOpt.cardtype)))
     {
         channel->Close();
     }
@@ -1676,6 +1678,9 @@ bool TVRec::GetDevices(uint cardid,
 QString TVRec::GetStartChannel(uint cardid, const QString &startinput)
 {
     QString startchan = QString::null;
+
+    LOG(VB_RECORD, LOG_INFO, LOC + QString("GetStartChannel(%1, '%2')")
+        .arg(cardid).arg(startinput));
 
     // Get last tuned channel from database, to use as starting channel
     MSqlQuery query(MSqlQuery::InitCon());
@@ -3621,7 +3626,7 @@ uint TVRec::TuningCheckForHWChange(const TuningRequest &request,
                 .arg(curCardID).arg(newCardID));
     }
 
-    if (curCardID != newCardID)
+    if (curCardID != newCardID || !CardUtil::IsChannelReusable(genOpt.cardtype))
     {
         if (channum.isEmpty())
             channum = GetStartChannel(newCardID, inputname);
@@ -3700,7 +3705,8 @@ void TVRec::TuningShutdowns(const TuningRequest &request)
     // handle HW change for digital/analog cards
     if (newCardID)
     {
-        LOG(VB_GENERAL, LOG_INFO, "Recreating channel...");
+        LOG(VB_CHANNEL, LOG_INFO, LOC +
+            "TuningShutdowns: Recreating channel...");
         channel->Close();
         delete channel;
         channel = NULL;
@@ -3764,8 +3770,6 @@ void TVRec::TuningFrequency(const TuningRequest &request)
         }
         else if (request.progNum >= 0)
         {
-            channel->SetChannelByString(request.channel);
-
             if (mpeg)
                 mpeg->SetDesiredProgram(request.progNum);
         }
@@ -3785,19 +3789,22 @@ void TVRec::TuningFrequency(const TuningRequest &request)
     QString input   = request.input;
     QString channum = request.channel;
 
-    bool ok = false;
+    bool ok;
     if (channel)
+    {
         channel->Open();
+        if (!channum.isEmpty())
+        {
+            if (!input.isEmpty())
+                ok = channel->SwitchToInput(input, channum);
+            else
+                ok = channel->SetChannelByString(channum);
+        }
+        else
+            ok = false;
+    }
     else
         ok = true;
-
-    if (channel && !channum.isEmpty())
-    {
-        if (!input.isEmpty())
-            ok = channel->SwitchToInput(input, channum);
-        else
-            ok = channel->SetChannelByString(channum);
-    }
 
     if (!ok)
     {
@@ -3889,22 +3896,15 @@ void TVRec::TuningFrequency(const TuningRequest &request)
             if (!antadj)
             {
                 SetFlags(kFlagWaitingForSignal);
-
-                QDateTime expire;
                 if (curRecording)
-                {
-                    expire = curRecording->GetScheduledStartTime() >
-                             MythDate::current() ?
-                             curRecording->GetScheduledStartTime() :
-                             MythDate::current();
-                }
+                    signalMonitorDeadline = curRecording->GetScheduledEndTime();
                 else
                 {
-                    expire = MythDate::current();
+                    QDateTime expire = MythDate::current();
+                    signalMonitorDeadline =
+                        expire.addMSecs(genOpt.channel_timeout * 2);
                 }
-
-                signalMonitorDeadline =
-                    expire.addMSecs(genOpt.channel_timeout * 2);
+                signalMonitorCheckCnt = 0;
             }
         }
 
@@ -3967,9 +3967,16 @@ MPEGStreamData *TVRec::TuningSignalCheck(void)
     }
     else
     {
-        LOG(VB_RECORD, LOG_INFO, LOC +
-            QString("TuningSignalCheck: Still waiting.  Will timeout @ %1")
-            .arg(signalMonitorDeadline.toLocalTime().toString("hh:mm:ss.zzz")));
+        if (signalMonitorCheckCnt) // Don't flood log file
+            --signalMonitorCheckCnt;
+        else
+        {
+            LOG(VB_RECORD, LOG_INFO, LOC +
+                QString("TuningSignalCheck: Still waiting.  Will timeout @ %1")
+                .arg(signalMonitorDeadline.toLocalTime()
+                     .toString("hh:mm:ss.zzz")));
+            signalMonitorCheckCnt = 5;
+        }
         return NULL;
     }
 
