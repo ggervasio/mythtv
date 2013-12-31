@@ -153,6 +153,7 @@ Advanced options (experts only):
   --python=PATH            Force a specific python executable to use [$python_default]
   --perl-config-opts=OPTS  Additional options to pass when generating
                            Makefile.perl for building Perl bindings.
+  --disable-mythlogserver  Do not use mythlogserver logging daemon facility
 
 External codec library options (used for mythffmpeg and streaming transcode):
   --enable-libmp3lame      enable MP3 encoding via libmp3lame [no]
@@ -1817,6 +1818,7 @@ MYTHTV_CONFIG_LIST='
     xv
     profiletype
     debugtype
+    mythlogserver
 '
 
 MYTHTV_HAVE_LIST='
@@ -2642,6 +2644,8 @@ disable indevs
 disable sdl
 enable libfftw3
 enable taglib
+enable mythlogserver
+enable exiv2
 
 # mythtv paths
 dvb_path_default="${sysroot}/usr/include"
@@ -2680,6 +2684,7 @@ CXX_C='-c'
 CXX_O='-o $@'
 LD_O='-o $@'
 LD_LIB='-l%'
+LD_MYTH_LIB='-lmyth%'
 LD_PATH='-L'
 HOSTCC_C='-c'
 HOSTCC_O='-o $@'
@@ -2851,6 +2856,8 @@ for opt do
         --disable-backend)
         ;;
         --enable-mac-bundle) enable mac_bundle
+        ;;
+        --disable-mythlogserver) disable mythlogserver
         ;;
         --previous|--prev)
             echo "No history of previous configure parameters."
@@ -4956,16 +4963,16 @@ if enabled taglib; then
     if test x`which taglib-config` != x"" ; then
         taglib_minor=`taglib-config --version | cut -d. -f2`
         if test x"$taglib_minor" = x"" ; then
-            echo "Can't find taglib-config. Assuming 1.6 or later."
-            taglib_minor="6"
+            echo "Can't find taglib-config. Assuming 1.7 or later."
+            taglib_minor="7"
         fi
         tagprefix=`taglib-config --prefix`
         tagincludes="-I${tagprefix}/include"
         taglibs=`taglib-config --libs`
     fi
 
-    if test $taglib_minor -lt 6 || ! check_class_headers_cpp taglib/fileref.h TagLib::FileRef $tagincludes $taglibs -lstdc++; then
-        die "ERROR: cannot find taglib 1.6 or later."
+    if test $taglib_minor -lt 7 || ! check_class_headers_cpp taglib/fileref.h TagLib::FileRef $tagincludes $taglibs -lstdc++; then
+        die "ERROR: cannot find taglib 1.7 or later."
     fi
 fi
 
@@ -5219,6 +5226,7 @@ fi
 # JACK probe
 ! disabled audio_jack &&
     check_lib jack/jack.h jack_client_new -ljack &&
+    check_func jack_port_get_latency_range -ljack &&
     enable  audio_jack ||
     disable audio_jack
 
@@ -5376,6 +5384,9 @@ EOF
 enabled lamemp3 && check_lib2 lame/lame.h lame_init -lmp3lame -lm ||
     die "ERROR! You must have the Lame MP3 encoding library installed to compile MythTV."
 
+enabled exiv2 && $(pkg-config --exists exiv2) ||
+    die "ERROR! You must have the Exiv2 image tag reader library installed to compile MythTV."
+    
 # Qt dependency checks
 if test $target_os = mingw32 ; then
     qt_inc="-I`cd $(${qmake} -query QT_INSTALL_HEADERS); pwd`"
@@ -5623,6 +5634,7 @@ elif enabled gcc; then
 #    check_cflags -Werror=missing-prototypes
     check_cflags -Werror=return-type
     check_cflags -Werror=vla
+    check_cflags -Werror=format-security
 elif enabled llvm_gcc; then
     check_cflags -mllvm -stack-alignment=16
 elif enabled clang; then
@@ -6014,6 +6026,7 @@ echo "libcrypto                 ${libcrypto-no}"
 echo "Frontend                  ${frontend-no}"
 echo "Backend                   ${backend-no}"
 echo "OpenGL ES 2.0             ${opengles-no}"
+echo "mythlogserver             ${mythlogserver-no}"
 echo
 
 echo "# Bindings"
@@ -6094,6 +6107,7 @@ CXX_C=$CXX_C
 CXX_O=$CXX_O
 LD_O=$LD_O
 LD_LIB=$LD_LIB
+LD_MYTH_LIB=$LD_MYTH_LIB
 LD_PATH=$LD_PATH
 DLLTOOL=$dlltool
 CXXPPFLAGS=$CXXPPFLAGS
@@ -6464,15 +6478,17 @@ cp_if_changed $TMPH external/FFmpeg/libavutil/avconfig.h
 echo "config:$arch:$subarch:$cpu:$target_os:$cc_ident:$FFMPEG_CONFIGURATION" >config.fate
 BLOCKQUOTE
 
-# configure zeromq
-echo "Configuring zeromq..."
-(cd external/zeromq ; \
-         ./configure --quiet --without-documentation --prefix=${prefix} \
-                     --includedir=${prefix}/include/mythtv/zeromq \
-                     --libdir=${libdir})
-echo "Configuring nzmqt..."
-(cd external/nzmqt/src ; \
-       ${qmakeconf} -o Makefile)
+if enabled mythlogserver; then
+    # configure zeromq
+    echo "Configuring zeromq..."
+    (cd external/zeromq ; \
+             ./configure --quiet --without-documentation --prefix=${prefix} \
+                         --includedir=${prefix}/include/mythtv/zeromq \
+                         --libdir=${libdir})
+    echo "Configuring nzmqt..."
+    (cd external/nzmqt/src ; \
+           ${qmakeconf} -o Makefile)
+fi
 echo "Configuring qjson..."
 (cd external/qjson ; \
        ${qmakeconf} -o Makefile)

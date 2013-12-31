@@ -17,7 +17,7 @@
 *
 * You should have received a copy of the GNU General Public License
 * along with this program; if not, write to the Free Software
-* Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+* Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA
 */
 
 // C headers
@@ -2345,7 +2345,8 @@ void MythCommandLineParser::addRecording(void)
         ->SetRequires("starttime");
 
     add("--starttime", "starttime", QDateTime(),
-            "Specify start time of recording to operate on.", "");
+            "Specify start time of recording to operate on.", "")
+        ->SetRequires("chanid");
 }
 
 /** \brief Canned argument definition for --geometry
@@ -2375,8 +2376,8 @@ void MythCommandLineParser::addUPnP(void)
 }
 
 /** \brief Canned argument definition for all logging options, including
- *  --verbose, --logpath, --quiet, --loglevel, --syslog
- *  and --nodblog
+ *  --verbose, --logpath, --quiet, --loglevel, --syslog, --enable-dblog
+ *  and --nologserver
  */
 void MythCommandLineParser::addLogging(
     const QString &defaultVerbosity, LogLevel_t defaultLogLevel)
@@ -2419,6 +2420,9 @@ void MythCommandLineParser::addLogging(
         "defaults to none.", "")
                 ->SetGroup("Logging");
     add("--nodblog", "nodblog", false, "Disable database logging.", "")
+                ->SetGroup("Logging")
+                ->SetDeprecated("this is now the default, see --enable-dblog");
+    add("--enable-dblog", "enabledblog", false, "Enable logging to database.", "")
                 ->SetGroup("Logging");
 
     add(QStringList( QStringList() << "-l" << "--logfile" ),
@@ -2429,6 +2433,8 @@ void MythCommandLineParser::addLogging(
             "scripts to use --syslog to interface with your system's "
             "existing system logging daemon, or --logpath to specify a "
             "dirctory for MythTV to write its logs to.", "0.25");
+    add("--nologserver", "nologserver", false, "Disable all logging but console.", "")
+                ->SetGroup("Logging");
 }
 
 /** \brief Canned argument definition for --pidfile
@@ -2577,7 +2583,8 @@ int MythCommandLineParser::ConfigureLogging(QString mask, unsigned int progress)
     }
 
     int facility = GetSyslogFacility();
-    bool dblog = !toBool("nodblog");
+    bool dblog = toBool("enabledblog");
+    bool noserver = toBool("nologserver");
     LogLevel_t level = GetLogLevel();
     if (level == LOG_UNKNOWN)
         return GENERIC_EXIT_INVALID_CMDLINE;
@@ -2597,7 +2604,7 @@ int MythCommandLineParser::ConfigureLogging(QString mask, unsigned int progress)
     if (toBool("daemon"))
         quiet = max(quiet, 1);
 
-    logStart(logfile, progress, quiet, facility, level, dblog, propagate);
+    logStart(logfile, progress, quiet, facility, level, dblog, propagate, noserver);
 
     return GENERIC_EXIT_OK;
 }

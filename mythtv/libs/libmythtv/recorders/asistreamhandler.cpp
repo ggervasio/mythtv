@@ -3,7 +3,7 @@
 // POSIX headers
 #include <fcntl.h>
 #include <unistd.h>
-#ifndef USING_MINGW
+#ifndef _WIN32
 #include <sys/select.h>
 #include <sys/ioctl.h>
 #endif
@@ -15,7 +15,7 @@
 // MythTV headers
 #include "asistreamhandler.h"
 #include "asichannel.h"
-#include "ThreadedFileWriter.h"
+#include "threadedfilewriter.h"
 #include "dtvsignalmonitor.h"
 #include "streamlisteners.h"
 #include "mpegstreamdata.h"
