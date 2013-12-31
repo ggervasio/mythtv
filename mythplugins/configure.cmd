@@ -1,1 +1,1 @@
-./configure --libdir-name=lib64
+./configure --libdir-name=lib64 --enable-mythgallery
