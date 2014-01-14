@@ -3772,6 +3772,8 @@ void TVRec::TuningFrequency(const TuningRequest &request)
         }
         else if (request.progNum >= 0)
         {
+            channel->SetChannelByString(request.channel);
+
             if (mpeg)
                 mpeg->SetDesiredProgram(request.progNum);
         }
