@@ -42,6 +42,7 @@ QEvent::Type MusicPlayerEvent::TrackChangeEvent = (QEvent::Type) QEvent::registe
 QEvent::Type MusicPlayerEvent::VolumeChangeEvent = (QEvent::Type) QEvent::registerEventType();
 QEvent::Type MusicPlayerEvent::TrackAddedEvent = (QEvent::Type) QEvent::registerEventType();
 QEvent::Type MusicPlayerEvent::TrackRemovedEvent = (QEvent::Type) QEvent::registerEventType();
+QEvent::Type MusicPlayerEvent::TrackUnavailableEvent = (QEvent::Type) QEvent::registerEventType();
 QEvent::Type MusicPlayerEvent::AllTracksRemovedEvent = (QEvent::Type) QEvent::registerEventType();
 QEvent::Type MusicPlayerEvent::MetadataChangedEvent = (QEvent::Type) QEvent::registerEventType();
 QEvent::Type MusicPlayerEvent::TrackStatsChangedEvent = (QEvent::Type) QEvent::registerEventType();
@@ -76,6 +77,8 @@ MusicPlayer::MusicPlayer(QObject *parent)
     m_allowRestorePos = true;
 
     m_playSpeed = 1.0;
+
+    m_showScannerNotifications = true;
 
     m_errorCount = 0;
 
@@ -114,6 +117,12 @@ MusicPlayer::~MusicPlayer()
 
     gCoreContext->removeListener(this);
     gCoreContext->UnregisterForPlayback(this);
+
+    QMap<QString, int>::Iterator i;
+    for (i = m_notificationMap.begin(); i != m_notificationMap.end(); i++)
+        GetNotificationCenter()->UnRegister(this, (*i));
+
+    m_notificationMap.clear();
 
     stop(true);
 
@@ -313,11 +322,35 @@ void MusicPlayer::pause(void)
 
 void MusicPlayer::play(void)
 {
+    stopDecoder();
+
     MusicMetadata *meta = getCurrentMetadata();
     if (!meta)
         return;
 
-    stopDecoder();
+    if (meta->Filename() == METADATA_INVALID_FILENAME)
+    {
+        // put an upper limit on the number of consecutive track unavailable errors
+        if (m_errorCount >= 1000)
+        {
+            ShowOkPopup(tr("Got to many track unavailable errors. Maybe the host with the music on is off-line?"));
+            stop(true);
+            m_errorCount = 0;
+            return;
+        }
+
+        if (m_errorCount < 5)
+        {
+            MythErrorNotification n(tr("Track Unavailable"), tr("MythMusic"), QString("Cannot find file '%1'").arg(meta->Filename(false)));
+            GetNotificationCenter()->Queue(n);
+        }
+
+        m_errorCount++;
+
+        sendTrackUnavailableEvent(meta->ID());
+        next();
+        return;
+    }
 
     // Notify others that we are about to play
     gCoreContext->WantingPlayback(this);
@@ -686,13 +719,6 @@ void MusicPlayer::customEvent(QEvent *event)
         }
         else if (me->Message().startsWith("MUSIC_SETTINGS_CHANGED"))
         {
-            QString startdir = gCoreContext->GetSetting("MusicLocation");
-            startdir = QDir::cleanPath(startdir);
-            if (!startdir.isEmpty() && !startdir.endsWith("/"))
-                startdir += "/";
-
-            setMusicDirectory(startdir);
-
             loadSettings();
         }
         else if (me->Message().startsWith("MUSIC_METADATA_CHANGED"))
@@ -713,6 +739,60 @@ void MusicPlayer::customEvent(QEvent *event)
                         sendMetadataChangedEvent(songID);
                     }
                 }
+            }
+        }
+        else if (me->Message().startsWith("MUSIC_SCANNER_STARTED"))
+        {
+            QStringList list = me->Message().simplified().split(' ');
+            if (list.size() == 2)
+            {
+                QString host = list[1];
+                int id = getNotificationID(host);
+                sendNotification(id,
+                                 tr("A music file scan has started on %1").arg(host),
+                                 tr("Music File Scanner"),
+                                 tr("This may take a while I'll give a shout when finished"));
+            }
+        }
+        else if (me->Message().startsWith("MUSIC_SCANNER_FINISHED"))
+        {
+            QStringList list = me->Message().simplified().split(' ');
+            if (list.size() == 6)
+            {
+                QString host = list[1];
+                int id = getNotificationID(host);
+                int totalTracks = list[2].toInt();
+                int newTracks = list[3].toInt();
+                int totalCoverart = list[4].toInt();
+                int newCoverart = list[5].toInt();
+
+                QString summary = QString("Total Tracks: %2, new tracks: %3,\nTotal Coverart: %4, New CoverArt %5")
+                                          .arg(totalTracks).arg(newTracks).arg(totalCoverart).arg(newCoverart);
+                sendNotification(id,
+                                 tr("A music file scan has finished on %1").arg(host),
+                                 tr("Music File Scanner"), summary);
+
+                gMusicData->reloadMusic();
+            }
+        }
+        else if (me->Message().startsWith("MUSIC_SCANNER_ERROR"))
+        {
+            QStringList list = me->Message().simplified().split(' ');
+            if (list.size() == 3)
+            {
+                QString host = list[1];
+                QString error = list[2];
+                int id = getNotificationID(host);
+
+                if (error == "Already_Running")
+                    sendNotification(id, tr(""),
+                                     tr("Music File Scanner"),
+                                     tr("Can't run the music file scanner because it is already running on %1").arg(host));
+                else if (error == "Stalled")
+                    sendNotification(id, tr(""),
+                                     tr("Music File Scanner"),
+                                     tr("The music file scanner has been running for more than 60 minutes on %1.\nResetting and trying again")
+                                         .arg(host));
             }
         }
     }
@@ -1207,16 +1287,18 @@ void MusicPlayer::updateVolatileMetadata(void)
         {
             getCurrentMetadata()->persist();
 
-            // only write the playcount & rating to the tag if it's enabled by the user
+            // only write the last played, playcount & rating to the tag if it's enabled by the user
             if (GetMythDB()->GetNumSetting("AllowTagWriting", 0) == 1)
             {
-                MetaIO *tagger = MetaIO::createTagger(getCurrentMetadata()->Filename(true));
-
-                if (tagger)
-                {
-                    tagger->writeVolatileMetadata(getCurrentMetadata());
-                    delete tagger;
-                }
+                QStringList strList;
+                strList << QString("MUSIC_TAG_UPDATE_VOLATILE %1 %2 %3 %4 %5")
+                                   .arg(getCurrentMetadata()->Hostname())
+                                   .arg(getCurrentMetadata()->ID())
+                                   .arg(getCurrentMetadata()->Rating())
+                                   .arg(getCurrentMetadata()->Playcount())
+                                   .arg(getCurrentMetadata()->LastPlay().toString(Qt::ISODate));
+                SendStringListThread *thread = new SendStringListThread(strList);
+                MThreadPool::globalInstance()->start(thread, "UpdateVolatile");
             }
 
             sendTrackStatsChangedEvent(getCurrentMetadata()->ID());
@@ -1266,6 +1348,12 @@ void MusicPlayer::sendTrackStatsChangedEvent(int trackID)
 void MusicPlayer::sendAlbumArtChangedEvent(int trackID)
 {
     MusicPlayerEvent me(MusicPlayerEvent::AlbumArtChangedEvent, trackID);
+    dispatch(me);
+}
+
+void MusicPlayer::sendTrackUnavailableEvent(int trackID)
+{
+    MusicPlayerEvent me(MusicPlayerEvent::TrackUnavailableEvent, trackID);
     dispatch(me);
 }
 
@@ -1421,6 +1509,9 @@ void MusicPlayer::setupDecoderHandler(void)
 
 void MusicPlayer::decoderHandlerReady(void)
 {
+    if (!getDecoder())
+        return;
+
     LOG(VB_PLAYBACK, LOG_INFO, QString ("decoder handler is ready, decoding %1")
             .arg(getDecoder()->getFilename()));
 
@@ -1529,4 +1620,32 @@ Playlist* MusicPlayer::getCurrentPlaylist ( void )
 StreamList  *MusicPlayer::getStreamList(void) 
 {
     return gMusicData->all_streams->getStreams();
+}
+
+int MusicPlayer::getNotificationID (const QString& hostname)
+{
+    if (m_notificationMap.find(hostname) == m_notificationMap.end())
+        m_notificationMap.insert(hostname, GetNotificationCenter()->Register(this));
+
+    return m_notificationMap[hostname];
+}
+
+void MusicPlayer::sendNotification(int notificationID, const QString &title, const QString &author, const QString &desc)
+{
+    QString image = "musicscanner.png";
+    GetMythUI()->FindThemeFile(image);
+
+    DMAP map;
+    map["asar"] = title;
+    map["minm"] = author;
+    map["asal"] = desc;
+
+    MythImageNotification *n = new MythImageNotification(MythNotification::Info, image, map);
+
+    n->SetId(notificationID);
+    n->SetParent(this);
+    n->SetDuration(5);
+    n->SetFullScreen(false);
+    GetNotificationCenter()->Queue(*n);
+    delete n;
 }

@@ -31,6 +31,8 @@ const QStringList StorageGroup::kSpecialGroups = QStringList()
     <<  QT_TRANSLATE_NOOP("(StorageGroups)", "Screenshots")
     <<  QT_TRANSLATE_NOOP("(StorageGroups)", "Banners")
     <<  QT_TRANSLATE_NOOP("(StorageGroups)", "Photographs")
+    <<  QT_TRANSLATE_NOOP("(StorageGroups)", "Music")
+    <<  QT_TRANSLATE_NOOP("(StorageGroups)", "MusicArt")
     ;
 
 /****************************************************************************/
@@ -384,7 +386,7 @@ bool StorageGroup::FileExists(const QString &filename)
 // in the order EXISTS, DATE, SIZE
 QStringList StorageGroup::GetFileInfo(const QString &lfilename)
 {
-    QString filename;
+    QString filename = lfilename;
     LOG(VB_FILE, LOG_DEBUG, LOC +
         QString("GetFileInfo: For '%1'") .arg(filename));
 

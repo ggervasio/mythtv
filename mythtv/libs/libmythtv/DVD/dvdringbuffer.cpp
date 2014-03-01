@@ -593,7 +593,6 @@ bool DVDRingBuffer::StartFromBeginning(void)
         dvdnav_menu_language_select(m_dvdnav, lang.toLatin1().data());
         dvdnav_audio_language_select(m_dvdnav, lang.toLatin1().data());
         dvdnav_spu_language_select(m_dvdnav, lang.toLatin1().data());
-        dvdnav_first_play(m_dvdnav);
         m_audioStreamsChanged = true;
     }
 
@@ -1432,7 +1431,7 @@ void DVDRingBuffer::WaitSkip(void)
 
 /** \brief jump to a dvd root or chapter menu
  */
-bool DVDRingBuffer::GoToMenu(const QString str)
+bool DVDRingBuffer::GoToMenu(const QString &str)
 {
     DVDMenuID_t menuid;
     QMutexLocker locker(&m_seekLock);

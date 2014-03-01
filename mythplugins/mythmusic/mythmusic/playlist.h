@@ -9,6 +9,7 @@
 #include <musicmetadata.h>
 
 // mythmusic
+#include "playlistcontainer.h"
 #include "musicplayer.h"
 
 class PlaylistContainer;
@@ -102,10 +103,14 @@ class Playlist : public QObject
     QString getName(void) { return m_name; } 
     void    setName(QString a_name) { m_name = a_name; }
 
-    int     getID(void) { return m_playlistid; }
-    void    setID(int x) { m_playlistid = x; }
+    bool isActivePlaylist(void) { return m_name == DEFAULT_PLAYLIST_NAME; }
 
-    void    getStats(uint *trackCount, uint *totalLength, uint currentTrack = 0, uint *playedLength = NULL) const;
+    int  getID(void) { return m_playlistid; }
+    void setID(int x) { m_playlistid = x; }
+
+    void getStats(uint *trackCount, uint *totalLength, uint currentTrack = 0, uint *playedLength = NULL) const;
+
+    void resync(void);
 
     void computeSize(double &size_in_MB, double &size_in_sec);
     int CreateCDMP3(void);

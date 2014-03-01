@@ -50,6 +50,8 @@
 #include "playgroup.h"
 #include "recordingprofile.h"
 
+#include "scheduler.h"
+
 extern QMap<int, EncoderLink *> tvList;
 extern AutoExpire  *expirer;
 
@@ -478,9 +480,10 @@ DTC::TitleInfoList* Dvr::GetTitleInfoList()
     MSqlQuery query(MSqlQuery::InitCon());
 
     QString querystr = QString(
-        "SELECT DISTINCT title, inetref "
+        "SELECT title, inetref, count(title) as count "
         "    FROM recorded "
         "    WHERE inetref <> '' "
+        "    GROUP BY title, inetref "
         "    ORDER BY title");
 
     query.prepare(querystr);
@@ -498,6 +501,7 @@ DTC::TitleInfoList* Dvr::GetTitleInfoList()
 
         pTitleInfo->setTitle(query.value(0).toString());
         pTitleInfo->setInetref(query.value(1).toString());
+        pTitleInfo->setCount(query.value(2).toInt());
     }
 
     return pTitleInfos;
@@ -977,10 +981,22 @@ bool Dvr::AddDontRecordSchedule(int nChanId, const QDateTime &dStartTime,
 }
 
 DTC::RecRuleList* Dvr::GetRecordScheduleList( int nStartIndex,
-                                              int nCount      )
+                                              int nCount,
+                                              const QString  &Sort,
+                                              bool Descending )
 {
+    Scheduler::SchedSortColumn sortingColumn;
+    if (Sort.toLower() == "lastrecorded")
+        sortingColumn = Scheduler::kSortLastRecorded;
+    else if (Sort.toLower() == "title")
+        sortingColumn = Scheduler::kSortTitle;
+    else if (Sort.toLower() == "priority")
+        sortingColumn = Scheduler::kSortPriority;
+    else if (Sort.toLower() == "type")
+        sortingColumn = Scheduler::kSortType;
+
     RecList recList;
-    Scheduler::GetAllScheduled(recList);
+    Scheduler::GetAllScheduled(recList, sortingColumn, !Descending);
 
     // ----------------------------------------------------------------------
     // Build Response

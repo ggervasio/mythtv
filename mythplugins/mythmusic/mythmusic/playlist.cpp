@@ -81,7 +81,7 @@ void Playlist::addTrack(MusicMetadata::IdType trackID, bool update_display)
 
         changed();
 
-        if (update_display)
+        if (update_display && isActivePlaylist())
             gPlayer->activePlaylistChanged(trackID, false);
     }
     else
@@ -125,7 +125,8 @@ void Playlist::removeTrack(MusicMetadata::IdType trackID)
 
     changed();
 
-    gPlayer->activePlaylistChanged(trackID, true);
+    if (isActivePlaylist())
+        gPlayer->activePlaylistChanged(trackID, true);
 }
 
 void Playlist::moveTrackUpDown(bool flag, int where_its_at)
@@ -607,6 +608,35 @@ void Playlist::loadPlaylistByID(int id, QString a_host)
     fillSongsFromSonglist(rawSonglist);
 }
 
+/// make sure all tracks are still valid after a scan
+void Playlist::resync(void)
+{
+    bool needUpdate = false;
+
+    for (int x = 0; x < m_songs.count(); x++)
+    {
+        MusicMetadata::IdType id = m_songs.at(x);
+        MusicMetadata *mdata = getRawSongAt(x);
+        if (!mdata)
+        {
+            m_songs.removeAll(id);
+            m_shuffledSongs.removeAll(id);
+            needUpdate = true;
+        }
+    }
+
+    if (needUpdate)
+    {
+        changed();
+
+        gPlayer->playlistChanged(m_playlistid);
+
+        // TODO check we actually need this
+        if (isActivePlaylist())
+            gPlayer->activePlaylistChanged(-1, false);
+    }
+}
+
 void Playlist::fillSongsFromSonglist(QString songList)
 {
     MusicMetadata::IdType id;
@@ -650,7 +680,8 @@ void Playlist::fillSongsFromSonglist(QString songList)
     if (badTrack)
         changed();
 
-    gPlayer->activePlaylistChanged(-1, false);
+    if (isActivePlaylist())
+        gPlayer->activePlaylistChanged(-1, false);
 }
 
 void Playlist::fillSonglistFromQuery(QString whereClause,
@@ -1082,7 +1113,6 @@ MusicMetadata* Playlist::getRawSongAt(int pos) const
     return mdata;
 }
 
-
 // Here begins CD Writing things. ComputeSize, CreateCDMP3 & CreateCDAudio
 // FIXME non of this is currently used
 
@@ -1110,10 +1140,7 @@ void Playlist::computeSize(double &size_in_MB, double &size_in_sec)
                 LOG(VB_GENERAL, LOG_ERR, "Computing track lengths. "
                                          "One track <=0");
 
-            // Check tmpdata->Filename
-            QFileInfo finfo(mdata->Filename());
-
-            size_in_MB += finfo.size() / 1000000;
+            size_in_MB += mdata->FileSize() / 1000000;
         }
     }
 }
@@ -1202,6 +1229,7 @@ void Playlist::processExit(uint retval)
     m_procExitVal = retval;
 }
 
+// FIXME: this needs updating to work with storage groups
 int Playlist::CreateCDMP3(void)
 {
     // Check & get global settings
