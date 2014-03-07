@@ -1021,11 +1021,14 @@ int MythPlayer::OpenFile(uint retries)
     {
         gCoreContext->SaveSetting(
             "DefaultChanid", player_ctx->playingInfo->GetChanID());
-        int cardid = player_ctx->recorder->GetRecorderNumber();
-        QString channum = player_ctx->playingInfo->GetChanNum();
-        QString inputname;
-        int cardinputid = CardUtil::GetCardInputID(cardid, channum, inputname);
-        CardUtil::SetStartChannel(cardinputid, channum);
+        if (player_ctx->recorder && player_ctx->recorder->IsValidRecorder())
+        {
+            int cardid = player_ctx->recorder->GetRecorderNumber();
+            QString channum = player_ctx->playingInfo->GetChanNum();
+            QString inputname;
+            int cardinputid = CardUtil::GetCardInputID(cardid, channum, inputname);
+            CardUtil::SetStartChannel(cardinputid, channum);
+        }
     }
 
     return IsErrored() ? -1 : 0;
@@ -2767,10 +2770,10 @@ void MythPlayer::JumpToProgram(void)
     ChangeSpeed();
 
     // check that we aren't too close to the end of program.
-    // and if so set it to 15s from the end if completed recordings
+    // and if so set it to 10s from the end if completed recordings
     // or 3s if live
     long long duration = player_ctx->tvchain->GetLengthAtCurPos();
-    int maxpos = player_ctx->tvchain->HasNext() ? 15 : 3;
+    int maxpos = player_ctx->tvchain->HasNext() ? 10 : 3;
 
     if (nextpos > (duration - maxpos))
     {

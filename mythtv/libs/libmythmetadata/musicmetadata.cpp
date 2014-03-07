@@ -1836,6 +1836,18 @@ AlbumArtImage *AlbumArtImages::getImage(ImageType type)
     return NULL;
 }
 
+AlbumArtImage *AlbumArtImages::getImageByID(int imageID)
+{
+    AlbumArtList::iterator it = m_imageList.begin();
+    for (; it != m_imageList.end(); ++it)
+    {
+        if ((*it)->id == imageID)
+            return *it;
+    }
+
+    return NULL;
+}
+
 QStringList AlbumArtImages::getImageFilenames(void) const
 {
     QStringList paths;
@@ -2033,5 +2045,10 @@ void AlbumArtImages::dumpToDatabase(void)
         if (!query.exec())
             MythDB::DBError("AlbumArtImages::dumpToDatabase - "
                             "add/update music_albumart", query);
+        else
+        {
+            if (image->id <= 0)
+                image->id = query.lastInsertId().toInt();
+        }
     }
 }
