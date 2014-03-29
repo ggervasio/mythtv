@@ -78,6 +78,8 @@ DTVRecorder::DTVRecorder(TVRec *rec) :
     _input_pat(NULL),
     _input_pmt(NULL),
     _has_no_av(false),
+    // record 'raw' mpts?
+    _record_mpts(false),
     // statistics
     _use_pts(false),
     _packet_count(0),
@@ -98,7 +100,7 @@ DTVRecorder::DTVRecorder(TVRec *rec) :
     memset(_continuity_counter, 0xff, sizeof(_continuity_counter));
 }
 
-DTVRecorder::~DTVRecorder()
+DTVRecorder::~DTVRecorder(void)
 {
     StopRecording();
 
@@ -135,6 +137,8 @@ void DTVRecorder::SetOption(const QString &name, int value)
 {
     if (name == "wait_for_seqstart")
         _wait_for_keyframe_option = (value == 1);
+    else if (name == "recordmpts")
+        _record_mpts = (value == 1);
     else
         RecorderBase::SetOption(name, value);
 }
@@ -146,6 +150,7 @@ void DTVRecorder::SetOptionsFromProfile(RecordingProfile *profile,
     SetOption("videodevice", videodev);
     DTVRecorder::SetOption("tvformat", gCoreContext->GetSetting("TVFormat"));
     SetStrOption(profile, "recordingtype");
+    SetIntOption(profile, "recordmpts");
 }
 
 /** \fn DTVRecorder::FinishRecording(void)
@@ -1341,7 +1346,7 @@ bool DTVRecorder::ProcessTSPacket(const TSPacket &tspacket)
         int v = _continuity_error_count.fetchAndAddRelaxed(1) + 1;
         double erate = v * 100.0 / _packet_count.fetchAndAddRelaxed(0);
         LOG(VB_RECORD, LOG_WARNING, LOC +
-            QString("PID 0x%1 discontinuity detected ((%2+1)\%16!=%3) %4\%")
+            QString("PID 0x%1 discontinuity detected ((%2+1)%16!=%3) %4%")
                 .arg(pid,0,16).arg(old_cnt,2)
                 .arg(tspacket.ContinuityCounter(),2)
                 .arg(erate));
@@ -1445,7 +1450,7 @@ bool DTVRecorder::ProcessAVTSPacket(const TSPacket &tspacket)
         int v = _continuity_error_count.fetchAndAddRelaxed(1) + 1;
         double erate = v * 100.0 / _packet_count.fetchAndAddRelaxed(0);
         LOG(VB_RECORD, LOG_WARNING, LOC +
-            QString("A/V PID 0x%1 discontinuity detected ((%2+1)\%16!=%3) %4\%")
+            QString("A/V PID 0x%1 discontinuity detected ((%2+1)%16!=%3) %4%")
                 .arg(pid,0,16).arg(old_cnt).arg(tspacket.ContinuityCounter())
                 .arg(erate,5,'f',2));
     }

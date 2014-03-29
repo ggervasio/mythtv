@@ -225,9 +225,9 @@ void EditMetadataCommon::saveAll()
     if (GetMythDB()->GetNumSetting("AllowTagWriting", 0))
     {
         QStringList strList;
-        strList << QString("MUSIC_TAG_UPDATE_METADATA %1 %2")
-                            .arg(m_metadata->Hostname())
-                            .arg(m_metadata->ID());
+        strList << "MUSIC_TAG_UPDATE_METADATA %1 %2"
+                << m_metadata->Hostname()
+                << QString::number(m_metadata->ID());
 
         SendStringListThread *thread = new SendStringListThread(strList);
         MThreadPool::globalInstance()->start(thread, "UpdateMetadata");
@@ -784,9 +784,11 @@ void EditMetadataDialog::customEvent(QEvent *event)
             }
             else if (resulttext == tr("Check Track Length"))
             {
-                QString command = QString("MUSIC_CALC_TRACK_LENGTH %1 %2")
-                                          .arg(m_metadata->Hostname()).arg(m_metadata->ID());
-                QStringList strList(command);
+                QStringList strList;
+                strList << "MUSIC_CALC_TRACK_LENGTH"
+                        << m_metadata->Hostname()
+                        << QString::number(m_metadata->ID());
+
                 SendStringListThread *thread = new SendStringListThread(strList);
                 MThreadPool::globalInstance()->start(thread, "Send MUSIC_CALC_TRACK_LENGTH");
 
@@ -1074,10 +1076,7 @@ void EditAlbumartDialog::showMenu(void )
 
     menu->AddButton(tr("Search Internet For Images"));
 
-// FIXME this needs updating to work with storage groups
-#if 0
-
-    MetaIO *tagger = m_metadata->getTagger();
+    MetaIO *tagger = MetaIO::createTagger(m_metadata->Filename(false));
 
     if (m_coverartList->GetItemCurrent())
     {
@@ -1114,7 +1113,7 @@ void EditAlbumartDialog::showMenu(void )
 
     if (tagger)
         delete tagger;
-#endif
+
     popupStack->AddScreen(menu);
 }
 
@@ -1146,63 +1145,13 @@ void EditAlbumartDialog::customEvent(QEvent *event)
                     AlbumArtImage *image = qVariantValue<AlbumArtImage*> (item->GetData());
                     if (image)
                     {
-                        AlbumArtImage oldImage = *image;
+                        QStringList strList("MUSIC_TAG_CHANGEIMAGE");
+                        strList << m_metadata->Hostname()
+                                << QString::number(m_metadata->ID())
+                                << QString::number(image->imageType)
+                                << QString::number(type);
 
-                        image->imageType = (ImageType) type;
-
-                        if (image->imageType == oldImage.imageType)
-                            return;
-
-                        // rename any cached image to match the new type
-                        if (image->embedded)
-                        {
-                            // update the new cached image filename
-                            image->filename = QString(GetConfDir() + "/MythMusic/AlbumArt/%1-%2.jpg")
-                                                .arg(m_metadata->ID())
-                                                .arg(AlbumArtImages::getTypeFilename(image->imageType));
-
-                            if (image->filename != oldImage.filename && QFile::exists(oldImage.filename))
-                            {
-                                // remove any old cached file with the same name as the new one
-                                QFile::remove(image->filename);
-                                // rename the old cached file to the new one
-                                QFile::rename(oldImage.filename, image->filename);
-
-                                // force the theme image cache to refresh the image
-                                GetMythUI()->RemoveFromCacheByFile(image->filename);
-                            }
-
-                            // change the image type in the tag if it supports it
-                            MetaIO *tagger = m_metadata->getTagger();
-
-                            if (tagger && tagger->supportsEmbeddedImages())
-                            {
-                                if (!tagger->changeImageType(m_metadata->Filename(), &oldImage, image->imageType))
-                                    LOG(VB_GENERAL, LOG_INFO, "EditAlbumartDialog: failed to change image type");
-                            }
-
-                            if (tagger)
-                                delete tagger;
-                        }
-                        else
-                        {
-                            QFileInfo fi(oldImage.filename);
-
-                            // get the new images filename
-                            image->filename = QString(fi.absolutePath() + "/%1.jpg")
-                                    .arg(AlbumArtImages::getTypeFilename(image->imageType));
-
-                            if (image->filename != oldImage.filename && QFile::exists(oldImage.filename))
-                            {
-                                // remove any old cached file with the same name as the new one
-                                QFile::remove(image->filename);
-                                // rename the old cached file to the new one
-                                QFile::rename(oldImage.filename, image->filename);
-
-                                // force the theme image cache to refresh the image
-                                GetMythUI()->RemoveFromCacheByFile(image->filename);
-                            }
-                        }
+                        gCoreContext->SendReceiveStringList(strList);
 
                         m_albumArtChanged = true;
 
@@ -1255,6 +1204,22 @@ void EditAlbumartDialog::customEvent(QEvent *event)
         {
             if (tokens[0] == "BROWSER_DOWNLOAD_FINISHED")
                 rescanForImages();
+            else if (tokens[0] == "MUSIC_ALBUMART_CHANGED")
+            {
+                if (tokens.size() >= 2)
+                {
+                    MusicMetadata::IdType songID = (MusicMetadata::IdType)tokens[1].toInt();
+
+                    if (m_metadata->ID() == songID)
+                    {
+                        // force all the image to reload
+                        for (uint x = 0; x < m_metadata->getAlbumArtImages()->getImageCount(); x++)
+                            removeCachedImage(m_metadata->getAlbumArtImages()->getImageAt(x));
+
+                        updateImageGrid();
+                    }
+                }
+            }
         }
     }
 }
@@ -1339,53 +1304,89 @@ void EditAlbumartDialog::doRemoveImageFromTag(bool doIt)
         AlbumArtImage *image = qVariantValue<AlbumArtImage*> (item->GetData());
         if (image)
         {
-            MetaIO *tagger = m_metadata->getTagger();
+            // ask the backend to remove the image from the tracks tag
+            QStringList strList("MUSIC_TAG_REMOVEIMAGE");
+            strList << m_metadata->Hostname()
+                    << QString::number(m_metadata->ID())
+                    << QString::number(image->id);
 
-            if (tagger && !tagger->supportsEmbeddedImages())
-            {
-                LOG(VB_GENERAL, LOG_ERR, "EditAlbumartDialog: asked to remove an image from the tag "
-                                         "but the tagger doesn't support it!");
-                delete tagger;
-                return;
-            }
-
-            if (!tagger->removeAlbumArt(m_metadata->Filename(), image))
-                LOG(VB_GENERAL, LOG_ERR, "EditAlbumartDialog: failed to remove album art from tag");
-            else
-                LOG(VB_GENERAL, LOG_INFO, "EditAlbumartDialog: album art removed from tag");
+            gCoreContext->SendReceiveStringList(strList);
 
             removeCachedImage(image);
             rescanForImages();
-
-            if (tagger)
-                delete tagger;
         }
     }
 }
 
-void EditAlbumartDialog::doCopyImageToTag(const AlbumArtImage *image)
+class CopyImageThread: public MThread
 {
-    MetaIO *tagger = m_metadata->getTagger();
+  public:
+    CopyImageThread(QStringList strList) :
+            MThread("CopyImage"), m_strList(strList) {}
 
-    if (tagger && !tagger->supportsEmbeddedImages())
+    virtual void run()
     {
-        LOG(VB_GENERAL, LOG_ERR, "EditAlbumartDialog: asked to write album art to the tag "
-                              "but the tagger does't support it!");
-        delete tagger;
-        return;
+        RunProlog();
+        gCoreContext->SendReceiveStringList(m_strList);
+        RunEpilog();
     }
 
-    if (!tagger->writeAlbumArt(m_metadata->Filename(), image))
-        LOG(VB_GENERAL, LOG_ERR, "EditAlbumartDialog: failed to write album art to tag");
+    QStringList getResult(void) { return m_strList; }
+
+  private:
+    QStringList m_strList;
+};
+
+void EditAlbumartDialog::doCopyImageToTag(const AlbumArtImage *image)
+{
+    MythScreenStack *popupStack = GetMythMainWindow()->GetStack("popup stack");
+    MythUIBusyDialog *busy = new MythUIBusyDialog(tr("Copying image to tag..."),
+                                                  popupStack, "copyimagebusydialog");
+
+    if (busy->Create())
+    {
+        popupStack->AddScreen(busy, false);
+    }
     else
-        LOG(VB_GENERAL, LOG_INFO, "EditAlbumartDialog: album art written to tag");
+    {
+        delete busy;
+        busy = NULL;
+    }
+
+    // copy the image to the tracks host
+    QFileInfo fi(image->filename);
+    QString saveFilename = gCoreContext->GenMythURL(m_metadata->Hostname(), 0,
+                                                    QString("AlbumArt/") + fi.fileName(),
+                                                    "MusicArt");
+
+    RemoteFile::CopyFile(image->filename, saveFilename);
+
+    // ask the backend to add the image to the tracks tag
+    QStringList strList("MUSIC_TAG_ADDIMAGE");
+    strList << m_metadata->Hostname()
+            << QString::number(m_metadata->ID())
+            << fi.fileName()
+            << QString::number(image->imageType);
+
+    CopyImageThread *copyThread = new CopyImageThread(strList);
+    copyThread->start();
+
+    while (copyThread->isRunning())
+    {
+        qApp->processEvents();
+        usleep(1000);
+    }
+
+    strList = copyThread->getResult();
+
+    delete copyThread;
+
+    if (busy)
+        busy->Close();
 
     removeCachedImage(image);
 
     rescanForImages();
-
-    if (tagger)
-        delete tagger;
 }
 
 void EditAlbumartDialog::removeCachedImage(const AlbumArtImage *image)
@@ -1393,11 +1394,5 @@ void EditAlbumartDialog::removeCachedImage(const AlbumArtImage *image)
     if (!image->embedded)
         return;
 
-    QString imageFilename = QString(GetConfDir() + "/MythMusic/AlbumArt/%1-%2.jpg")
-            .arg(m_metadata->ID()).arg(AlbumArtImages::getTypeFilename(image->imageType));
-
-    if (QFile::exists(imageFilename))
-        QFile::remove(imageFilename);
-
-    GetMythUI()->RemoveFromCacheByFile(imageFilename);
+    GetMythUI()->RemoveFromCacheByFile(image->filename);
 }

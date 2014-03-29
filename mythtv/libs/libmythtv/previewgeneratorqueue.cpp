@@ -116,7 +116,7 @@ bool PreviewGeneratorQueue::event(QEvent *e)
     MythEvent *me = (MythEvent*)e;
     if (me->Message() == "GET_PREVIEW")
     {
-        const QStringList list = me->ExtraDataList();
+        const QStringList &list = me->ExtraDataList();
         QStringList::const_iterator it = list.begin();
         ProgramInfo evinfo(it, list.end());
         QString token;
@@ -289,7 +289,7 @@ QString PreviewGeneratorQueue::GeneratePreviewImage(
 
         if (streaming)
         {
-            ret_file = QString("%1/remotecache/%2")
+            ret_file = QString("%1/cache/remotecache/%2")
                 .arg(GetConfDir()).arg(filename.section('/', -1));
 
             QFileInfo finfo(ret_file);

@@ -101,7 +101,7 @@ static int ExtractImage(const MythUtilCommandLineParser &cmdline)
     }
 
     int songID = cmdline.toInt("songid");
-    ImageType type = AlbumArtImages::getImageTypeFromName(cmdline.toString("imagetype"));
+    ImageType type = (ImageType)cmdline.toInt("imagetype");
 
     MusicMetadata *mdata = MusicMetadata::createFromID(songID);
     if (!mdata)
@@ -137,7 +137,7 @@ static int ExtractImage(const MythUtilCommandLineParser &cmdline)
 
     // where are we going to save the image
     QString path;
-    StorageGroup artGroup("MusicArt", gCoreContext->GetHostName());
+    StorageGroup artGroup("MusicArt", gCoreContext->GetHostName(), false);
     QStringList dirList = artGroup.GetDirList();
     if (dirList.size())
         path = artGroup.FindNextDirMostFree();
@@ -152,24 +152,24 @@ static int ExtractImage(const MythUtilCommandLineParser &cmdline)
     QDir dir(path);
 
     QString filename = QString("%1-%2.jpg").arg(mdata->ID()).arg(AlbumArtImages::getTypeFilename(image->imageType));
-    if (!QFile::exists(path + filename))
-    {
-        if (!dir.exists())
-            dir.mkpath(path);
 
-        QImage *saveImage = tagger->getAlbumArt(trackFilename, image->imageType);
-        if (saveImage)
-        {
-            saveImage->save(path + filename, "JPEG");
-            delete saveImage;
-        }
+    if (QFile::exists(path + filename))
+        QFile::remove(path + filename);
+
+    if (!dir.exists())
+        dir.mkpath(path);
+
+    QImage *saveImage = tagger->getAlbumArt(trackFilename, image->imageType);
+    if (saveImage)
+    {
+        saveImage->save(path + filename, "JPEG");
+        delete saveImage;
     }
 
     delete tagger;
 
-    // tell any clients that the metadata for this track has changed
-    // TODO check we need this
-    gCoreContext->SendMessage(QString("MUSIC_METADATA_CHANGED %1").arg(songID));
+    // tell any clients that the albumart for this track has changed
+    gCoreContext->SendMessage(QString("MUSIC_ALBUMART_CHANGED %1 %2").arg(songID).arg(type));
 
     return GENERIC_EXIT_OK;
 }
@@ -182,6 +182,7 @@ static int ScanMusic(const MythUtilCommandLineParser &cmdline)
     if (!StorageGroup::FindDirs("Music", gCoreContext->GetHostName(), &dirList))
     {
         LOG(VB_GENERAL, LOG_ERR, "Failed to find any directories in the 'Music' storage group");
+        delete fscan;
         return GENERIC_EXIT_NOT_OK;
     }
 
@@ -248,7 +249,7 @@ static int CalcTrackLength(const MythUtilCommandLineParser &cmdline)
         return GENERIC_EXIT_NOT_OK;;
     }
 
-    uint duration = 0;
+    int duration = 0;
     long long time = 0;
 
     for (uint i = 0; i < inputFC->nb_streams; i++)

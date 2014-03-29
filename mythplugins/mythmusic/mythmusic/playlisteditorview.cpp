@@ -171,8 +171,10 @@ bool PlaylistEditorView::Create(void)
             this, SLOT(treeItemClicked(MythUIButtonListItem*)));
     connect(m_playlistTree, SIGNAL(nodeChanged(MythGenericTree*)),
             this, SLOT(treeNodeChanged(MythGenericTree*)));
-    connect(m_playlistTree, SIGNAL(itemVisible(MythUIButtonListItem*)),
-            this, SLOT(treeItemVisible(MythUIButtonListItem*)));
+
+    if (m_currentView == MV_PLAYLISTEDITORGALLERY)
+        connect(m_playlistTree, SIGNAL(itemVisible(MythUIButtonListItem*)),
+                this, SLOT(treeItemVisible(MythUIButtonListItem*)));
 
     BuildFocusList();
 
@@ -567,7 +569,8 @@ void PlaylistEditorView::updateSonglist(MusicGenericTree *node)
         MusicGenericTree *allTracksNode = dynamic_cast<MusicGenericTree*>(node->getChildAt(0));
         if (allTracksNode)
         {
-            filterTracks(allTracksNode);
+            if (allTracksNode->childCount() == 0)
+                filterTracks(allTracksNode);
 
             for (int x = 0; x < allTracksNode->childCount(); x++)
             {
@@ -836,8 +839,10 @@ void PlaylistEditorView::treeItemVisible(MythUIButtonListItem *item)
     if (!mnode)
         return;
 
-    if (item->GetImageFilename().isEmpty())
+    if (item->GetText("*").isEmpty())
     {
+        item->SetText(" ", "*");
+
         QString artFile;
 
         if (mnode->getAction() == "trackid")
@@ -865,6 +870,15 @@ void PlaylistEditorView::treeItemVisible(MythUIButtonListItem *item)
         {
             artFile = findIcon("artist", mnode->GetText().toLower());
         }
+        else if (mnode->getAction() == "all tracks" || mnode->getAction() == "genres" ||
+                 mnode->getAction() == "albums"     || mnode->getAction() == "artists" ||
+                 mnode->getAction() == "compartists"|| mnode->getAction() == "ratings" ||
+                 mnode->getAction() == "years"      || mnode->getAction() == "compilations" ||
+                 mnode->getAction() == "cd"         || mnode->getAction() == "directory" ||
+                 mnode->getAction() == "playlists"  || mnode->getAction() == "smartplaylists")
+        {
+            artFile = "blank.png";
+        }
         else
         {
             artFile = findIcon(mnode->getAction(), mnode->GetText().toLower());
@@ -873,65 +887,29 @@ void PlaylistEditorView::treeItemVisible(MythUIButtonListItem *item)
         QString state = "default";
 
         if (mnode->getAction() == "all tracks")
-        {
             state = "alltracks";
-            artFile="blank.png";
-        }
         else if (mnode->getAction() == "genres")
-        {
             state = "genres";
-            artFile="blank.png";
-        }
         else if (mnode->getAction() == "albums")
-        {
             state = "albums";
-            artFile="blank.png";
-        }
         else if (mnode->getAction() == "artists")
-        {
             state = "artists";
-            artFile="blank.png";
-        }
         else if (mnode->getAction() == "compartists")
-        {
             state = "compartists";
-            artFile="blank.png";
-        }
         else if (mnode->getAction() == "ratings")
-        {
             state = "ratings";
-            artFile="blank.png";
-        }
         else if (mnode->getAction() == "years")
-        {
             state = "years";
-            artFile="blank.png";
-        }
         else if (mnode->getAction() == "compilations")
-        {
             state = "compilations";
-            artFile="blank.png";
-        }
         else if (mnode->getAction() == "cd")
-        {
             state = "cd";
-            artFile="blank.png";
-        }
         else if (mnode->getAction() == "directory")
-        {
             state = "directory";
-            artFile="blank.png";
-        }
         else if (mnode->getAction() == "playlists")
-        {
             state = "playlists";
-            artFile="blank.png";
-        }
         else if (mnode->getAction() == "smartplaylists")
-        {
             state = "smartplaylists";
-            artFile="blank.png";
-        }
 
         item->DisplayState(state, "nodetype");
 
@@ -1615,16 +1593,19 @@ void PlaylistEditorView::getPlaylistTracks(MusicGenericTree *node, int playlistI
 {
     Playlist *playlist = gMusicData->all_playlists->getPlaylist(playlistID);
 
-    for (int x = 0; x < playlist->getTrackCount(); x++)
+    if (playlist)
     {
-        MusicMetadata *mdata = playlist->getSongAt(x);
-        if (mdata)
+        for (int x = 0; x < playlist->getTrackCount(); x++)
         {
-            MusicGenericTree *newnode = new MusicGenericTree(node, mdata->Title(), "trackid");
-            newnode->setInt(mdata->ID());
-            newnode->setDrawArrow(false);
-            bool hasTrack = gPlayer->getCurrentPlaylist() ? gPlayer->getCurrentPlaylist()->checkTrack(mdata->ID()) : false;
-            newnode->setCheck(hasTrack ? MythUIButtonListItem::FullChecked : MythUIButtonListItem::NotChecked);
+            MusicMetadata *mdata = playlist->getSongAt(x);
+            if (mdata)
+            {
+                MusicGenericTree *newnode = new MusicGenericTree(node, mdata->Title(), "trackid");
+                newnode->setInt(mdata->ID());
+                newnode->setDrawArrow(false);
+                bool hasTrack = gPlayer->getCurrentPlaylist() ? gPlayer->getCurrentPlaylist()->checkTrack(mdata->ID()) : false;
+                newnode->setCheck(hasTrack ? MythUIButtonListItem::FullChecked : MythUIButtonListItem::NotChecked);
+            }
         }
     }
 

@@ -32,6 +32,9 @@ using namespace std;
 #include "mythdate.h"
 #include "mythmiscutil.h"
 #include "threadedfilewriter.h"
+#include "storagegroup.h"
+
+#define MAX_FILE_CHECK 500  // in ms
 
 RemoteFile::RemoteFile(const QString &_path, bool write, bool useRA,
                        int _timeout_ms,
@@ -43,7 +46,7 @@ RemoteFile::RemoteFile(const QString &_path, bool write, bool useRA,
     lock(QMutex::NonRecursive),
     controlSock(NULL),    sock(NULL),
     query("QUERY_FILETRANSFER %1"),
-    writemode(write),
+    writemode(write),     completed(false),
     localFile(NULL),      fileWriter(NULL)
 {
     if (writemode)
@@ -411,30 +414,48 @@ bool RemoteFile::Exists(const QString &url, struct stat *fileinfo)
     if (url.isEmpty())
         return false;
 
-    if (isLocal(url))
+    QUrl qurl(url);
+    QString filename = qurl.path();
+    QString sgroup   = qurl.userName();
+    QString host     = qurl.host();
+
+    if (isLocal(url) || (gCoreContext->IsMasterBackend() &&
+        host == gCoreContext->GetMasterHostName()))
     {
        LOG(VB_FILE, LOG_INFO,
            QString("RemoteFile::Exists(): looking for local file: %1").arg(url));
 
-        QFileInfo info(url);
-        if (info.exists())
+        bool fileExists = false;
+        QString fullFilePath = "";
+
+        if (url.startsWith("myth:"))
         {
-            if (stat(url.toLocal8Bit().constData(), fileinfo) == -1)
+            StorageGroup sGroup(sgroup, host);
+            fullFilePath = sGroup.FindFile(filename);
+            if (!fullFilePath.isEmpty())
+                fileExists = true;
+        }
+        else
+        {
+            QFileInfo info(url);
+            fileExists = info.exists() && info.isFile();
+            fullFilePath = url;
+        }
+
+        if (fileExists)
+        {
+            if (stat(fullFilePath.toLocal8Bit().constData(), fileinfo) == -1)
             {
                 LOG(VB_FILE, LOG_ERR,
-                    QString("RemoteFile::Exists(): failed to stat file: %1").arg(url) + ENO);
+                    QString("RemoteFile::Exists(): failed to stat file: %1").arg(fullFilePath) + ENO);
             }
         }
 
-        return info.exists() && info.isFile();
+        return fileExists;
     }
 
     LOG(VB_FILE, LOG_INFO,
         QString("RemoteFile::Exists(): looking for remote file: %1").arg(url));
-
-    QUrl qurl(url);
-    QString filename = qurl.path();
-    QString sgroup   = qurl.userName();
 
     if (!qurl.fragment().isEmpty() || url.endsWith("#"))
         filename = filename + "#" + qurl.fragment();
@@ -873,6 +894,11 @@ int RemoteFile::Read(void *data, int size)
     return recv;
 }
 
+/**
+ * GetFileSize: returns the remote file's size at the time it was first opened
+ * Will query the server in order to get the size. If file isn't being modified
+ * by the server, that value will be cached
+ */
 long long RemoteFile::GetFileSize(void) const
 {
     if (isLocal())
@@ -894,12 +920,81 @@ long long RemoteFile::GetFileSize(void) const
         }
         return -1;
     }
+
+    QMutexLocker locker(&lock);
     return filesize;
+}
+
+/**
+ * GetRealFileSize: returns the current remote file's size.
+ * Will query the server in order to get the size. If file isn't being modified
+ * by the server, that value will be cached.
+ * A QUERY_SIZE myth request will be made. If the server doesn't support this command
+ * the size will be queried using a QUERY_FILE_EXISTS request
+ * Avoid using GetRealFileSize from the GUI thread
+ */
+long long RemoteFile::GetRealFileSize(void)
+{
+    if (isLocal())
+    {
+        return GetFileSize();
+    }
+
+    QMutexLocker locker(&lock);
+
+    if (completed || lastSizeCheck.elapsed() < MAX_FILE_CHECK)
+    {
+        return filesize;
+    }
+
+    if (!sock)
+    {
+        LOG(VB_NETWORK, LOG_ERR, "RemoteFileque(): Called with no socket");
+        return -1;
+    }
+
+    if (!sock->IsConnected() || !controlSock->IsConnected())
+    {
+        return -1;
+    }
+
+    QStringList strlist(QString(query).arg(recordernum));
+    strlist << "REQUEST_SIZE";
+
+    bool ok = controlSock->SendReceiveStringList(strlist);
+
+    if (ok && !strlist.isEmpty())
+    {
+        bool validate;
+        long long size = strlist[0].toLongLong(&validate);
+
+        if (validate)
+        {
+            if (strlist.count() >= 2)
+            {
+                completed = strlist[1].toInt();
+            }
+            filesize = size;
+        }
+        else
+        {
+            struct stat fileinfo;
+
+            if (Exists(path, &fileinfo))
+            {
+                filesize = fileinfo.st_size;
+            }
+        }
+        lastSizeCheck.restart();
+        return filesize;
+    }
+
+    return -1;
 }
 
 bool RemoteFile::SaveAs(QByteArray &data)
 {
-    long long fs = GetFileSize();
+    long long fs = GetRealFileSize();
 
     if (fs < 0)
         return false;
@@ -1000,12 +1095,22 @@ QString RemoteFile::FindFile(const QString& filename, const QString& host, const
     if (hostName.isEmpty())
         hostName = gCoreContext->GetMasterHostName();
 
-    // first check the given host
-    strList << "QUERY_SG_FILEQUERY" << hostName << storageGroup << filename;
-    if (gCoreContext->SendReceiveStringList(strList))
+    if (gCoreContext->IsMasterBackend() &&
+        hostName == gCoreContext->GetMasterHostName())
     {
-        if (strList.size() > 0 && strList[0] != "EMPTY LIST" && !strList[0].startsWith("SLAVE UNREACHABLE"))
+        StorageGroup sGroup(storageGroup, hostName);
+        if (!sGroup.FindFile(filename).isEmpty())
             return gCoreContext->GenMythURL(hostName, 0, filename, storageGroup);
+    }
+    else
+    {
+        // first check the given host
+        strList << "QUERY_SG_FILEQUERY" << hostName << storageGroup << filename << 0;
+        if (gCoreContext->SendReceiveStringList(strList))
+        {
+            if (strList.size() > 0 && strList[0] != "EMPTY LIST" && !strList[0].startsWith("SLAVE UNREACHABLE"))
+                return gCoreContext->GenMythURL(hostName, 0, filename, storageGroup);
+        }
     }
 
     // not found so search all hosts that has a directory defined for the give storage group
@@ -1031,8 +1136,18 @@ QString RemoteFile::FindFile(const QString& filename, const QString& host, const
     {
         hostName = query.value(0).toString();
 
+        if (gCoreContext->IsMasterBackend() &&
+            hostName == gCoreContext->GetMasterHostName())
+        {
+            StorageGroup sGroup(storageGroup, hostName);
+            if (!sGroup.FindFile(filename).isEmpty())
+                return gCoreContext->GenMythURL(hostName, 0, filename, storageGroup);
+            else
+                continue;
+        }
+
         strList.clear();
-        strList << "QUERY_SG_FILEQUERY" << hostName << storageGroup << filename;
+        strList << "QUERY_SG_FILEQUERY" << hostName << storageGroup << filename << 0;
 
         if (gCoreContext->SendReceiveStringList(strList))
         {

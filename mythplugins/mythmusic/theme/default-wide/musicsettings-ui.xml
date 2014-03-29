@@ -65,6 +65,11 @@
             <position>650,425</position>
         </checkbox>
 
+        <button name="resetdatabase" from="basewidebutton">
+            <position>650,470</position>
+            <value>Reset music database</value>
+        </button>
+
         <textarea name="helptext" from="basetextarea">
             <area>100,540,1080,100</area>
             <cutdown>yes</cutdown>
@@ -91,11 +96,29 @@
         </textarea>
 
         <textarea name="resumemode_label" from="basetextarea">
-            <area>240,220,400,40</area>
+            <area>240,120,400,40</area>
             <align>right,vcenter</align>
-            <value>Resume mode:</value>
+            <value>Resume mode (Playlist):</value>
         </textarea>
         <buttonlist name="resumemode" from="basemediumselector">
+            <position>650,120</position>
+        </buttonlist>
+
+        <textarea name="resumemodeeditor_label" from="basetextarea">
+            <area>240,170,400,40</area>
+            <align>right,vcenter</align>
+            <value>Resume mode (Playlist Editor):</value>
+        </textarea>
+        <buttonlist name="resumemodeeditor" from="basemediumselector">
+            <position>650,170</position>
+        </buttonlist>
+
+        <textarea name="resumemoderadio_label" from="basetextarea">
+            <area>240,220,400,40</area>
+            <align>right,vcenter</align>
+            <value>Resume mode (Radio):</value>
+        </textarea>
+        <buttonlist name="resumemoderadio" from="basemediumselector">
             <position>650,220</position>
         </buttonlist>
 
