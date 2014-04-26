@@ -20,6 +20,7 @@ using_backend {
     SUBDIRS += mythmetadatalookup
 
     !win32-msvc*:SUBDIRS += scripts
+    !mingw:!win32-msvc*: SUBDIRS += mythfilerecorder
 }
 
 using_mythtranscode: SUBDIRS += mythtranscode

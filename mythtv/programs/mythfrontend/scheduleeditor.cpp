@@ -2807,4 +2807,3 @@ void PostProcMixin::TranscodeChanged(bool enable)
     if (m_transcodeprofileList)
         m_transcodeprofileList->SetEnabled(m_rule->m_autoTranscode);
 }
-

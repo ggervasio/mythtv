@@ -90,8 +90,9 @@ MythUIButtonListItem *MusicGenericTree::CreateListButton(MythUIButtonList *list)
 #define LOC_WARN QString("PlaylistEditorView, Warning: ")
 #define LOC_ERR  QString("PlaylistEditorView, Error: ")
 
-PlaylistEditorView::PlaylistEditorView(MythScreenStack *parent, const QString &layout, bool restorePosition)
-         :MusicCommon(parent, "playlisteditorview"),
+PlaylistEditorView::PlaylistEditorView(MythScreenStack *parent, MythScreenType *parentScreen,
+                                       const QString &layout, bool restorePosition)
+         :MusicCommon(parent, parentScreen, "playlisteditorview"),
             m_layout(layout), m_restorePosition(restorePosition),
             m_rootNode(NULL), m_playlistTree(NULL), m_breadcrumbsText(NULL),
             m_positionText(NULL)
@@ -317,13 +318,13 @@ void PlaylistEditorView::customEvent(QEvent *event)
             {
                 m_playlistOptions.playPLOption = PL_CURRENT;
                 m_playlistOptions.insertPLOption = PL_REPLACE;
-                doUpdatePlaylist(false);
+                doUpdatePlaylist();
             }
             else if (resulttext == tr("Add Tracks"))
             {
                 m_playlistOptions.playPLOption = PL_CURRENT;
                 m_playlistOptions.insertPLOption = PL_INSERTATEND;
-                doUpdatePlaylist(false);
+                doUpdatePlaylist();
             }
         }
         else if (resultid == "playlistmenu")
@@ -351,12 +352,12 @@ void PlaylistEditorView::customEvent(QEvent *event)
             {
                 m_playlistOptions.playPLOption = PL_CURRENT;
                 m_playlistOptions.insertPLOption = PL_REPLACE;
-                doUpdatePlaylist(false);
+                doUpdatePlaylist();
             }
             else if (resulttext == tr("Add Tracks"))
             {
                 m_playlistOptions.insertPLOption = PL_INSERTATEND;
-                doUpdatePlaylist(false);
+                doUpdatePlaylist();
             }
         }
     }
@@ -502,7 +503,7 @@ bool PlaylistEditorView::keyPressEvent(QKeyEvent *event)
                      {
                          m_playlistOptions.playPLOption = PL_FIRST;
                          m_playlistOptions.insertPLOption = PL_REPLACE;
-                         doUpdatePlaylist(true);
+                         doUpdatePlaylist();
                      }
                      else
                      {
@@ -628,12 +629,6 @@ void PlaylistEditorView::ShowMenu(void)
 
         MythMenu *menu = NULL;
         MusicGenericTree *mnode = dynamic_cast<MusicGenericTree*>(m_playlistTree->GetCurrentNode());
-
-        if (!mnode)
-        {
-            MusicCommon::ShowMenu();
-            return;
-        }
 
         if (mnode->getAction() == "smartplaylists" ||
             mnode->getAction() == "smartplaylistcategory" ||
@@ -1001,7 +996,6 @@ void PlaylistEditorView::filterTracks(MusicGenericTree *node)
                     if (mdata->Track() < 10)
                         key.prepend("0");
                 }
-
                 map.insertMulti(key, mdata->ID());
             }
         }

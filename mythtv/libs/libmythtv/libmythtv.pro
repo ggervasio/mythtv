@@ -50,7 +50,6 @@ INCLUDEPATH += $$POSTINC
 
 !win32-msvc* {
     QMAKE_CXXFLAGS += $${FREETYPE_CFLAGS}
-    QMAKE_LFLAGS_SHLIB += $${FREETYPE_LIBS}
 }
 
 macx {
@@ -734,6 +733,16 @@ using_backend {
     using_hdpvr:HEADERS *= recorders/mpegrecorder.h
     using_hdpvr:SOURCES *= recorders/mpegrecorder.cpp
     using_hdpvr:DEFINES += USING_HDPVR
+
+    # External recorder
+    HEADERS += recorders/ExternalChannel.h
+    SOURCES += recorders/ExternalChannel.cpp
+    HEADERS += recorders/ExternalRecorder.h
+    SOURCES += recorders/ExternalRecorder.cpp
+    HEADERS += recorders/ExternalStreamHandler.h
+    SOURCES += recorders/ExternalStreamHandler.cpp
+    HEADERS += recorders/ExternalSignalMonitor.h
+    SOURCES += recorders/ExternalSignalMonitor.cpp
 
     # Support for Linux DVB drivers
     using_dvb {

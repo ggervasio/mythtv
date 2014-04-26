@@ -796,6 +796,12 @@ static int pid_printer(const MythUtilCommandLineParser &cmdline)
     int offset = 0;
     uint64_t totalBytes = 0ULL;
 
+    if (use_xml) {
+        /* using a random instance of a sub class of PrintOutput */
+        pmsl->Output(QString("<?xml version=\"1.0\" encoding=\"UTF-8\" ?>"));
+        pmsl->Output(QString("<MPEGSections>"));
+    }
+
     while (true)
     {
         int r = srcRB->Read(&buffer[offset], kBufSize - offset);
@@ -812,6 +818,12 @@ static int pid_printer(const MythUtilCommandLineParser &cmdline)
                     "Processed %1 bytes")
             .arg(totalBytes));
     }
+
+    if (use_xml) {
+        /* using a random instance of a sub class of PrintOutput */
+        pmsl->Output(QString("</MPEGSections>"));
+    }
+
     LOG(VB_STDIO|VB_FLUSH, LOG_ANY, "\n");
 
     if (ptsl->GetFirstPTS() >= 0)
