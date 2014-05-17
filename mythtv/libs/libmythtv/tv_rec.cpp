@@ -812,7 +812,7 @@ void TVRec::StartedRecording(RecordingInfo *curRec)
     if (curRec->IsCommercialFree())
         curRec->SaveCommFlagged(COMM_FLAG_COMMFREE);
 
-    AutoRunInitType t = (curRec->QueryRecordingGroup() == "LiveTV") ?
+    AutoRunInitType t = (curRec->GetRecordingGroup() == "LiveTV") ?
         kAutoRunNone : kAutoRunProfile;
     InitAutoRunJobs(curRec, t, NULL, __LINE__);
 
@@ -3537,7 +3537,7 @@ void TVRec::HandleTuning(void)
         request.input   = input;
 
         if (TuningOnSameMultiplex(request))
-            LOG(VB_PLAYBACK, LOG_INFO, LOC + "On same multiplex");
+            LOG(VB_CHANNEL, LOG_INFO, LOC + "On same multiplex");
 
         TuningShutdowns(request);
 
@@ -3902,8 +3902,8 @@ void TVRec::TuningFrequency(const TuningRequest &request)
                 SetFlags(kFlagWaitingForSignal);
                 if (curRecording)
                 {
-                    signalMonitorDeadline = curRecording->GetScheduledEndTime()
-                                            .addSecs(-50);
+                    signalMonitorDeadline =
+                        curRecording->GetRecordingEndTime();
                 }
                 else
                 {
@@ -4555,7 +4555,7 @@ bool TVRec::GetProgramRingBufferForLiveTV(RecordingInfo **pginfo,
     }
 
     if (!pseudoLiveTVRecording)
-        prog->ApplyRecordRecGroupChange(RecordingInfo::kLiveTVRecGroup);
+        prog->SetRecordingGroup("LiveTV");
 
     StartedRecording(prog);
 

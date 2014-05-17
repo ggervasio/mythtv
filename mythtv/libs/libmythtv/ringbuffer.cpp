@@ -103,6 +103,7 @@ bool        RingBuffer::gAVformat_net_initialised = false;
  *                      Otherwise it's how long to try opening
  *                      the file after the first failure in
  *                      milliseconds before giving up.
+ *  \param stream_only  If true, prevent DVD and Bluray (used by FileTransfer)
  */
 RingBuffer *RingBuffer::Create(
     const QString &xfilename, bool write,
@@ -117,14 +118,17 @@ RingBuffer *RingBuffer::Create(
     bool dvddir  = false;
     bool bddir   = false;
     bool httpurl = lower.startsWith("http://") || lower.startsWith("https://");
+    bool iptvurl =
+        lower.startsWith("rtp://") || lower.startsWith("tcp://") ||
+        lower.startsWith("udp://");
     bool mythurl = lower.startsWith("myth://");
     bool bdurl   = lower.startsWith("bd:");
     bool dvdurl  = lower.startsWith("dvd:");
     bool dvdext  = lower.endsWith(".img") || lower.endsWith(".iso");
 
-    if (httpurl)
+    if (httpurl || iptvurl)
     {
-        if (HLSRingBuffer::TestForHTTPLiveStreaming(lfilename))
+        if (!iptvurl && HLSRingBuffer::TestForHTTPLiveStreaming(lfilename))
         {
             return new HLSRingBuffer(lfilename);
         }
@@ -1032,6 +1036,7 @@ void RingBuffer::run(void)
             {
                 poslock.lockForWrite();
                 rbwlock.lockForWrite();
+
                 if (rbwposcopy == rbwpos)
                 {
                     internalreadpos += read_return;
@@ -1040,6 +1045,8 @@ void RingBuffer::run(void)
                         LOC + QString("rbwpos += %1K requested %2K in read")
                         .arg(read_return/1024,3).arg(totfree/1024,3));
                 }
+                numfailures = 0;
+
                 rbwlock.unlock();
                 poslock.unlock();
 
@@ -1393,15 +1400,6 @@ int RingBuffer::ReadPriv(void *buf, int count, bool peek)
         LOG(VB_GENERAL, LOG_ERR, LOC + loc_desc +
             ": Attempt to read from a write only file");
         errno = EBADF;
-        rwlock.unlock();
-        return -1;
-    }
-
-    if (commserror)
-    {
-        LOG(VB_GENERAL, LOG_ERR, LOC + loc_desc +
-            ": Attempt to read after commserror set");
-        errno = EIO;
         rwlock.unlock();
         return -1;
     }
