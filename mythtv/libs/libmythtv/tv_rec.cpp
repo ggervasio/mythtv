@@ -495,14 +495,14 @@ RecStatusType TVRec::StartRecording(const ProgramInfo *pginfo)
             "Checking input group recorders - begin");
         vector<uint> &cardids = pendinfo.possibleConflicts;
 
-        uint mplexid = 0, sourceid = 0;
+        uint mplexid = 0, chanid = 0, sourceid = 0;
         vector<uint> cardids2;
         vector<TVState> states;
 
         // Stop remote recordings if needed
         for (uint i = 0; i < cardids.size(); i++)
         {
-            TunedInputInfo busy_input;
+            InputInfo busy_input;
             bool is_busy = RemoteIsBusy(cardids[i], busy_input);
 
             // if the other recorder is busy, but the input is
@@ -517,12 +517,15 @@ RecStatusType TVRec::StartRecording(const ProgramInfo *pginfo)
             if (is_busy && !sourceid)
             {
                 mplexid  = pendinfo.info->QueryMplexID();
+                chanid   = pendinfo.info->GetChanID();
                 sourceid = pendinfo.info->GetSourceID();
             }
 
             if (is_busy &&
                 ((sourceid != busy_input.sourceid) ||
-                 (mplexid  != busy_input.mplexid)))
+                 (mplexid  != busy_input.mplexid) ||
+                 ((mplexid == 0 || mplexid == 32767) &&
+                  chanid != busy_input.chanid)))
             {
                 states.push_back((TVState) RemoteGetState(cardids[i]));
                 cardids2.push_back(cardids[i]);
@@ -2446,9 +2449,9 @@ bool TVRec::IsReallyRecording(void)
  *         the next time_buffer seconds.
  *  \sa EncoderLink::IsBusy(TunedInputInfo*, int time_buffer)
  */
-bool TVRec::IsBusy(TunedInputInfo *busy_input, int time_buffer) const
+bool TVRec::IsBusy(InputInfo *busy_input, int time_buffer) const
 {
-    TunedInputInfo dummy;
+    InputInfo dummy;
     if (!busy_input)
         busy_input = &dummy;
 

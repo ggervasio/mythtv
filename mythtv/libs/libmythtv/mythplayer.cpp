@@ -859,8 +859,6 @@ void MythPlayer::SetVideoParams(int width, int height, double fps,
 
 void MythPlayer::SetFileLength(int total, int frames)
 {
-    QMutexLocker lock(&durationLock);
-
     totalLength = total;
     totalFrames = frames;
 }
@@ -2449,9 +2447,10 @@ bool MythPlayer::FastForward(float seconds)
 
     if (fftime <= 0)
     {
-        float current = ComputeSecs(framesPlayed, true);
-        float dest = current + seconds;
-        float length = ComputeSecs(totalFrames, true);
+        float current   = ComputeSecs(framesPlayed, true);
+        float dest      = current + seconds;
+        float length    = ComputeSecs(totalFrames, true);
+
         if (dest > length)
         {
             int64_t pos = TranslatePositionMsToFrame(seconds * 1000, false);
@@ -3092,7 +3091,8 @@ void MythPlayer::EventLoop(void)
     // Handle automatic commercial skipping
     uint64_t jumpto = 0;
     if (deleteMap.IsEmpty() && (ffrew_skip == 1) &&
-       (kCommSkipOff != commBreakMap.GetAutoCommercialSkip()))
+       (kCommSkipOff != commBreakMap.GetAutoCommercialSkip()) &&
+        commBreakMap.HasMap())
     {
         QString msg;
         uint64_t frameCount = GetCurrentFrameCount();
@@ -3732,7 +3732,7 @@ long long MythPlayer::CalcRWTime(long long rw) const
  * CalcMaxFFTime(ffframes): forward ffframes forward.
  * Handle liveTV transitions if necessay
  */
-long long MythPlayer::CalcMaxFFTime(long long ffframes, bool setjump)
+long long MythPlayer::CalcMaxFFTime(long long ffframes, bool setjump) const
 {
     float maxtime = 1.0;
     bool islivetvcur = (livetv && player_ctx->tvchain &&
@@ -3746,26 +3746,11 @@ long long MythPlayer::CalcMaxFFTime(long long ffframes, bool setjump)
     float secsPlayed    = ComputeSecs(framesPlayed, true);
     float secsWritten   = ComputeSecs(totalFrames, true);
 
-    if ((islivetvcur || IsWatchingInprogress()) &&
-        ((ff + secsPlayed) > secsWritten))
-    {
-        // If we attempt to seek past the known duration, check for up to date
-        // data
-        long long framesWritten = player_ctx->recorder->GetFramesWritten();
-
-        if (totalFrames < framesWritten)
-        {
-            // Known duration is less than what the backend reported, update with
-            // what we've just fetched
-            secsWritten = ComputeSecs(framesWritten, true);
-            SetFileLength(secsWritten, framesWritten);
-        }
-    }
-
     limitKeyRepeat = false;
 
     if (livetv && !islivetvcur && player_ctx->tvchain)
     {
+        // recording has completed, totalFrames will always be up to date
         if ((ffframes + framesPlayed > totalFrames) && setjump)
         {
             ret = -1;
@@ -3775,6 +3760,15 @@ long long MythPlayer::CalcMaxFFTime(long long ffframes, bool setjump)
     }
     else if (islivetvcur || IsWatchingInprogress())
     {
+        if ((ff + secsPlayed) > secsWritten)
+        {
+            // If we attempt to seek past the last known duration,
+            // check for up to date data
+            long long framesWritten = player_ctx->recorder->GetFramesWritten();
+
+            secsWritten = ComputeSecs(framesWritten, true);
+        }
+
         float behind = secsWritten - secsPlayed;
 
         if (behind < maxtime) // if we're close, do nothing
@@ -3928,8 +3922,6 @@ void MythPlayer::WaitForSeek(uint64_t frame, uint64_t seeksnap_wanted)
     if (islivetvcur || IsWatchingInprogress())
     {
         max = (uint64_t)player_ctx->recorder->GetFramesWritten();
-        LOG(VB_PLAYBACK, LOG_DEBUG, LOC +
-            QString("WaitForSeek:%1 max:%2").arg(frame).arg(max));
     }
     if (frame >= max)
         frame = max - 1;
@@ -4833,11 +4825,11 @@ uint64_t MythPlayer::GetCurrentFrameCount(void) const
 // positive offset or +0.0f indicate offset from the beginning.  A
 // negative offset or -0.0f indicate offset from the end.  Limit the
 // result to within bounds of the video.
-uint64_t MythPlayer::FindFrame(float offset, bool use_cutlist)
+uint64_t MythPlayer::FindFrame(float offset, bool use_cutlist) const
 {
-    bool islivetvcur = (livetv && player_ctx->tvchain &&
+    bool islivetvcur    = (livetv && player_ctx->tvchain &&
                         !player_ctx->tvchain->HasNext());
-    uint64_t length_ms = TranslatePositionFrameToMs(totalFrames, use_cutlist);
+    uint64_t length_ms  = TranslatePositionFrameToMs(totalFrames, use_cutlist);
     uint64_t position_ms;
 
     if (signbit(offset))
@@ -4849,11 +4841,9 @@ uint64_t MythPlayer::FindFrame(float offset, bool use_cutlist)
 
             if (totalFrames < framesWritten)
             {
-                // Known duration is less than what the backend reported, update with
-                // what we've just fetched
+                // Known duration is less than what the backend reported, use new value
                 length_ms =
                     TranslatePositionFrameToMs(framesWritten, use_cutlist);
-                SetFileLength(length_ms / 1000, framesWritten);
             }
         }
         uint64_t offset_ms = -offset * 1000 + 0.5;
@@ -4861,23 +4851,19 @@ uint64_t MythPlayer::FindFrame(float offset, bool use_cutlist)
     }
     else
     {
-        float secsPlayed = ComputeSecs(framesPlayed, use_cutlist);
         position_ms = offset * 1000 + 0.5;
 
-        if (offset > secsPlayed)
+        if (offset > length_ms)
         {
             // Make sure we have an updated totalFrames
             if ((islivetvcur || IsWatchingInprogress()) &&
                 (length_ms < offset))
             {
-                long long framesWritten = player_ctx->recorder->GetFramesWritten();
+                long long framesWritten =
+                    player_ctx->recorder->GetFramesWritten();
 
-                if (totalFrames < framesWritten)
-                {
-                    length_ms =
-                        TranslatePositionFrameToMs(framesWritten, use_cutlist);
-                    SetFileLength(length_ms / 1000, framesWritten);
-                }
+                length_ms =
+                    TranslatePositionFrameToMs(framesWritten, use_cutlist);
             }
             position_ms = min(position_ms, length_ms);
         }

@@ -1092,7 +1092,8 @@ bool Scheduler::FindNextConflict(
         // unless the programs are on the same multiplex.
         if (p->GetCardID() != q->GetCardID())
         {
-            if (p->mplexid && (p->mplexid == q->mplexid))
+            if ((p->mplexid && p->mplexid == q->mplexid) ||
+                (!p->mplexid && p->GetChanID() == q->GetChanID()))
                 continue;
         }
 
@@ -1737,7 +1738,7 @@ bool Scheduler::IsBusyRecording(const RecordingInfo *rcinfo)
         return true;
 
     // now check other cards in the same input group as the recording.
-    TunedInputInfo busy_input;
+    InputInfo busy_input;
     uint inputid = rcinfo->GetInputID();
     vector<uint> cardids = CardUtil::GetConflictingCards(
         inputid, rcinfo->GetCardID());
@@ -1758,6 +1759,8 @@ bool Scheduler::IsBusyRecording(const RecordingInfo *rcinfo)
             (busy_input.mplexid == 0 ||
              busy_input.mplexid == 32767 ||
              busy_input.mplexid != rcinfo->mplexid) &&
+            (busy_input.chanid == 0 ||
+             busy_input.chanid != rcinfo->GetChanID()) &&
             igrp.GetSharedInputGroup(busy_input.inputid, inputid))
         {
             return true;
@@ -5112,7 +5115,7 @@ void Scheduler::SchedLiveTV(void)
         if (kState_WatchingLiveTV != enc->GetState())
             continue;
 
-        TunedInputInfo in;
+        InputInfo in;
         enc->IsBusy(&in);
 
         if (!in.inputid)

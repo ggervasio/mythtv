@@ -603,7 +603,9 @@ void VideoOutputVDPAU::DrawSlice(VideoFrame *frame, int x, int y, int w, int h)
         uint max_refs = MIN_REFERENCE_FRAMES;
         if (video_codec_id == kCodec_H264_VDPAU)
         {
-            max_refs = m_context.info.h264.num_ref_frames;
+            max_refs = IsNVIDIA() ?
+                m_context.info.h264.num_ref_frames :
+                render->info.h264.num_ref_frames;
             if (max_refs < 1 || max_refs > MAX_REFERENCE_FRAMES)
             {
                 uint32_t round_width  = (frame->width + 15) & ~15;
@@ -698,7 +700,7 @@ void VideoOutputVDPAU::DrawSlice(VideoFrame *frame, int x, int y, int w, int h)
         return;
     }
 
-    m_render->Decode(m_decoder, render, &m_context);
+    m_render->Decode(m_decoder, render, IsNVIDIA() ? &m_context : NULL);
 }
 
 void VideoOutputVDPAU::Show(FrameScanType scan)
@@ -944,18 +946,30 @@ MythCodecID VideoOutputVDPAU::GetBestSupportedCodec(
     uint width, uint height, const QString &decoder,
     uint stream_type, bool no_acceleration)
 {
-    bool use_cpu = no_acceleration;
-
+    bool use_cpu = no_acceleration || (decoder != "vdpau") || getenv("NO_VDPAU");
     MythCodecID test_cid = (MythCodecID)(kCodec_MPEG1_VDPAU + (stream_type-1));
-    use_cpu |= !codec_is_vdpau_hw(test_cid);
-    if (test_cid == kCodec_MPEG4_VDPAU)
-        use_cpu |= !MythRenderVDPAU::IsMPEG4Available();
-    if (test_cid == kCodec_H264_VDPAU)
-        use_cpu |= !MythRenderVDPAU::H264DecoderSizeSupported(width, height);
-    if ((decoder != "vdpau") || getenv("NO_VDPAU") || use_cpu)
+
+    if (!use_cpu)
+    {
+        use_cpu |= !MythRenderVDPAU::IsVDPAUAvailable();
+        use_cpu |= !codec_is_vdpau_hw(test_cid);
+        if (!use_cpu && test_cid == kCodec_MPEG4_VDPAU)
+            use_cpu |= !MythRenderVDPAU::IsMPEG4Available();
+        if (!use_cpu && test_cid == kCodec_H264_VDPAU)
+            use_cpu |= !MythRenderVDPAU::H264DecoderSizeSupported(width, height);
+    }
+
+    if (use_cpu)
         return (MythCodecID)(kCodec_MPEG1 + (stream_type-1));
 
     return test_cid;
+}
+
+bool VideoOutputVDPAU::IsNVIDIA(void)
+{
+        // this forces the check of VDPAU capabilities
+    (void)MythRenderVDPAU::IsMPEG4Available();
+    return MythRenderVDPAU::gVDPAUNVIDIA;
 }
 
 void VideoOutputVDPAU::UpdateReferenceFrames(VideoFrame *frame)

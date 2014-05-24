@@ -275,6 +275,7 @@ static void vdpau_preemption_callback(VdpDevice device, void *myth_render)
 bool MythRenderVDPAU::gVDPAUSupportChecked = false;
 bool MythRenderVDPAU::gVDPAUMPEG4Accel     = false;
 uint MythRenderVDPAU::gVDPAUBestScaling    = 0;
+bool MythRenderVDPAU::gVDPAUNVIDIA         = false;
 
 MythRenderVDPAU::MythRenderVDPAU()
   : MythRender(kRenderVDPAU), m_preempted(false), m_recreating(false),
@@ -296,6 +297,19 @@ MythRenderVDPAU::~MythRenderVDPAU(void)
     Destroy();
 }
 
+bool MythRenderVDPAU::IsVDPAUAvailable(void)
+{
+    if (gVDPAUSupportChecked)
+        return true;
+
+    LOG(VB_PLAYBACK, LOG_INFO, LOC + "Checking VDPAU support.");
+    MythRenderVDPAU *dummy = new MythRenderVDPAU();
+    bool supported = dummy->CreateDummy();
+    delete dummy;
+
+    return supported;
+}
+
 bool MythRenderVDPAU::IsMPEG4Available(void)
 {
     if (gVDPAUSupportChecked)
@@ -303,12 +317,11 @@ bool MythRenderVDPAU::IsMPEG4Available(void)
 
     LOG(VB_PLAYBACK, LOG_INFO, LOC + "Checking VDPAU capabilities.");
     MythRenderVDPAU *dummy = new MythRenderVDPAU();
-    if (dummy)
-    {
-        if (dummy->CreateDummy())
-            return gVDPAUMPEG4Accel;
-        delete dummy;
-    }
+    bool ok = dummy->CreateDummy();
+    delete dummy;
+
+    if (ok)
+        return gVDPAUMPEG4Accel;
 
     return false;
 }
@@ -1530,10 +1543,22 @@ void MythRenderVDPAU::Decode(uint id, struct vdpau_render_state *render,
     }
 
     INIT_ST
-    vdp_st = vdp_decoder_render(m_decoders[id].m_id, render->surface,
-                               (VdpPictureInfo const *)&(context->info),
-                                context->bitstream_buffers_used,
-                                context->bitstream_buffers);
+
+    if (context)
+    {
+        vdp_st = vdp_decoder_render(m_decoders[id].m_id, render->surface,
+                                    (VdpPictureInfo const *)&(context->info),
+                                    context->bitstream_buffers_used,
+                                    context->bitstream_buffers);
+    }
+    else
+    {
+        vdp_st = vdp_decoder_render(m_decoders[id].m_id, render->surface,
+                                    (VdpPictureInfo const *)&(render->info),
+                                    render->bitstream_buffers_used,
+                                    render->bitstream_buffers);
+    }
+
     CHECK_ST
 }
 
@@ -1729,6 +1754,10 @@ bool MythRenderVDPAU::CheckHardwareSupport(void)
         {
             const char * info;
             vdp_get_information_string(&info);
+            QString vendor(info);
+
+            gVDPAUNVIDIA = vendor.contains("nvidia", Qt::CaseInsensitive);
+
             LOG(VB_GENERAL, LOG_INFO, LOC +
                 QString("Information %2").arg(info));
         }
