@@ -192,7 +192,8 @@ class MythMainWindowPrivate
         idleTimer(NULL),
         standby(false),
         enteringStandby(false),
-        NC(NULL)
+        NC(NULL),
+        firstinit(true)
     {
     }
 
@@ -287,6 +288,8 @@ class MythMainWindowPrivate
     bool standby;
     bool enteringStandby;
     MythNotificationCenter *NC;
+        // window aspect
+    bool firstinit;
 };
 
 // Make keynum in QKeyEvent be equivalent to what's in QKeySequence
@@ -975,7 +978,14 @@ void MythMainWindow::Init(QString forcedpainter)
     // Set window border based on fullscreen attribute
     Qt::WindowFlags flags = Qt::Window;
 
-    if (!GetMythDB()->GetNumSetting("RunFrontendInWindow", 0))
+    bool inwindow = GetMythDB()->GetNumSetting("RunFrontendInWindow", 0);
+    bool fullscreen = d->does_fill_screen && !GetMythUI()->IsGeometryOverridden();
+
+    // On Compiz/Unit, when the window is fullscreen and frameless changing
+    // screen position ends up stuck. Adding a border temporarily prevents this
+    setWindowFlags(windowFlags() & ~Qt::FramelessWindowHint);
+
+    if (!inwindow)
     {
         LOG(VB_GENERAL, LOG_INFO, "Using Frameless Window");
         flags |= Qt::FramelessWindowHint;
@@ -986,12 +996,19 @@ void MythMainWindow::Init(QString forcedpainter)
     flags |= Qt::MSWindowsOwnDC;
 #endif
 
-    if (d->does_fill_screen && !GetMythUI()->IsGeometryOverridden())
+    if (fullscreen && !inwindow)
     {
         LOG(VB_GENERAL, LOG_INFO, "Using Full Screen Window");
+        if (d->firstinit)
+        {
+            // During initialization, we force being fullscreen using setWindowState
+            // otherwise, in ubuntu's unity, the side bar often stays visible
+            setWindowState(Qt::WindowFullScreen);
+        }
     }
     else
     {
+            // reset type
         setWindowState(Qt::WindowNoState);
     }
 
@@ -1001,6 +1018,7 @@ void MythMainWindow::Init(QString forcedpainter)
     }
 
     setWindowFlags(flags);
+    QTimer::singleShot(1000, this, SLOT(DelayedAction()));
 
     d->screenRect = QRect(d->xbase, d->ybase, d->screenwidth, d->screenheight);
     d->uiScreenRect = QRect(0, 0, d->screenwidth, d->screenheight);
@@ -1012,6 +1030,7 @@ void MythMainWindow::Init(QString forcedpainter)
     setGeometry(d->xbase, d->ybase, d->screenwidth, d->screenheight);
     // remove size constraints
     setFixedSize(QWIDGETSIZE_MAX, QWIDGETSIZE_MAX);
+    resize(d->screenwidth, d->screenheight);
 
     GetMythUI()->ThemeWidget(this);
 #ifdef Q_OS_MAC
@@ -1020,7 +1039,6 @@ void MythMainWindow::Init(QString forcedpainter)
     qApp->setPalette(palette());
 #endif
     Show();
-    setFixedSize(QSize(d->screenwidth, d->screenheight));
 
     if (!GetMythDB()->GetNumSetting("HideMouseCursor", 0))
         setMouseTracking(true); // Required for mouse cursor auto-hide
@@ -1138,6 +1156,12 @@ void MythMainWindow::Init(QString forcedpainter)
     {
         d->NC = new MythNotificationCenter();
     }
+}
+
+void MythMainWindow::DelayedAction(void)
+{
+    setFixedSize(QSize(d->screenwidth, d->screenheight));
+    Show();
 }
 
 void MythMainWindow::InitKeys()
@@ -1321,7 +1345,10 @@ void MythMainWindow::ReinitDone(void)
 
 void MythMainWindow::Show(void)
 {
-    if (d->does_fill_screen && !GetMythUI()->IsGeometryOverridden())
+    bool inwindow = GetMythDB()->GetNumSetting("RunFrontendInWindow", 0);
+    bool fullscreen = d->does_fill_screen && !GetMythUI()->IsGeometryOverridden();
+
+    if (fullscreen && !inwindow && !d->firstinit)
     {
         showFullScreen();
     }
@@ -1329,6 +1356,7 @@ void MythMainWindow::Show(void)
     {
         show();
     }
+    d->firstinit = false;
 
 #ifdef Q_WS_MACX_OLDQT
     if (d->does_fill_screen)
