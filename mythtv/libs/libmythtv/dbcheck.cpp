@@ -2135,7 +2135,7 @@ NULL
                          .toLocal8Bit());
         }
 
-        // Convert DATETIME back to seperate DATE and TIME in record table
+        // Convert DATETIME back to separate DATE and TIME in record table
         const char *post_sql[] = {
             "UPDATE record, recordupdate "
             "SET record.startdate = DATE(recordupdate.starttime), "
@@ -2679,6 +2679,30 @@ NULL
             return false;
     }
 
+    if (dbver == "1324")
+    {
+        const char *updates[] = {
+            "ALTER TABLE recorded "
+            " DROP PRIMARY KEY, "
+            " ADD recordedid INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY, "
+            " ADD UNIQUE KEY (chanid, starttime) ;",
+            NULL
+        };
+
+        if (!performActualUpdate(updates, "1325", dbver))
+            return false;
+    }
+
+    if (dbver == "1325")
+    {
+        const char *updates[] = {
+            "ALTER TABLE recorded ADD inputname VARCHAR(32);",
+            NULL
+        };
+
+        if (!performActualUpdate(&updates[0], "1326", dbver))
+            return false;
+    }
 
     return true;
 }

@@ -2615,6 +2615,8 @@ bool Scheduler::HandleRecording(
             schedLock.unlock();
             recStatus = nexttv->StartRecording(&tempri);
             schedLock.lock();
+            ri.SetRecordingID(tempri.GetRecordingID());
+            ri.SetRecordingStartTime(tempri.GetRecordingStartTime());
 
             // activate auto expirer
             if (m_expirer)
@@ -4380,6 +4382,14 @@ void Scheduler::GetAllScheduled(RecList &proglist, SchedSortColumn sortBy,
             break;
         case kSortLastRecorded:
             sortColumn = "record.last_record";
+            break;
+        case kSortNextRecording:
+            // We want to shift the rules which have no upcoming recordings to
+            // the back of the pack, most of the time the user won't be interested
+            // in rules that aren't matching recordings at the present time.
+            // We still want them available in the list however since vanishing rules
+            // violates the principle of least surprise
+            sortColumn = "record.next_record = '0000-00-00 00:00:00', record.next_record";
             break;
         case kSortType:
             sortColumn = "record.type";

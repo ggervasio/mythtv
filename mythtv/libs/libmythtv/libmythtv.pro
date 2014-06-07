@@ -106,7 +106,7 @@ QMAKE_CLEAN += $(TARGET) $(TARGETA) $(TARGETD) $(TARGET0) $(TARGET1) $(TARGET2)
 
 # Headers needed by frontend & backend
 HEADERS += filter.h                 format.h
-HEADERS += frame.h
+HEADERS += mythframe.h
 
 # LZO used by NuppelDecoder & NuppelVideoRecorder
 HEADERS += lzoconf.h
@@ -142,6 +142,7 @@ HEADERS += avfringbuffer.h
 HEADERS += ringbuffer.h             fileringbuffer.h
 HEADERS += streamingringbuffer.h    metadataimagehelper.h
 HEADERS += icringbuffer.h
+HEADERS += mythavutil.h
 
 SOURCES += recordinginfo.cpp
 SOURCES += dbcheck.cpp
@@ -248,7 +249,7 @@ SOURCES += srtwriter.cpp
 
 inc.path = $${PREFIX}/include/mythtv/
 inc.files  = playgroup.h
-inc.files += mythtvexp.h            metadataimagehelper.h
+inc.files += mythtvexp.h            metadataimagehelper.h mythavutil.h
 
 INSTALLS += inc
 

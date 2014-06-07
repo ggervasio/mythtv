@@ -66,7 +66,7 @@ const QString ProgramInfo::kFromRecordedQuery =
     "       r.findid,           rec.dupin,      rec.dupmethod,     "//45-47
     "       p.syndicatedepisodenumber, p.partnumber, p.parttotal,  "//48-50
     "       p.season,           p.episode,      p.totalepisodes,   "//51-53
-    "       p.category_type                                        "//54
+    "       p.category_type,    r.recordedid                       "//54-55
     "FROM recorded AS r "
     "LEFT JOIN channel AS c "
     "ON (r.chanid    = c.chanid) "
@@ -180,6 +180,8 @@ ProgramInfo::ProgramInfo(void) :
     dupin(kDupsInAll),
     dupmethod(kDupCheckSubThenDesc),
 
+    recordedid(0),
+
     // everything below this line is not serialized
     availableStatus(asAvailable),
     spread(-1),
@@ -262,6 +264,8 @@ ProgramInfo::ProgramInfo(const ProgramInfo &other) :
     dupin(other.dupin),
     dupmethod(other.dupmethod),
 
+    recordedid(other.recordedid),
+
     // everything below this line is not serialized
     availableStatus(other.availableStatus),
     spread(other.spread),
@@ -272,6 +276,33 @@ ProgramInfo::ProgramInfo(const ProgramInfo &other) :
     inUseForWhat(),
     positionMapDBReplacement(other.positionMapDBReplacement)
 {
+}
+
+/** \fn ProgramInfo::ProgramInfo(uint _recordedid)
+ *  \brief Constructs a ProgramInfo from data in 'recorded' table
+ */
+ProgramInfo::ProgramInfo(uint _recordedid)
+{
+    MSqlQuery query(MSqlQuery::InitCon());
+    query.prepare(
+        "SELECT chanid, starttime "
+        "FROM recorded "
+        "WHERE recordedid = :RECORDEDID");
+    query.bindValue(":RECORDEDID", _recordedid);
+
+    if (query.exec() && query.next())
+    {
+        uint _chanid          = query.value(0).toUInt();
+        QDateTime _recstartts = MythDate::as_utc(query.value(1).toDateTime());
+        LoadProgramFromRecorded(_chanid, _recstartts);
+    }
+    else
+    {
+        LOG(VB_GENERAL, LOG_ERR, LOC +
+            QString("Failed to find recorded entry for %1.")
+            .arg(_recordedid));
+        clear();
+    }
 }
 
 /** \fn ProgramInfo::ProgramInfo(uint _chanid, const QDateTime &_recstartts)
@@ -288,6 +319,7 @@ ProgramInfo::ProgramInfo(uint _chanid, const QDateTime &_recstartts) :
  *  \brief Constructs a ProgramInfo from data in 'recorded' table
  */
 ProgramInfo::ProgramInfo(
+    uint  _recordedid,
     const QString &_title,
     const QString &_subtitle,
     const QString &_description,
@@ -415,6 +447,8 @@ ProgramInfo::ProgramInfo(
     dupin(_dupin),
     dupmethod(_dupmethod),
 
+    recordedid(_recordedid),
+
     // everything below this line is not serialized
     availableStatus(asAvailable),
     spread(-1),
@@ -530,6 +564,8 @@ ProgramInfo::ProgramInfo(
     rectype(_rectype),
     dupin(0),
     dupmethod(0),
+
+    recordedid(0),
 
     // everything below this line is not serialized
     availableStatus(asAvailable),
@@ -660,6 +696,8 @@ ProgramInfo::ProgramInfo(
     dupin(kDupsInAll),
     dupmethod(kDupCheckSubThenDesc),
 
+    recordedid(0),
+
     // everything below this line is not serialized
     availableStatus(asAvailable),
     spread(-1),
@@ -699,6 +737,7 @@ ProgramInfo::ProgramInfo(
         dupin       = s.dupin;
         dupmethod   = s.dupmethod;
         findid      = s.findid;
+        recordedid  = s.recordedid;
 
         // This is the exact showing (same chanid or callsign)
         // which will be recorded
@@ -816,6 +855,8 @@ ProgramInfo::ProgramInfo(
     rectype(kNotRecording),
     dupin(kDupsInAll),
     dupmethod(kDupCheckSubThenDesc),
+
+    recordedid(0),
 
     // everything below this line is not serialized
     availableStatus(asAvailable),
@@ -1056,6 +1097,8 @@ void ProgramInfo::clone(const ProgramInfo &other,
     dupin = other.dupin;
     dupmethod = other.dupmethod;
 
+    recordedid = other.recordedid;
+
     sourceid = other.sourceid;
     inputid = other.inputid;
     cardid = other.cardid;
@@ -1163,6 +1206,8 @@ void ProgramInfo::clear(void)
     rectype = kNotRecording;
     dupin = kDupsInAll;
     dupmethod = kDupCheckSubThenDesc;
+
+    recordedid = 0;
 
     sourceid = 0;
     inputid = 0;
@@ -1328,6 +1373,8 @@ void ProgramInfo::ToStringList(QStringList &list) const
     INT_TO_LIST(partnumber);   // 46
     INT_TO_LIST(parttotal);    // 47
     INT_TO_LIST(catType);      // 48
+
+    INT_TO_LIST(recordedid);   //49
 /* do not forget to update the NUMPROGRAMLINES defines! */
 }
 
@@ -1432,6 +1479,8 @@ bool ProgramInfo::FromStringList(QStringList::const_iterator &it,
     INT_FROM_LIST(partnumber);        // 46
     INT_FROM_LIST(parttotal);         // 47
     ENUM_FROM_LIST(catType, CategoryType); // 48
+
+    INT_FROM_LIST(recordedid);        // 49
 
     if (!origChanid || !origRecstartts.isValid() ||
         (origChanid != chanid) || (origRecstartts != recstartts))
@@ -1572,6 +1621,9 @@ void ProgramInfo::ToMap(InfoMap &progMap,
         MythDate::toString(lastmodified, kDateFull | kSimplify);
     progMap["lastmodified"] =
         MythDate::toString(lastmodified, kDateTimeFull | kSimplify);
+
+    if (recordedid)
+        progMap["recordedid"] = recordedid;
 
     progMap["channum"] = chanstr;
     progMap["chanid"] = chanid;
@@ -1995,6 +2047,8 @@ bool ProgramInfo::LoadProgramFromRecorded(
     /**///rectype;
     dupin        = RecordingDupInType(query.value(46).toInt());
     dupmethod    = RecordingDupMethodType(query.value(47).toInt());
+
+    recordedid   = query.value(55).toUInt();
 
     // ancillary data -- begin
     programflags = FL_NONE;
@@ -2500,18 +2554,18 @@ QString ProgramInfo::GetPlaybackURL(
         (gCoreContext->GetNumSetting("MasterBackendOverride", 0)) &&
         (RemoteCheckFile(this, false)))
     {
-        tmpURL = gCoreContext->GenMythURL(gCoreContext->GetSetting("MasterServerIP"),
-                                          gCoreContext->GetSetting("MasterServerPort").toInt(),
+        tmpURL = gCoreContext->GenMythURL(gCoreContext->GetMasterServerIP(),
+                                          gCoreContext->GetMasterServerPort(),
                                           basename);
 
         LOG(VB_FILE, LOG_INFO, LOC +
             QString("GetPlaybackURL: Found @ '%1'").arg(tmpURL));
         return tmpURL;
-        }
+    }
 
     // Fallback to streaming from the backend the recording was created on
     tmpURL = gCoreContext->GenMythURL(gCoreContext->GetBackendServerIP(hostname),
-                                      gCoreContext->GetSettingOnHost("BackendServerPort", hostname).toInt(),
+                                      gCoreContext->GetBackendServerPort(hostname),
                                       basename);
 
     LOG(VB_FILE, LOG_INFO, LOC +
@@ -3683,6 +3737,9 @@ void ProgramInfo::SavePositionMap(
     if (!query.exec())
         MythDB::DBError("position map clear", query);
 
+    if (posMap.isEmpty())
+        return;
+
     // Use the multi-value insert syntax to reduce database I/O
     QStringList q("INSERT INTO ");
     QString qfields;
@@ -3738,6 +3795,9 @@ void ProgramInfo::SavePositionMap(
 void ProgramInfo::SavePositionMapDelta(
     frm_pos_map_t &posMap, MarkTypes type) const
 {
+    if (posMap.isEmpty())
+        return;
+
     if (positionMapDBReplacement)
     {
         QMutexLocker locker(positionMapDBReplacement->lock);
@@ -4825,27 +4885,44 @@ bool ProgramInfo::QueryTuningInfo(QString &channum, QString &input) const
  */
 QString ProgramInfo::QueryInputDisplayName(void) const
 {
-    if (!inputid)
-        return QString::null;
+    QString result;
 
-    MSqlQuery query(MSqlQuery::InitCon());
-    query.prepare("SELECT displayname, cardid, inputname "
-                  "FROM cardinput "
-                  "WHERE cardinputid = :INPUTID");
-    query.bindValue(":INPUTID", inputid);
-
-    if (!query.exec())
-        MythDB::DBError("ProgramInfo::GetInputDisplayName(uint)", query);
-    else if (query.next())
+    if (recordedid)
     {
-        QString result = query.value(0).toString();
-        if (result.isEmpty())
-            result = QString("%1: %2").arg(query.value(1).toInt())
-                                      .arg(query.value(2).toString());
-        return result;
+        MSqlQuery query(MSqlQuery::InitCon());
+        query.prepare("SELECT inputname "
+                      "FROM recorded "
+                      "WHERE recordedid = :RECORDEDID");
+        query.bindValue(":RECORDEDID", recordedid);
+
+        if (!query.exec())
+            MythDB::DBError("ProgramInfo::GetInputDisplayName()", query);
+        else if (query.next())
+            result = query.value(0).toString();
     }
 
-    return QString::null;
+    if (result.isEmpty() && inputid)
+    {
+        MSqlQuery query(MSqlQuery::InitCon());
+        query.prepare("SELECT displayname, cardid, inputname "
+                      "FROM cardinput "
+                      "WHERE cardinputid = :INPUTID");
+        query.bindValue(":INPUTID", inputid);
+
+        if (!query.exec())
+            MythDB::DBError("ProgramInfo::GetInputDisplayName()", query);
+        else if (query.next())
+        {
+            result = query.value(0).toString();
+            if (result.isEmpty())
+            {
+                result = QString("%1: %2").arg(query.value(1).toInt())
+                    .arg(query.value(2).toString());
+            }
+        }
+    }
+
+    return result;
 }
 
 static int init_tr(void)
@@ -5450,6 +5527,7 @@ bool LoadFromRecorded(
 
         destination.push_back(
             new ProgramInfo(
+                query.value(55).toUInt(),
                 query.value(0).toString(),
                 query.value(1).toString(),
                 query.value(2).toString(),
