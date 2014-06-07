@@ -56,7 +56,7 @@ class LoggerThread;
 typedef struct tm tmType;
 
 #define SET_LOGGING_ARG(arg){ \
-                                if (arg) { free((void*)arg); } \
+                                if (arg) { free(const_cast<char*>(arg)); } \
                                 arg = strdup(val.toLocal8Bit().constData()); \
                             }
 
