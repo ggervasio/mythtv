@@ -3939,7 +3939,7 @@ else
 fi
 
 add_cflags $extra_cflags
-#add_cxxflags $extra_cxxflags
+add_cxxflags $extra_cxxflags
 add_asflags $extra_cflags
 
 if test -n "$sysroot"; then
@@ -5346,6 +5346,9 @@ check_exec -lm << EOF && enable cpu_clips_negative
         return 0 ;
     }
 EOF
+
+# required to compile inline sse with some compilers
+enabled x86 && enabled sse2 && add_cxxflags "-msse"
 
 # test for distcc
 enabled distcc && check_cmd distcc --version || disable distcc
@@ -7219,6 +7222,8 @@ echo "Configuring libmythdvdnav..."
 echo "Configuring libsamplerate..."
 (cd external/libsamplerate ; \
        ${qmakeconf} -o Makefile)
-
+echo "Configuring minilzo..."
+(cd external/minilzo ; \
+       ${qmakeconf} -o Makefile)
 
 test -n "$WARNINGS" && printf "\n$WARNINGS" || exit 0

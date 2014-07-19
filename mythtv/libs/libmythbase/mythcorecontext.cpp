@@ -9,11 +9,13 @@
 #include <QNetworkInterface>
 #include <QAbstractSocket>
 #include <QHostAddress>
+#include <QHostInfo>
 #include <QNetworkInterface>
 #include <QNetworkAddressEntry>
 #include <QLocale>
 #include <QPair>
 #include <QDateTime>
+#include <QRunnable>
 
 #include <cmath>
 #include <cstdarg>
@@ -636,13 +638,22 @@ bool MythCoreContext::IsThisHost(const QString &addr)
 
 bool MythCoreContext::IsThisHost(const QString &addr, const QString &host)
 {
+    if (addr.toLower() == host.toLower())
+        return true;
+
     QHostAddress addrfix(addr);
     addrfix.setScopeId(QString());
     QString addrstr = addrfix.toString();
+
+    if (addrfix.isNull())
+    {
+        addrstr = resolveAddress(addr);
+    }
+
     QString thisip  = GetBackendServerIP4(host);
     QString thisip6 = GetBackendServerIP6(host);
 
-    return ((addrstr == thisip) || (addrstr == thisip6));
+    return !addrstr.isEmpty() && ((addrstr == thisip) || (addrstr == thisip6));
 }
 
 bool MythCoreContext::IsFrontendOnly(void)
@@ -860,10 +871,9 @@ double MythCoreContext::GetFloatSettingOnHost(const QString &key,
  */
 QString MythCoreContext::GetMasterServerIP(void)
 {
-    QHostAddress addr(GetSetting("MasterServerIP", "localhost"));
-    addr.setScopeId(QString());
+    QString master = resolveSettingAddress("MasterServerIP");
 
-    return addr.toString();
+    return master.isEmpty() ? "localhost" : master;
 }
 
 /**
@@ -960,16 +970,7 @@ QString MythCoreContext::GetBackendServerIP4(void)
  */
 QString MythCoreContext::GetBackendServerIP4(const QString &host)
 {
-    QHostAddress addr(GetSettingOnHost("BackendServerIP", host, ""));
-
-    if (!addr.isNull())
-    {
-        return addr.toString();
-    }
-    else
-    {
-        return QString();
-    }
+    return resolveSettingAddress("BackendServerIP", host, ResolveIPv4);
 }
 
 /**
@@ -979,7 +980,7 @@ QString MythCoreContext::GetBackendServerIP4(const QString &host)
  */
 QString MythCoreContext::GetBackendServerIP6(void)
 {
-    return GetBackendServerIP4(d->m_localHostname);
+    return GetBackendServerIP6(d->m_localHostname);
 }
 
 /**
@@ -990,17 +991,7 @@ QString MythCoreContext::GetBackendServerIP6(void)
  */
 QString MythCoreContext::GetBackendServerIP6(const QString &host)
 {
-    QHostAddress addr(GetSettingOnHost("BackendServerIP6", host, ""));
-    if (!addr.isNull())
-    {
-        // remove scope Id
-        addr.setScopeId(QString());
-        return addr.toString();
-    }
-    else
-    {
-        return QString();
-    }
+    return resolveSettingAddress("BackendServerIP6", host, ResolveIPv6);
 }
 
 /**
@@ -1027,7 +1018,7 @@ int MythCoreContext::GetBackendServerPort(const QString &host)
  */
 int MythCoreContext::GetBackendStatusPort(void)
 {
-    return GetBackendServerPort(d->m_localHostname);
+    return GetBackendStatusPort(d->m_localHostname);
 }
 
 /**
@@ -1082,6 +1073,120 @@ void MythCoreContext::SetScopeForAddress(const QHostAddress &addr, int scope)
     QMutexLocker lock(&d->m_scopesLock);
 
     d->m_scopes.insert(addr1.toString(), QString::number(scope));
+}
+
+/**
+ * \fn QString resolveSettingAddress(const QString &name, const QString &host, int type)
+ * Retrieve IP setting "name" for "host". If host is empty retrieve for local machine.
+ * The value returned for the given setting name, will be returned if it's an IP address
+ * or resolved otherwise.
+ * If the setting's value is null, an empty string will be returned,
+ * or if the name can't be resolved, localhost will be returned.
+ * If type == 0 an IPv4 will be returned
+ * If type == 1 an IPv6 will be returned
+ * If type < 0, either IPv4 or IPv6 will be returned with a priority given to IPv6
+ * If keepscope boolean is clear (default), the scopeId will be removed
+ */
+QString MythCoreContext::resolveSettingAddress(const QString &name,
+                                               const QString &host,
+                                               ResolveType type, bool keepscope)
+{
+    QString value;
+
+    if (host.isEmpty())
+    {
+        value = GetSetting(name);
+    }
+    else
+    {
+        value = GetSettingOnHost(name, host);
+    }
+
+    return resolveAddress(value, type, keepscope);
+}
+
+/**
+ * \fn QString resolveAddress(const QString &host, int type)
+ * if host is an IP address, it will be returned
+ * or resolved otherwise.
+ * If host is empty, an empty string will be returned,
+ * if host can't be resolved, localhost will be returned.
+ * If type == 0 an IPv4 will be returned or 127.0.0.1
+ * If type == 1 an IPv6 will be returned or ::1
+ * If type < 0 (default), either IPv4 or IPv6 will be returned with a priority
+ * given to IPv6
+ * If keepscope boolean is clear (default), the scopeId will be removed
+ */
+QString MythCoreContext::resolveAddress(const QString &host, ResolveType type,
+                                        bool keepscope) const
+{
+    QHostAddress addr(host);
+
+    if (!host.isEmpty() && addr.isNull())
+    {
+        // address is likely a hostname, attempts to resolve it
+        QHostInfo info = QHostInfo::fromName(host);
+        QList<QHostAddress> list = info.addresses();
+
+        if (list.isEmpty())
+        {
+            LOG(VB_GENERAL, LOG_WARNING, LOC +
+                QString("Can't resolve hostname:'%1', using localhost").arg(host));
+#if defined(QT_NO_IPV6)
+            return "127.0.0.1";
+#else
+            return type == ResolveIPv4 ? "127.0.0.1" : "::1";
+#endif
+        }
+        QHostAddress v4, v6;
+
+        // Return the first address fitting the type critera
+        for (int i=0; i < list.size(); i++)
+        {
+            addr = list[i];
+            QAbstractSocket::NetworkLayerProtocol prot = addr.protocol();
+
+            if (prot == QAbstractSocket::IPv4Protocol)
+            {
+                v4 = addr;
+                if (type == 0)
+                    break;
+            }
+#if !defined(QT_NO_IPV6)
+            else if (prot == QAbstractSocket::IPv6Protocol)
+            {
+                v6 = addr;
+                if (type != 0)
+                    break;
+            }
+#endif
+        }
+        switch (type)
+        {
+            case ResolveIPv4:
+                addr = v4.isNull() ? QHostAddress::LocalHost : v4;
+                break;
+#if !defined(QT_NO_IPV6)
+            case ResolveIPv6:
+                addr = v6.isNull() ? QHostAddress::LocalHostIPv6 : v6;
+                break;
+#endif
+            default:
+                addr = v6.isNull() ?
+                    (v4.isNull() ? QHostAddress::LocalHostIPv6 : v4) : v6;
+                break;
+        }
+    }
+    else if (host.isEmpty())
+    {
+        return QString();
+    }
+
+    if (!keepscope)
+    {
+        addr.setScopeId(QString());
+    }
+    return addr.toString();
 }
 
 void MythCoreContext::OverrideSettingForSession(const QString &key,

@@ -27,7 +27,8 @@
 
 ExternIO::ExternIO(const QString & app,
                    const QStringList & args)
-    : m_bufsize(0), m_buffer(NULL)
+    : m_appin(-1), m_appout(-1), m_apperr(-1),
+      m_pid(-1), m_bufsize(0), m_buffer(NULL)
 {
     m_app  = (app);
 
@@ -53,8 +54,6 @@ ExternIO::ExternIO(const QString & app,
     if (!m_args.contains("-q"))
         m_args << "-q";
     m_args.prepend(m_app.baseName());
-
-    m_appin = m_appout = m_apperr = -1;
 }
 
 ExternIO::~ExternIO(void)
@@ -227,7 +226,7 @@ void ExternIO::Fork(void)
     int out[2] = {-1, -1};
     int err[2] = {-1, -1};
 
-    const char *command = strdup(m_app.canonicalFilePath()
+    char *command = strdup(m_app.canonicalFilePath()
                                  .toUtf8().constData());
     char **arguments;
     int    len;
@@ -286,17 +285,16 @@ void ExternIO::Fork(void)
         fcntl(m_appout, F_SETFL, O_NONBLOCK);
         fcntl(m_apperr, F_SETFL, O_NONBLOCK);
 
-        if (command)
-            free((void *)command);
+        free(command);
         if (arguments)
         {
             int i = 0;
             while (arguments[i])
             {
-                delete arguments[i];
+                delete[] arguments[i];
                 ++i;
             }
-            delete arguments;
+            delete[] arguments;
         }
 
         LOG(VB_RECORD, LOG_INFO, "Spawned");

@@ -28,6 +28,7 @@
 #include "deletemap.h"
 #include "commbreakmap.h"
 #include "audioplayer.h"
+#include "audiooutputgraph.h"
 
 #include "mythtvexp.h"
 
@@ -179,6 +180,7 @@ class MTV_PUBLIC MythPlayer
     int     GetFFRewSkip(void) const          { return ffrew_skip; }
     float   GetPlaySpeed(void) const          { return play_speed; }
     AudioPlayer* GetAudio(void)               { return &audio; }
+    const AudioOutputGraph& GetAudioGraph() const { return m_audiograph; }
     float   GetAudioStretchFactor(void)       { return audio.GetStretchFactor(); }
     float   GetNextPlaySpeed(void) const      { return next_play_speed; }
     int     GetLength(void) const             { return totalLength; }
@@ -193,6 +195,7 @@ class MTV_PUBLIC MythPlayer
                                       int divisor = 1000) const;
     virtual  int64_t GetTotalSeconds(bool honorCutList,
                                      int divisor = 1000) const;
+    int64_t  GetLatestVideoTimecode() const   { return m_latestVideoTimecode; }
     virtual  uint64_t GetBookmark(void);
     QString   GetError(void) const;
     bool      IsErrorRecoverable(void) const
@@ -611,8 +614,7 @@ class MTV_PUBLIC MythPlayer
     void  CheckExtraAudioDecode(void);
 
     // Private LiveTV stuff
-    void  SwitchToProgram(void);
-    void  JumpToProgram(void);
+    void  ChangeProgram(bool bJump);
     void  JumpToStream(const QString&);
 
   protected:
@@ -691,6 +693,7 @@ class MTV_PUBLIC MythPlayer
     long long totalLength;
     int64_t   totalDuration;
     long long rewindtime;
+    int64_t   m_latestVideoTimecode;
 
     // -- end state stuff --
 
@@ -759,6 +762,7 @@ class MTV_PUBLIC MythPlayer
 
     // Audio stuff
     AudioPlayer audio;
+    AudioOutputGraph m_audiograph;
 
     // Picture-in-Picture
     PIPMap         pip_players;
@@ -811,9 +815,11 @@ class MTV_PUBLIC MythPlayer
     int        repeat_delay;
     int64_t    disp_timecode;
     bool       avsync_audiopaused;
+    int        avsync_holdoff;
 
     // Time Code stuff
-    int        prevtc;        ///< 32 bit timecode if last VideoFrame shown
+    int64_t    prev_audiotime; // audio timecode at last a/v sync
+    int64_t    prevtc;        ///< timecode if last VideoFrame shown
     int        prevrp;        ///< repeat_pict of last frame
     int64_t    tc_wrap[TCTYPESMAX];
     int64_t    tc_lastval[TCTYPESMAX];

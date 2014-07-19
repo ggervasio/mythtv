@@ -41,7 +41,7 @@
 class SERVICE_PUBLIC ChannelServices : public Service
 {
     Q_OBJECT
-    Q_CLASSINFO( "version"    , "1.3" );
+    Q_CLASSINFO( "version"    , "1.5" );
     Q_CLASSINFO( "AddDBChannel_Method",              "POST" )
     Q_CLASSINFO( "UpdateDBChannel_Method",           "POST" )
     Q_CLASSINFO( "RemoveDBChannel_Method",           "POST" )
@@ -71,7 +71,9 @@ class SERVICE_PUBLIC ChannelServices : public Service
 
         virtual DTC::ChannelInfoList*  GetChannelInfoList  ( uint           SourceID,
                                                              uint           StartIndex,
-                                                             uint           Count      ) = 0;
+                                                             uint           Count,
+                                                             bool           OnlyVisible,
+                                                             bool           Details ) = 0;
 
         virtual DTC::ChannelInfo*      GetChannelInfo      ( uint           ChanID     ) = 0;
 
@@ -85,7 +87,7 @@ class SERVICE_PUBLIC ChannelServices : public Service
                                                              uint          ATSCMajorChannel,
                                                              uint          ATSCMinorChannel,
                                                              bool          UseEIT,
-                                                             bool          visible,
+                                                             bool          Visible,
                                                              const QString &FrequencyID,
                                                              const QString &Icon,
                                                              const QString &Format,
@@ -102,7 +104,7 @@ class SERVICE_PUBLIC ChannelServices : public Service
                                                              uint          ATSCMajorChannel,
                                                              uint          ATSCMinorChannel,
                                                              bool          UseEIT,
-                                                             bool          visible,
+                                                             bool          Visible,
                                                              const QString &FrequencyID,
                                                              const QString &Icon,
                                                              const QString &Format,

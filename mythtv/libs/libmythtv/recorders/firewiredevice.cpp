@@ -522,4 +522,3 @@ bool FirewireDevice::IsSTBSupported(const QString &panel_model)
             (model == "SA GENERIC") ||
             (model == "MOTO GENERIC"));
 }
-

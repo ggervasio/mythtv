@@ -432,7 +432,7 @@ bool RemoteFile::Exists(const QString &url, struct stat *fileinfo)
     QString host     = qurl.host();
 
     if (isLocal(url) || (gCoreContext->IsMasterBackend() &&
-        host == gCoreContext->GetMasterHostName()))
+        gCoreContext->IsThisHost(host)))
     {
        LOG(VB_FILE, LOG_INFO,
            QString("RemoteFile::Exists(): looking for local file: %1").arg(url));
@@ -1143,7 +1143,7 @@ QString RemoteFile::FindFile(const QString& filename, const QString& host, const
         hostName = gCoreContext->GetMasterHostName();
 
     if (gCoreContext->IsMasterBackend() &&
-        hostName == gCoreContext->GetMasterHostName())
+        gCoreContext->IsThisHost(hostName))
     {
         StorageGroup sGroup(storageGroup, hostName);
         if (!sGroup.FindFile(filename).isEmpty())

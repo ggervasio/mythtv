@@ -1,12 +1,8 @@
 #include <QDir>
-#include <QNetworkAccessManager>
-#include <QNetworkReply>
-#include <QEventLoop>
 
 #include <mythdirs.h>
-#include <mythdb.h>
 #include <mythcontext.h>
-#include <netgrabbermanager.h>
+#include <remotefile.h>
 
 #include "netcommon.h"
 
@@ -38,7 +34,8 @@ QString GetMythXMLURL(void)
     QString MasterIP = gCoreContext->GetMasterServerIP();
     int MasterStatusPort = gCoreContext->GetMasterServerStatusPort();
 
-    return QString("http://%1:%2/InternetContent/").arg(MasterIP).arg(MasterStatusPort);
+    return QString("http://%1:%2/InternetContent/").arg(MasterIP)
+        .arg(MasterStatusPort);
 }
 
 QUrl GetMythXMLSearch(QString url, QString query, QString grabber,

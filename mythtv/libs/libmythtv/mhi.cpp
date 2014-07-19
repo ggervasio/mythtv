@@ -13,7 +13,6 @@
 #include "mythuiimage.h"
 #include "osd.h"
 #include "mythdirs.h"
-#include "myth_imgconvert.h"
 #include "mythlogging.h"
 #include "mythmainwindow.h"
 #include "mythavutil.h"
@@ -518,19 +517,19 @@ void MHKeyLookup::key(const QString &name, int code, int r1,
       m_map.insert(key_t(name,r1), code);
     if (r2 > 0)
         m_map.insert(key_t(name,r2), code);
-    if (r3 > 0) 
+    if (r3 > 0)
         m_map.insert(key_t(name,r3), code);
-    if (r4 > 0) 
+    if (r4 > 0)
         m_map.insert(key_t(name,r4), code);
-    if (r5 > 0) 
+    if (r5 > 0)
         m_map.insert(key_t(name,r5), code);
-    if (r6 > 0) 
+    if (r6 > 0)
         m_map.insert(key_t(name,r6), code);
-    if (r7 > 0) 
+    if (r7 > 0)
         m_map.insert(key_t(name,r7), code);
-    if (r8 > 0) 
+    if (r8 > 0)
         m_map.insert(key_t(name,r8), code);
-    if (r9 > 0) 
+    if (r9 > 0)
         m_map.insert(key_t(name,r9), code);
 }
 
@@ -598,7 +597,7 @@ bool MHIContext::OfferKey(QString key)
     int action = s_keymap.Find(key, m_keyProfile);
     if (action == 0)
         return false;
- 
+
     LOG(VB_GENERAL, LOG_INFO, QString("[mhi] Adding MHEG key %1:%2:%3")
         .arg(key).arg(action).arg(m_keyQueue.size()) );
     { QMutexLocker locker(&m_keyLock);
@@ -1005,7 +1004,7 @@ bool MHIContext::BeginStream(const QString &stream, MHStream *notify)
         int netId, origNetId, transportId, serviceId;
         GetServiceInfo(chan, netId, origNetId, transportId, serviceId);
     }
- 
+
     if (chan != m_currentStream)
     {
         // We have to tune to the channel where the stream is to be found.
@@ -1014,7 +1013,7 @@ bool MHIContext::BeginStream(const QString &stream, MHStream *notify)
         m_currentStream = chan;
         return TuneTo(chan, kTuneKeepChnl|kTuneQuietly|kTuneKeepApp);
     }
- 
+
     return true;
 }
 
@@ -1056,13 +1055,13 @@ bool MHIContext::BeginAudio(int tag)
         return m_parent->GetNVP()->SetAudioByComponentTag(tag);
     return false;
  }
- 
+
 // Stop playing audio
 void MHIContext::StopAudio()
 {
     // Do nothing at the moment.
 }
- 
+
 // Begin displaying video from the specified stream
 bool MHIContext::BeginVideo(int tag)
 {
@@ -1070,19 +1069,19 @@ bool MHIContext::BeginVideo(int tag)
 
     if (tag < 0)
         return true; // Leave it at the default.
- 
+
     m_videoTag = tag;
     if (m_parent->GetNVP())
         return m_parent->GetNVP()->SetVideoByComponentTag(tag);
     return false;
 }
- 
+
  // Stop displaying video
 void MHIContext::StopVideo()
 {
     // Do nothing at the moment.
 }
- 
+
 // Get current stream position, -1 if unknown
 long MHIContext::GetStreamPos()
 {
@@ -1737,6 +1736,16 @@ void MHIDLA::DrawPoly(bool isFilled, int nPoints, const int *xArray, const int *
     }
 }
 
+MHIBitmap::MHIBitmap(MHIContext *parent, bool tiled)
+    : m_parent(parent), m_tiled(tiled), m_opaque(false),
+      m_copyCtx(new MythAVCopy(false))
+{
+}
+
+MHIBitmap::~MHIBitmap()
+{
+    delete m_copyCtx;
+}
 
 void MHIBitmap::Draw(int x, int y, QRect rect, bool tiled, bool bUnder)
 {
@@ -1858,15 +1867,14 @@ void MHIBitmap::CreateFromMPEG(const unsigned char *data, int length)
         memset(&retbuf, 0, sizeof(AVPicture));
 
         int bufflen = nContentWidth * nContentHeight * 3;
-        unsigned char *outputbuf = new unsigned char[bufflen];
+        unsigned char *outputbuf = (unsigned char*)av_malloc(bufflen);
 
         avpicture_fill(&retbuf, outputbuf, PIX_FMT_RGB24,
                        nContentWidth, nContentHeight);
 
         AVFrame *tmp = picture;
-        myth_sws_img_convert(
-            &retbuf, PIX_FMT_RGB24, (AVPicture*)tmp, c->pix_fmt,
-                    nContentWidth, nContentHeight);
+        m_copyCtx->Copy(&retbuf, PIX_FMT_RGB24, (AVPicture*)tmp, c->pix_fmt,
+                     nContentWidth, nContentHeight);
 
         uint8_t * buf = outputbuf;
 
@@ -1882,7 +1890,7 @@ void MHIBitmap::CreateFromMPEG(const unsigned char *data, int length)
                 m_image.setPixel(j, i, qRgb(red, green, blue));
             }
         }
-        delete [] outputbuf;
+        av_freep(&outputbuf);
     }
 
 Close:
@@ -1910,5 +1918,3 @@ void MHIBitmap::ScaleImage(int newWidth, int newHeight)
     m_image = m_image.scaled(newWidth, newHeight,
             Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
 }
-
-

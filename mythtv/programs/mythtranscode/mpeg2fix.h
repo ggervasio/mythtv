@@ -45,21 +45,20 @@ class MPEG2frame
 {
   public:
     MPEG2frame(int size) :
-        pkt_memsize(size), isSequence(false), isGop(false),
+        isSequence(false), isGop(false),
         framePos(NULL), gopPos(NULL)
     {
-        pkt.data = (uint8_t *)malloc(size);
+        av_new_packet(&pkt, size);
     }
     ~MPEG2frame()
     {
-        free(pkt.data);
+        av_free_packet(&pkt);
     }
     void ensure_size(int size)
     {
-        if (pkt_memsize < size)
+        if (pkt.size < size)
         {
-            pkt.data = (uint8_t *)realloc(pkt.data, size);
-            pkt_memsize = size;
+            av_grow_packet(&pkt, size - pkt.size);
         }
     }
     void set_pkt(AVPacket *newpkt)
@@ -72,7 +71,6 @@ class MPEG2frame
     }
 
     AVPacket pkt;
-    int pkt_memsize;
     bool isSequence;
     bool isGop;
     uint8_t *framePos;
@@ -149,6 +147,7 @@ class MPEG2fixup
     void ShowRangeMap(frm_dir_map_t *mapPtr, QString msg);
     int BuildKeyframeIndex(QString &file, frm_pos_map_t &posMap, frm_pos_map_t &durMap);
 
+    void SetAllAudio(bool keep) { allaudio = keep; }
 
     static void dec2x33(int64_t *pts1, int64_t pts2);
     static void inc2x33(int64_t *pts1, int64_t pts2);
@@ -218,10 +217,14 @@ class MPEG2fixup
     }
     AVCodecContext *getCodecContext(int id)
     {
+        if (id >= inputFC->nb_streams)
+            return NULL;
         return inputFC->streams[id]->codec;
     }
     AVCodecParserContext *getCodecParserContext(int id)
     {
+        if (id >= inputFC->nb_streams)
+            return NULL;
         return inputFC->streams[id]->parser;
     }
 
@@ -262,6 +265,7 @@ class MPEG2fixup
     int no_repeat, fix_PTS, maxframes;
     QString infile;
     const char *format;
+    bool allaudio;
 
     //complete?
     bool file_end;

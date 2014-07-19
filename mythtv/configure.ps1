@@ -501,7 +501,8 @@ switch ($tools.Get_Item( 'tag.lib'))
                       "-DZLIB_LIBRARY=..\zlib\zlib.lib";
                       "-DENABLE_STATIC=0";
                       "-DWITH_MP4=1";
-                      "-DCMAKE_BUILD_TYPE=$BuildType" )
+                      "-DCMAKE_BUILD_TYPE=$BuildType";
+                      "-DCMAKE_CXX_FLAGS=""/FI algorithm""" )
 
             Run-Exe "$basePath\platform\win32\msvc\external\taglib" `
                     "nmake.exe"                                     `
@@ -574,6 +575,15 @@ switch ($tools.Get_Item( 'libexpat.lib'))
 
 # ---------------------------------------------------------------------------
 
+$exiv2_params = @( "/target:build", "/p:Configuration=$BuildType" )
+
+if ($VCVerStr -eq "Visual Studio 12")
+{
+   $exiv2_params = $exiv2_params + "/p:PlatformToolset=v120"
+}
+
+# ---------------------------------------------------------------------------
+
 switch ($tools.Get_Item( 'xmpsdk.lib'))
 {
     Clean
@@ -603,11 +613,11 @@ switch ($tools.Get_Item( 'xmpsdk.lib'))
         {
             # -- Build Solution
 
+            $xmpsdk_params = $exiv2_params + "mythxmpsdk.vcxproj"
+
             Run-Exe "$basePath\platform\win32\msvc\external\exiv2\" `
                     "msbuild.exe"                                   `
-                    @( "/target:build",                             `
-                       "/p:Configuration=$BuildType",
-                       "mythxmpsdk.vcxproj" )
+                     $xmpsdk_params 
         }
 
         # -- Copy lib to shared folder
@@ -647,11 +657,11 @@ switch ($tools.Get_Item( 'exiv2.lib'))
         {
             # -- Build Solution
 
+            $exiv2_params = $exiv2_params + "mythexiv2lib.vcxproj"
+
             Run-Exe "$basePath\platform\win32\msvc\external\exiv2\" `
                     "msbuild.exe"                                   `
-                    @( "/target:build",                             `
-                       "/p:Configuration=$BuildType",
-                       "mythexiv2lib.vcxproj" )
+                     $exiv2_params
         }
 
         # -- Copy lib & dll to shared folder
@@ -788,8 +798,10 @@ switch ($tools.Get_Item( 'FFmpeg'))
         if ($VCVerStr -eq "Visual Studio 10")
         {
             $vs2010inc = "$rootPath/platform/win32/msvc/include-2010"
-            $ffmpegExtra = $ffmpegExtra + " -I $vs2010inc"
+            $ffmpegExtra = $ffmpegExtra + " -I$vs2010inc"
         }
+
+        Write-Host "ffmpegExtra = [$ffmpegExtra]"
 
         $FFmegsConfigure = "./configure --toolchain=msvc "        + `
                                        "--enable-shared "         + `
@@ -798,6 +810,8 @@ switch ($tools.Get_Item( 'FFmpeg'))
                                        "--shlibdir=$OutPath "     + `
                                        "--extra-cflags='$ffmpegExtra' "      + `
                                        "--extra-cxxflags='$ffmpegExtra' "    + `
+                                       "--host-cflags='$ffmpegExtra' "    + `
+                                       "--host-cppflags='$ffmpegExtra' "    + `
                                        "--disable-decoder=mpeg_xvmc"
 
         Out-File $scriptFile         -Encoding Ascii -InputObject "cd $rootPath/external/FFmpeg"

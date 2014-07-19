@@ -676,7 +676,9 @@ RecStatusType TVRec::StartRecording(ProgramInfo *pginfo)
         QMutexLocker locker(&pendingRecLock);
         if ((curRecording) &&
             (curRecording->GetRecordingStatus() == rsFailed) &&
-            (m_recStatus == rsRecording || m_recStatus == rsTuning))
+            (m_recStatus == rsRecording ||
+             m_recStatus == rsTuning ||
+             m_recStatus == rsFailing))
         {
             SetRecordingStatus(rsFailed, __LINE__, true);
         }
@@ -4696,6 +4698,10 @@ bool TVRec::SwitchLiveTVRingBuffer(const QString & channum,
         curRecording = pginfo;
         SetRingBuffer(rb);
     }
+    else
+    {
+        delete rb;
+    }
 
     return true;
 }
@@ -4721,6 +4727,7 @@ RecordingInfo *TVRec::SwitchRecordingRingBuffer(const RecordingInfo &rcinfo)
     RingBuffer *rb = RingBuffer::Create(ri->GetPathname(), wr);
     if (!rb->IsOpen())
     {
+        delete rb;
         ri->SetRecordingStatus(rsFailed);
         FinishedRecording(ri, NULL);
         ri->MarkAsInUse(false, kRecorderInUseID);

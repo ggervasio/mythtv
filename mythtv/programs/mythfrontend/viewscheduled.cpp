@@ -251,7 +251,7 @@ void ViewScheduled::LoadList(bool useExistingData)
     if (currentItem)
     {
         ProgramInfo *currentpginfo = currentItem->GetData()
-					.value<ProgramInfo*>();
+                                        .value<ProgramInfo*>();
         if (currentpginfo)
         {
             callsign   = currentpginfo->GetChannelSchedulingID();
@@ -284,17 +284,17 @@ void ViewScheduled::LoadList(bool useExistingData)
         if ((pginfo->GetRecordingEndTime() >= now ||
              pginfo->GetScheduledEndTime() >= now ||
              recstatus == rsRecording ||
-             recstatus == rsTuning) &&
+             recstatus == rsTuning ||
+             recstatus == rsFailing) &&
             (m_showAll ||
-             (recstatus >= rsTuning &&
+             (recstatus >= rsFailing &&
               recstatus <= rsWillRecord) ||
              recstatus == rsDontRecord ||
              (recstatus == rsTooManyRecordings &&
               ++toomanycounts[pginfo->GetRecordingRuleID()] <= 1) ||
              (recstatus > rsTooManyRecordings &&
               recstatus != rsRepeat &&
-              recstatus != rsNeverRecord &&
-              recstatus != rsOtherShowing)))
+              recstatus != rsNeverRecord)))
         {
             m_cardref[pginfo->GetCardID()]++;
             if (pginfo->GetCardID() > m_maxcard)
@@ -421,19 +421,17 @@ void ViewScheduled::FillList()
 
         const RecStatusType recstatus = pginfo->GetRecordingStatus();
         if (recstatus == rsRecording      ||
-            recstatus == rsTuning         ||
-            recstatus == rsOtherRecording ||
-            recstatus == rsOtherTuning)
+            recstatus == rsTuning)
             state = "running";
         else if (recstatus == rsConflict  ||
                  recstatus == rsOffLine   ||
                  recstatus == rsTunerBusy ||
                  recstatus == rsFailed    ||
+                 recstatus == rsFailing   ||
                  recstatus == rsAborted   ||
                  recstatus == rsMissed)
             state = "error";
-        else if (recstatus == rsWillRecord ||
-                 recstatus == rsOtherShowing)
+        else if (recstatus == rsWillRecord)
         {
             if ((m_curcard == 0 && m_curinput == 0) ||
                 pginfo->GetCardID() == m_curcard ||

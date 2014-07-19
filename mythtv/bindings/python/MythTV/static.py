@@ -5,7 +5,7 @@ Contains any static and global variables for MythTV Python Bindings
 """
 
 OWN_VERSION = (0,28,-1,0)
-SCHEMA_VERSION = 1326
+SCHEMA_VERSION = 1328
 NVSCHEMA_VERSION = 1007
 MUSICSCHEMA_VERSION = 1018
 PROTO_VERSION = '82'
@@ -60,6 +60,7 @@ class RECSEARCHTYPE( object ):
     kManualSearch       = 5
 
 class RECSTATUS( object ):
+    rsFailing           = -14
     rsTuning            = -10
     rsFailed            = -9
     rsTunerBusy         = -8
@@ -83,7 +84,6 @@ class RECSTATUS( object ):
     rsInactive          = 10
     rsNeverRecord       = 11
     rsOffline           = 12
-    rsOtherShowing      = 13
 
 class AUDIO_PROPS( object ):
     AUD_UNKNOWN         = 0x00

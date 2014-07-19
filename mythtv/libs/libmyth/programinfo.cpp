@@ -283,6 +283,8 @@ ProgramInfo::ProgramInfo(const ProgramInfo &other) :
  */
 ProgramInfo::ProgramInfo(uint _recordedid)
 {
+    clear();
+
     MSqlQuery query(MSqlQuery::InitCon());
     query.prepare(
         "SELECT chanid, starttime "
@@ -309,9 +311,10 @@ ProgramInfo::ProgramInfo(uint _recordedid)
  *  \brief Constructs a ProgramInfo from data in 'recorded' table
  */
 ProgramInfo::ProgramInfo(uint _chanid, const QDateTime &_recstartts) :
-    chanid(0),
     positionMapDBReplacement(NULL)
 {
+    clear();
+
     LoadProgramFromRecorded(_chanid, _recstartts);
 }
 
@@ -752,12 +755,7 @@ ProgramInfo::ProgramInfo(
             break;
         }
 
-        if (s.recstatus == rsWillRecord)
-            recstatus = rsOtherShowing;
-        else if (s.recstatus == rsRecording)
-            recstatus = rsOtherRecording;
-        else if (s.recstatus == rsTuning)
-            recstatus = rsOtherTuning;
+        recstatus = s.recstatus;
     }
 }
 
@@ -874,12 +872,11 @@ ProgramInfo::ProgramInfo(
  *  \brief Constructs a ProgramInfo for a pathname.
  */
 ProgramInfo::ProgramInfo(const QString &_pathname) :
-    chanid(0),
     positionMapDBReplacement(NULL)
 {
+    clear();
     if (_pathname.isEmpty())
     {
-        clear();
         return;
     }
 
@@ -1821,7 +1818,7 @@ uint ProgramInfo::GetSecondsInRecording(void) const
 /// \brief Returns catType as a string
 QString ProgramInfo::GetCategoryTypeString(void) const
 {
-    return myth_category_type_to_string(catType); 
+    return myth_category_type_to_string(catType);
 }
 
 /// \brief Returns last frame in position map or 0
@@ -5169,22 +5166,43 @@ QStringList ProgramInfo::LoadFromScheduler(
     return slist;
 }
 
-static bool FromProgramQuery(
-    const QString &sql, const MSqlBindings &bindings, MSqlQuery &query)
+// NOTE: This may look ugly, and in some ways it is, but it's designed this
+//       way for with two purposes in mind - Consistent behaviour and speed
+//       So if you do make changes then carefully test that it doesn't result
+//       in any regressions in total speed of execution or adversely affect the
+//       results returned for any of it's users.
+static bool FromProgramQuery(const QString &sql, const MSqlBindings &bindings,
+                             MSqlQuery &query, const uint &start,
+                             const uint &limit, uint &count)
 {
+    count = 0;
+
+    if (sql.contains("OFFSET", Qt::CaseInsensitive))
+        LOG(VB_GENERAL, LOG_WARNING, "LoadFromProgram(): SQL contains OFFSET "
+                                     "clause, caller should be updated to use "
+                                     "start parameter instead");
+
+    if (sql.contains("LIMIT", Qt::CaseInsensitive))
+        LOG(VB_GENERAL, LOG_WARNING, "LoadFromProgram(): SQL contains LIMIT "
+                                     "clause, caller should be updated to use "
+                                     "limit parameter instead");
+
+    QString columns = QString(
+        "program.chanid, program.starttime, program.endtime, "
+        "program.title, program.subtitle, program.description, "
+        "program.category, channel.channum, channel.callsign, "
+        "channel.name, program.previouslyshown, channel.commmethod, "
+        "channel.outputfilters, program.seriesid, program.programid, "
+        "program.airdate, program.stars, program.originalairdate, "
+        "program.category_type, oldrecstatus.recordid, "
+        "oldrecstatus.rectype, oldrecstatus.recstatus, "
+        "oldrecstatus.findid, program.videoprop+0, program.audioprop+0, "
+        "program.subtitletypes+0, program.syndicatedepisodenumber, "
+        "program.partnumber, program.parttotal, "
+        "program.season, program.episode, program.totalepisodes ");
+
     QString querystr = QString(
-        "SELECT program.chanid, program.starttime, program.endtime, "
-        "    program.title, program.subtitle, program.description, "
-        "    program.category, channel.channum, channel.callsign, "
-        "    channel.name, program.previouslyshown, channel.commmethod, "
-        "    channel.outputfilters, program.seriesid, program.programid, "
-        "    program.airdate, program.stars, program.originalairdate, "
-        "    program.category_type, oldrecstatus.recordid, "
-        "    oldrecstatus.rectype, oldrecstatus.recstatus, "
-        "    oldrecstatus.findid, program.videoprop+0, program.audioprop+0, "
-        "    program.subtitletypes+0, program.syndicatedepisodenumber, "
-        "    program.partnumber, program.parttotal, "
-        "    program.season, program.episode, program.totalepisodes "
+        "SELECT %1 "
         "FROM program "
         "LEFT JOIN channel ON program.chanid = channel.chanid "
         "LEFT JOIN oldrecorded AS oldrecstatus ON "
@@ -5194,26 +5212,55 @@ static bool FromProgramQuery(
         "    program.starttime = oldrecstatus.starttime "
         ) + sql;
 
-    if (!sql.contains("WHERE"))
-        querystr += " WHERE visible != 0 ";
-    if (!sql.contains("GROUP BY"))
-        querystr += " GROUP BY program.starttime, channel.channum, "
-            "  channel.callsign, program.title ";
-    if (!sql.contains("ORDER BY"))
-    {
-        querystr += " ORDER BY program.starttime, ";
-        QString chanorder =
-            gCoreContext->GetSetting("ChannelOrdering", "channum");
-        if (chanorder != "channum")
-            querystr += chanorder + " ";
-        else // approximation which the DB can handle
-            querystr += "atsc_major_chan,atsc_minor_chan,channum,callsign ";
-    }
-    if (!sql.contains("LIMIT"))
-        querystr += " LIMIT 20000 ";
+    // If a limit arg was given then append the LIMIT, otherwise set a hard
+    // limit of 20000.
+    if (limit > 0)
+        querystr += QString("LIMIT %1 ").arg(limit);
+    else if (!querystr.contains("LIMIT"))
+        querystr += " LIMIT 20000 "; // For performance reasons we have to have an upper limit
 
-    query.prepare(querystr);
     MSqlBindings::const_iterator it;
+    // Some end users need to know the total number of matching records,
+    // irrespective of any LIMIT clause
+    //
+    // SQL_CALC_FOUND_ROWS is better than COUNT(*), as COUNT(*) won't work
+    // with any GROUP BY clauses. COUNT is marginally faster but not enough to
+    // matter
+    //
+    // It's considerably faster in my tests to do a separate query which returns
+    // no data using SQL_CALC_FOUND_ROWS than it is to use SQL_CALC_FOUND_ROWS
+    // with the full query. Unfortunate but true.
+    //
+    // e.g. Fetching all programs for the next 14 days with a LIMIT of 10 - 220ms
+    //      Same query with SQL_CALC_FOUND_ROWS - 1920ms
+    //      Same query but only one column and with SQL_CALC_FOUND_ROWS - 370ms
+    //      Total to fetch both the count and the data = 590ms vs 1920ms
+    //      Therefore two queries is 1.4 seconds faster than one query.
+    if (start > 0 || limit > 0)
+    {
+        QString countStr = querystr.arg("SQL_CALC_FOUND_ROWS program.chanid");
+        query.prepare(countStr);
+        for (it = bindings.begin(); it != bindings.end(); ++it)
+        {
+            if (countStr.contains(it.key()))
+                query.bindValue(it.key(), it.value());
+        }
+
+        if (!query.exec())
+        {
+            MythDB::DBError("LoadFromProgramQuery", query);
+            return false;
+        }
+
+        if (query.exec("SELECT FOUND_ROWS()") && query.next())
+            count = query.value(0).toUInt();
+    }
+
+    if (start > 0)
+        querystr += QString("OFFSET %1 ").arg(start);
+
+    querystr = querystr.arg(columns);
+    query.prepare(querystr);
     for (it = bindings.begin(); it != bindings.end(); ++it)
     {
         if (querystr.contains(it.key()))
@@ -5229,16 +5276,64 @@ static bool FromProgramQuery(
     return true;
 }
 
-bool LoadFromProgram(
-    ProgramList &destination,
-    const QString &sql, const MSqlBindings &bindings,
-    const ProgramList &schedList)
+bool LoadFromProgram(ProgramList &destination,
+                     const QString &sql, const MSqlBindings &bindings,
+                     const ProgramList &schedList)
+{
+    uint count;
+
+    QString queryStr = sql;
+    // ------------------------------------------------------------------------
+    // FIXME: Remove the following. These all make assumptions about the content
+    //        of the sql passed in, they can end up breaking that query by
+    //        inserting a WHERE clause after a GROUP BY, or a GROUP BY after
+    //        an ORDER BY. These should be part of the sql passed in otherwise
+    //        the caller isn't getting what they asked for and to fix that they
+    //        are forced to include a GROUP BY, ORDER BY or WHERE that they
+    //        do not want
+    if (!queryStr.contains("WHERE"))
+        queryStr += " WHERE visible != 0 ";
+
+    // NOTE: Any GROUP BY clause with a LIMIT is slow, adding at least
+    // a couple of seconds to the query execution time
+
+    // TODO: This one seems to be dealing with eliminating duplicate channels (same
+    // programming, different source), but using GROUP BY for that isn't very
+    // efficient so another approach is required
+    if (!queryStr.contains("GROUP BY"))
+        queryStr += " GROUP BY program.starttime, channel.channum, "
+                    "          channel.callsign, program.title ";
+
+    if (!queryStr.contains("ORDER BY"))
+    {
+        queryStr += " ORDER BY program.starttime, ";
+        QString chanorder =
+            gCoreContext->GetSetting("ChannelOrdering", "channum");
+        if (chanorder != "channum")
+            queryStr += chanorder + " ";
+        else // approximation which the DB can handle
+            queryStr += "atsc_major_chan,atsc_minor_chan,channum,callsign ";
+    }
+
+    // ------------------------------------------------------------------------
+
+    return LoadFromProgram(destination, sql, bindings, schedList, 0, 0, count);
+}
+
+bool LoadFromProgram( ProgramList &destination,
+                      const QString &sql, const MSqlBindings &bindings,
+                      const ProgramList &schedList,
+                      const uint &start, const uint &limit, uint &count)
 {
     destination.clear();
 
     MSqlQuery query(MSqlQuery::InitCon());
-    if (!FromProgramQuery(sql, bindings, query))
+    query.setForwardOnly(true);
+    if (!FromProgramQuery(sql, bindings, query, start, limit, count))
         return false;
+
+    if (count == 0)
+        count = query.size();
 
     while (query.next())
     {

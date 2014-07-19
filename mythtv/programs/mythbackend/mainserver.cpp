@@ -258,10 +258,16 @@ MainServer::MainServer(bool master, int port,
 
     // test to make sure listen addresses are available
     // no reason to run the backend if the mainserver is not active
-    QHostAddress config_v4(gCoreContext->GetSetting("BackendServerIP"));
+    QHostAddress config_v4(gCoreContext->resolveSettingAddress(
+                                           "BackendServerIP",
+                                           QString(),
+                                           gCoreContext->ResolveIPv4, true));
     bool v4IsSet = config_v4.isNull() ? false : true;
 #if !defined(QT_NO_IPV6)
-    QHostAddress config_v6(gCoreContext->GetSetting("BackendServerIP6"));
+    QHostAddress config_v6(gCoreContext->resolveSettingAddress(
+                                           "BackendServerIP6",
+                                           QString(),
+                                           gCoreContext->ResolveIPv6, true));
     bool v6IsSet = config_v6.isNull() ? false : true;
 #endif
     QList<QHostAddress> listenAddrs = mythserver->DefaultListen();
@@ -1570,9 +1576,6 @@ void MainServer::HandleAnnounce(QStringList &slist, QStringList commands,
         else
             delete frontend;
 
-        if (eventsMode != kPBSEvents_None && commands[2] != "tzcheck")
-            gCoreContext->SendSystemEvent(
-                QString("CLIENT_CONNECTED HOSTNAME %1").arg(commands[2]));
     }
     else if (commands[1] == "MediaServer")
     {
@@ -1793,8 +1796,17 @@ void MainServer::HandleAnnounce(QStringList &slist, QStringList commands,
             ft = new FileTransfer(filename, socket, usereadahead, timeout_ms);
         }
 
+        if (!ft->isOpen())
+        {
+            LOG(VB_GENERAL, LOG_ERR, LOC +
+                QString("Can't open %1").arg(filename));
+            errlist << "filetransfer_unable_to_open_file";
+            socket->WriteStringList(errlist);
+            socket->IncrRef(); // FileTransfer took ownership of the socket, take it back
+            ft->DecrRef();
+            return;
+        }
         ft->IncrRef();
-
         sockListLock.lockForWrite();
         controlSocketList.remove(socket);
         fileTransferList.push_back(ft);
@@ -2594,7 +2606,8 @@ void MainServer::HandleStopRecording(QStringList &slist, PlaybackSock *pbs)
             {
                 ProgramInfo *pInfo = schedList[n];
                 if ((pInfo->GetRecordingStatus() == rsTuning ||
-                    pInfo->GetRecordingStatus() == rsRecording)
+                     pInfo->GetRecordingStatus() == rsFailing ||
+                     pInfo->GetRecordingStatus() == rsRecording)
                     && recinfo.IsSameProgram(*pInfo))
                     recinfo.SetChanID(pInfo->GetChanID());
             }
@@ -3242,7 +3255,7 @@ void MainServer::HandleQueryFileHash(QStringList &slist, PlaybackSock *pbs)
 
     QString hash = "";
 
-    if (hostname == gCoreContext->GetHostName())
+    if (gCoreContext->IsThisHost(hostname))
     {
         StorageGroup sgroup(storageGroup, gCoreContext->GetHostName());
         QString fullname = sgroup.FindFile(filename);
@@ -3507,9 +3520,12 @@ void MainServer::HandleSGGetFileList(QStringList &sList,
                 " path = %3 wanthost = %4")
             .arg(groupname).arg(host).arg(path).arg(wantHost));
 
+    QString addr4 = gCoreContext->GetBackendServerIP4();
+    QString addr6 = gCoreContext->GetBackendServerIP6();
+
     if ((host.toLower() == wantHost.toLower()) ||
-        (gCoreContext->GetBackendServerIP4() == wantHostaddr.toString()) ||
-        (gCoreContext->GetBackendServerIP6() == wantHostaddr.toString()))
+        (!addr4.isEmpty() && addr4 == wantHostaddr.toString()) ||
+        (!addr6.isEmpty() && addr6 == wantHostaddr.toString()))
     {
         StorageGroup sg(groupname, host);
         LOG(VB_FILE, LOG_INFO, LOC + "HandleSGGetFileList: Getting local info");
@@ -3567,6 +3583,7 @@ void MainServer::HandleSGFileQuery(QStringList &sList,
         return;
     }
 
+    QString host = gCoreContext->GetHostName();
     QString wantHost = sList.at(1);
     QHostAddress wantHostaddr(wantHost);
     QString groupname = sList.at(2);
@@ -3582,9 +3599,12 @@ void MainServer::HandleSGFileQuery(QStringList &sList,
     LOG(VB_FILE, LOG_INFO, LOC + QString("HandleSGFileQuery: %1")
             .arg(gCoreContext->GenMythURL(wantHost, 0, filename, groupname)));
 
-    if ((wantHost.toLower() == gCoreContext->GetHostName().toLower()) ||
-        (wantHostaddr.toString() == gCoreContext->GetBackendServerIP4()) ||
-        (wantHostaddr.toString() == gCoreContext->GetBackendServerIP6()))
+    QString addr4 = gCoreContext->GetBackendServerIP4();
+    QString addr6 = gCoreContext->GetBackendServerIP6();
+
+    if ((host.toLower() == wantHost.toLower()) ||
+        (!addr4.isEmpty() && addr4 == wantHostaddr.toString()) ||
+        (!addr6.isEmpty() && addr6 == wantHostaddr.toString()))
     {
         LOG(VB_FILE, LOG_INFO, LOC + "HandleSGFileQuery: Getting local info");
         StorageGroup sg(groupname, gCoreContext->GetHostName(), allowFallback);
@@ -7019,13 +7039,10 @@ void MainServer::connectionClosed(MythSocket *socket)
                     QString("SLAVE_DISCONNECTED HOSTNAME %1")
                             .arg(pbs->getHostname()));
             }
-            else if (ismaster && pbs->getHostname() != "tzcheck")
+            else if (ismaster)
             {
                 if (gBackendContext)
                     gBackendContext->SetFrontendDisconnected(pbs->getHostname());
-                gCoreContext->SendSystemEvent(
-                    QString("CLIENT_DISCONNECTED HOSTNAME %1")
-                            .arg(pbs->getHostname()));
             }
 
             LiveTVChain *chain;
@@ -7115,8 +7132,7 @@ PlaybackSock *MainServer::GetSlaveByHostname(const QString &hostname)
     {
         PlaybackSock *pbs = *iter;
         if (pbs->isSlaveBackend() &&
-            ((pbs->getHostname().toLower() == hostname.toLower()) ||
-             (gCoreContext->IsThisHost(hostname, pbs->getHostname()))))
+            gCoreContext->IsThisHost(hostname, pbs->getHostname()))
         {
             sockListLock.unlock();
             pbs->IncrRef();
@@ -7141,8 +7157,7 @@ PlaybackSock *MainServer::GetMediaServerByHostname(const QString &hostname)
     {
         PlaybackSock *pbs = *iter;
         if (pbs->isMediaServer() &&
-            ((pbs->getHostname().toLower() == hostname.toLower()) ||
-             (gCoreContext->IsThisHost(hostname, pbs->getHostname()))))
+            gCoreContext->IsThisHost(hostname, pbs->getHostname()))
         {
             pbs->IncrRef();
             return pbs;

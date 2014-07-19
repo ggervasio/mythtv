@@ -652,6 +652,11 @@ int main(int argc, char *argv[])
                                          showprogress, otype, update_func,
                                          check_func);
 
+        if (cmdline.toBool("allaudio"))
+        {
+            m2f->SetAllAudio(true);
+        }
+
         if (build_index)
         {
             int err = BuildKeyframeIndex(m2f, infile, posMap, durMap, jobID);
@@ -732,7 +737,7 @@ static int transUnlink(QString filename, ProgramInfo *pginfo)
 {
     QString hostname = pginfo->GetHostname();
 
-    if (pginfo != NULL && !pginfo->GetStorageGroup().isEmpty() &&
+    if (!pginfo->GetStorageGroup().isEmpty() &&
         !hostname.isEmpty())
     {
         QString ip = gCoreContext->GetBackendServerIP(hostname);

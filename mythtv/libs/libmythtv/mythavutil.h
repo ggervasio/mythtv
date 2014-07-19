@@ -9,6 +9,8 @@
 #ifndef MythTV_mythavutil_h
 #define MythTV_mythavutil_h
 
+#include "mythtvexp.h" // for MUNUSED
+
 extern "C" {
 #include "libavcodec/avcodec.h"
 }
@@ -61,5 +63,54 @@ public:
 private:
     AVFrame *m_frame;
 };
+
+typedef struct VideoFrame_ VideoFrame;
+class MythAVCopyPrivate;
+
+/**
+ * MythAVCopy
+ * Copy AVPicture<->frame, performing the required conversion if any
+ */
+class MTV_PUBLIC MythAVCopy
+{
+public:
+    MythAVCopy(bool USWC=true);
+    virtual ~MythAVCopy();
+
+    int Copy(VideoFrame *dst, const VideoFrame *src);
+    /**
+     * Copy
+     * Initialise AVPicture pic, create buffer if required and copy content of
+     * VideoFrame frame into it, performing the required conversion if any
+     * Returns size of buffer allocated
+     * Data would have to be deleted once finished with object with:
+     * av_freep(pic->data[0])
+     */
+    int Copy(AVPicture *pic, const VideoFrame *frame,
+             unsigned char *buffer = NULL,
+             AVPixelFormat fmt = AV_PIX_FMT_YUV420P);
+    /**
+     * Copy
+     * Copy AVPicture pic into VideoFrame frame, performing the required conversion
+     * Returns size of frame data
+     */
+    int Copy(VideoFrame *frame, const AVPicture *pic,
+             AVPixelFormat fmt = AV_PIX_FMT_YUV420P);
+    int Copy(AVPicture *dst, PixelFormat dst_pix_fmt,
+             const AVPicture *src, AVPixelFormat pix_fmt,
+             int width, int height);
+
+private:
+    void FillFrame(VideoFrame *frame, const AVPicture *pic, int pitch,
+                   int width, int height, AVPixelFormat pix_fmt);
+    MythAVCopyPrivate *d;
+};
+
+/**
+ * AVPictureFill
+ * Initialise AVPicture pic with content from VideoFrame frame
+ */
+int MTV_PUBLIC AVPictureFill(AVPicture *pic, const VideoFrame *frame,
+                             AVPixelFormat fmt = AV_PIX_FMT_NONE);
 
 #endif

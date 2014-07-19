@@ -79,6 +79,10 @@ AudioOutput *AudioOutput::OpenAudio(AudioSettings &settings,
     QString &main_device = settings.main_device;
     AudioOutput *ret = NULL;
 
+    // Don't suspend Pulse if unnecessary.  This can save 100mS
+    if (settings.format == FORMAT_NONE || settings.channels <= 0)
+        willsuspendpa = false;
+
 #ifdef USING_PULSE
     bool pulsestatus = false;
 #else
@@ -276,13 +280,15 @@ void AudioOutput::ClearWarning(void)
 AudioOutput::AudioDeviceConfig* AudioOutput::GetAudioDeviceConfig(
     QString &name, QString &desc, bool willsuspendpa)
 {
-    AudioOutputSettings aosettings;
+    AudioOutputSettings aosettings(true);
     AudioOutput::AudioDeviceConfig *adc;
 
     AudioOutput *ao = OpenAudio(name, QString::null, willsuspendpa);
-    aosettings = *(ao->GetOutputSettingsCleaned());
-    delete ao;
-
+    if (ao)
+    {
+        aosettings = *(ao->GetOutputSettingsCleaned());
+        delete ao;
+    }
     if (aosettings.IsInvalid())
     {
         if (!willsuspendpa)

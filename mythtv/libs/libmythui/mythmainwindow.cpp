@@ -190,6 +190,7 @@ class MythMainWindowPrivate
         m_pendingUpdate(false),
 
         idleTimer(NULL),
+        idleTime(0),
         standby(false),
         enteringStandby(false),
         NC(NULL),
@@ -285,6 +286,7 @@ class MythMainWindowPrivate
     bool m_pendingUpdate;
 
     QTimer *idleTimer;
+    int  idleTime;
     bool standby;
     bool enteringStandby;
     MythNotificationCenter *NC;
@@ -533,14 +535,14 @@ MythMainWindow::MythMainWindow(const bool useDB)
     // We need to listen for playback start/end events
     gCoreContext->addListener(this);
 
-    int idletime = gCoreContext->GetNumSetting("FrontendIdleTimeout",
-                                               STANDBY_TIMEOUT);
-    if (idletime <= 0)
-        idletime = STANDBY_TIMEOUT;
+    d->idleTime = gCoreContext->GetNumSetting("FrontendIdleTimeout",
+                                              STANDBY_TIMEOUT);
+    if (d->idleTime <= 0)
+        d->idleTime = STANDBY_TIMEOUT;
 
     d->idleTimer = new QTimer(this);
     d->idleTimer->setSingleShot(false);
-    d->idleTimer->setInterval(1000 * 60 * idletime); // 30 minutes
+    d->idleTimer->setInterval(1000 * 60 * d->idleTime);
     connect(d->idleTimer, SIGNAL(timeout()), SLOT(IdleTimeout()));
     d->idleTimer->start();
 }
@@ -1080,17 +1082,13 @@ void MythMainWindow::Init(QString forcedpainter)
     if ((painter == AUTO_PAINTER && (!d->painter && !d->paintwin)) ||
         painter.contains(OPENGL_PAINTER))
     {
-        if (painter == OPENGL_PAINTER)
-            LOG(VB_GENERAL, LOG_INFO, "Trying the OpenGL painter");
-        else if (painter == OPENGL2_PAINTER)
-            LOG(VB_GENERAL, LOG_INFO, "Trying the OpenGL 2 painter");
-        d->painter = new MythOpenGLPainter();
         d->render = MythRenderOpenGL::Create(painter);
-        MythRenderOpenGL *gl = dynamic_cast<MythRenderOpenGL*>(d->render);
-        d->paintwin = new MythPainterWindowGL(this, d, gl);
-        QGLWidget *qgl = dynamic_cast<QGLWidget *>(d->paintwin);
-        if (qgl)
+        if (d->render)
         {
+            d->painter = new MythOpenGLPainter();
+            MythRenderOpenGL *gl = dynamic_cast<MythRenderOpenGL*>(d->render);
+            d->paintwin = new MythPainterWindowGL(this, d, gl);
+            QGLWidget *qgl = static_cast<QGLWidget*>(d->paintwin);
             bool teardown = false;
             if (!qgl->isValid())
             {
@@ -1313,6 +1311,8 @@ void MythMainWindow::InitKeys()
         "Display System Exit Prompt"),      "Esc");
     RegisterKey("Main Menu",    "EXIT",       QT_TRANSLATE_NOOP("MythControls",
         "System Exit"),                     "");
+    RegisterKey("Main Menu",    "STANDBYMODE",QT_TRANSLATE_NOOP("MythControls",
+        "Enter Standby Mode"),              "");
 }
 
 void MythMainWindow::ReloadKeys()
@@ -2512,6 +2512,27 @@ void MythMainWindow::customEvent(QEvent *ce)
             state.insert("currentlocation", GetMythUI()->GetCurrentLocation());
             MythUIStateTracker::SetState(state);
         }
+        else if (message == "CLEAR_SETTINGS_CACHE")
+        {
+            // update the idle time
+            d->idleTime = gCoreContext->GetNumSetting("FrontendIdleTimeout",
+                                                      STANDBY_TIMEOUT);
+
+            if (d->idleTime <= 0)
+                d->idleTime = STANDBY_TIMEOUT;
+
+            bool isActive = d->idleTimer->isActive();
+
+            if (isActive)
+                d->idleTimer->stop();
+
+            d->idleTimer->setInterval(1000 * 60 * d->idleTime);
+
+            if (isActive)
+                d->idleTimer->start();
+
+            LOG(VB_GENERAL, LOG_INFO, QString("Updating the frontend idle time to: %1 mins").arg(d->idleTime));
+        }
     }
     else if ((MythEvent::Type)(ce->type()) == MythEvent::MythUserMessage)
     {
@@ -2747,14 +2768,11 @@ void MythMainWindow::IdleTimeout(void)
 {
     d->enteringStandby = false;
 
-    int idletimeout = gCoreContext->GetNumSetting("FrontendIdleTimeout",
-                                                   STANDBY_TIMEOUT);
-
-    if (idletimeout > 0 && !d->standby)
+    if (d->idleTime > 0 && !d->standby)
     {
         LOG(VB_GENERAL, LOG_NOTICE, QString("Entering standby mode after "
                                         "%1 minutes of inactivity")
-                                        .arg(idletimeout));
+                                        .arg(d->idleTime));
         EnterStandby(false);
         if (gCoreContext->GetNumSetting("idleTimeoutSecs", 0))
         {
