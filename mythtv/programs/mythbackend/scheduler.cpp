@@ -560,7 +560,17 @@ void Scheduler::FillRecordListFromMaster(void)
 
     RecordingList::iterator it = schedList.begin();
     for (; it != schedList.end(); ++it)
+    {
+#if 1
+        RecordingInfo *p = *it;
+        LOG(VB_GENERAL, LOG_INFO, QString("FillRecordList (%1:  %2 %3 %4 %5, %6)")
+            .arg(p->GetCardID())
+            .arg(p->GetScheduledStartTime().toLocalTime().toString(Qt::ISODate))
+            .arg(p->GetRecordingStatus()).arg(p->GetChanID())
+            .arg(p->GetTitle()).arg(p->GetSubtitle()));
+#endif
         reclist.push_back(*it);
+    }
 }
 
 void Scheduler::PrintList(RecList &list, bool onlyFutureRecordings)
@@ -1660,7 +1670,20 @@ void Scheduler::GetAllPending(QStringList &strList) const
     while (!retlist.empty())
     {
         RecordingInfo *p = retlist.front();
+#if 1
+        LOG(VB_GENERAL, LOG_INFO, QString("GetAllPending (%1:  %2 %3 %4 %5, %6)")
+            .arg(p->GetCardID())
+            .arg(p->GetScheduledStartTime().toLocalTime().toString(Qt::ISODate))
+            .arg(p->GetRecordingStatus()).arg(p->GetChanID())
+            .arg(p->GetTitle()).arg(p->GetSubtitle()));
+#if 0
+        QStringList tsl;
+        p->ToStringList(tsl);
+        LOG(VB_GENERAL, LOG_INFO, QString("GetAllPending  tsl:  %1").arg(tsl.join(" ")));
+#endif
+#endif
         p->ToStringList(strList);
+
         delete p;
         retlist.pop_front();
     }

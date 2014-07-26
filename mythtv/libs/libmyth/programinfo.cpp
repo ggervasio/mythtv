@@ -5140,6 +5140,12 @@ QStringList ProgramInfo::LoadFromScheduler(
     if (sched && tmptable.isEmpty())
     {
         sched->GetAllPending(slist);
+#if 0
+        for (QStringList::const_iterator it = slist.begin(); it != slist.end(); ++it)
+        {
+            LOG(VB_GENERAL, LOG_INFO, QString("LoadFromScheduler  sched:  %1").arg(*it));
+        }
+#endif
         return slist;
     }
 
@@ -5163,6 +5169,12 @@ QStringList ProgramInfo::LoadFromScheduler(
         slist.clear();
     }
 
+#if 0
+    for (QStringList::const_iterator it = slist.begin(); it != slist.end(); ++it)
+    {
+        LOG(VB_GENERAL, LOG_INFO, QString("LoadFromScheduler  query:  %1").arg(*it));
+    }
+#endif
     return slist;
 }
 

@@ -3398,7 +3398,9 @@ void MainServer::HandleGetPendingRecordings(PlaybackSock *pbs,
     if (m_sched)
     {
         if (tmptable.isEmpty())
+        {
             m_sched->GetAllPending(strList);
+        }
         else
         {
             Scheduler *sched = new Scheduler(false, encoderList,
