@@ -846,7 +846,6 @@ bool LoadFromScheduler(
         destination.push_back(p);
     }
 
-#if 0
     typename AutoDeleteDeque<TYPE*>::const_iterator dit = destination.begin();
     for (; dit != destination.end(); ++dit)
     {
@@ -867,7 +866,6 @@ bool LoadFromScheduler(
             }
         }
     }
-#endif
 
     if (programCount != slist[1].toUInt())
     {
