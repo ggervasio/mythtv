@@ -475,7 +475,7 @@ MythMainWindow::MythMainWindow(const bool useDB)
 
     d->joystickThread = NULL;
     d->joystickThread = new JoystickMenuThread(this);
-    if (!d->joystickThread->Init(joy_config_file))
+    if (d->joystickThread->Init(joy_config_file))
         d->joystickThread->start();
 #endif
 
@@ -2532,6 +2532,12 @@ void MythMainWindow::customEvent(QEvent *ce)
                 d->idleTimer->start();
 
             LOG(VB_GENERAL, LOG_INFO, QString("Updating the frontend idle time to: %1 mins").arg(d->idleTime));
+        }
+        else if (message == "NOTIFICATION")
+        {
+            MythNotification mn(*me);
+            MythNotificationCenter::GetInstance()->Queue(mn);
+            return;
         }
     }
     else if ((MythEvent::Type)(ce->type()) == MythEvent::MythUserMessage)

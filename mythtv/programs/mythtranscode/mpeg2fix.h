@@ -13,8 +13,8 @@ extern "C"
 #include "libavformat/avformat.h"
 
 //replex
-#include "replex/ringbuffer.h"
-#include "replex/multiplex.h"
+#include "external/replex/ringbuffer.h"
+#include "external/replex/multiplex.h"
 
 //libmpeg2
 #include "config.h"
@@ -46,7 +46,8 @@ class MPEG2frame
   public:
     MPEG2frame(int size) :
         isSequence(false), isGop(false),
-        framePos(NULL), gopPos(NULL)
+        framePos(NULL), gopPos(NULL),
+        mpeg2_seq(), mpeg2_gop(), mpeg2_pic()
     {
         av_new_packet(&pkt, size);
     }
@@ -215,13 +216,13 @@ class MPEG2fixup
         return (inputFC->streams[id]->codec->codec_id == AV_CODEC_ID_AC3) ?
                AV_CODEC_ID_AC3 : AV_CODEC_ID_MP2;
     }
-    AVCodecContext *getCodecContext(int id)
+    AVCodecContext *getCodecContext(uint id)
     {
         if (id >= inputFC->nb_streams)
             return NULL;
         return inputFC->streams[id]->codec;
     }
-    AVCodecParserContext *getCodecParserContext(int id)
+    AVCodecParserContext *getCodecParserContext(uint id)
     {
         if (id >= inputFC->nb_streams)
             return NULL;

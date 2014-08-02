@@ -859,6 +859,10 @@ bool LoadFromScheduler(
 
             if ((*dit)->GetChannelSchedulingID() != other.GetChannelSchedulingID())
             {
+                if (other.GetRecordingStatus() == rsWillRecord ||
+                    other.GetRecordingStatus() == rsRecording ||
+                    other.GetRecordingStatus() == rsTuning ||
+                    other.GetRecordingStatus() == rsFailing)
                 (*dit)->SetRecordingStatus(other.GetRecordingStatus());
             }
         }

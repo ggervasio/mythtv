@@ -60,10 +60,15 @@ class UPNP_PUBLIC Xsd : public QDomDocument
     public:
 
 
-        bool GetXSD( HTTPRequest *pRequest, QString sTypeName );
+        bool GetXSD    ( HTTPRequest *pRequest, QString sTypeName );
+		bool GetEnumXSD( HTTPRequest *pRequest, QString sEnumName );
 
         static QString ConvertTypeToXSD( const QString &sType, bool bCustomType = false );
 
 };
+
+//////////////////////////////////////////////////////////////////////////////
+
+typedef struct TypeInfo { QString sAttrName; QString sContentType; } TypeInfo;
 
 #endif

@@ -631,6 +631,11 @@ bool MythCoreContext::BackendIsRunning(void)
     return (res == GENERIC_EXIT_OK);
 }
 
+bool MythCoreContext::IsThisBackend(const QString &addr)
+{
+    return IsBackend() && IsThisHost(addr);
+}
+
 bool MythCoreContext::IsThisHost(const QString &addr)
 {
     return IsThisHost(addr, GetHostName());
@@ -1306,6 +1311,14 @@ bool MythCoreContext::SendReceiveStringList(
                 LOG(VB_GENERAL, LOG_INFO,
                     QString("Protocol query '%1' responded with an error, but "
                             "no error message.") .arg(query_type));
+
+            ok = false;
+        }
+        else if (strlist[0] == "UNKNOWN_COMMAND")
+        {
+            LOG(VB_GENERAL, LOG_ERR,
+                QString("Protocol query '%1' responded with the error 'UNKNOWN_COMMAND'")
+                        .arg(query_type));
 
             ok = false;
         }

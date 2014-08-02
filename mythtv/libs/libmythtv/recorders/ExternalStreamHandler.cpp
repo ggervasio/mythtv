@@ -226,22 +226,6 @@ void ExternIO::Fork(void)
     int out[2] = {-1, -1};
     int err[2] = {-1, -1};
 
-    char *command = strdup(m_app.canonicalFilePath()
-                                 .toUtf8().constData());
-    char **arguments;
-    int    len;
-
-    // Copy QStringList to char**
-    arguments = new char*[m_args.size() + 1];
-    for (int i = 0; i < m_args.size(); ++i)
-    {
-        len = m_args[i].size() + 1;
-        arguments[i] = new char[len];
-        memcpy(arguments[i], m_args[i].toStdString().c_str(), len);
-    }
-    arguments[m_args.size()] = reinterpret_cast<char *>(0);
-
-
     if (pipe(in) < 0)
     {
         m_error = "pipe(in) failed: " + ENO;
@@ -281,21 +265,13 @@ void ExternIO::Fork(void)
         m_appout = out[0];
         m_apperr = err[0];
 
-        fcntl(m_appin,  F_SETFL, O_NONBLOCK);
-        fcntl(m_appout, F_SETFL, O_NONBLOCK);
-        fcntl(m_apperr, F_SETFL, O_NONBLOCK);
+        bool error = false;
+        error = (fcntl(m_appin,  F_SETFL, O_NONBLOCK) == -1);
+        error = (fcntl(m_appout, F_SETFL, O_NONBLOCK) == -1);
+        error = (fcntl(m_apperr, F_SETFL, O_NONBLOCK) == -1);
 
-        free(command);
-        if (arguments)
-        {
-            int i = 0;
-            while (arguments[i])
-            {
-                delete[] arguments[i];
-                ++i;
-            }
-            delete[] arguments;
-        }
+        if (error)
+            LOG(VB_GENERAL, LOG_WARNING, "ExternIO::Fork(): Failed to set O_NONBLOCK for FD: " + ENO);
 
         LOG(VB_RECORD, LOG_INFO, "Spawned");
         return;
@@ -334,6 +310,21 @@ void ExternIO::Fork(void)
              << "setpgid() failed: "
              << strerror(errno) << endl;
     }
+
+    char *command = strdup(m_app.canonicalFilePath()
+                                 .toUtf8().constData());
+    char **arguments;
+    int    len;
+
+    // Copy QStringList to char**
+    arguments = new char*[m_args.size() + 1];
+    for (int i = 0; i < m_args.size(); ++i)
+    {
+        len = m_args[i].size() + 1;
+        arguments[i] = new char[len];
+        memcpy(arguments[i], m_args[i].toStdString().c_str(), len);
+    }
+    arguments[m_args.size()] = reinterpret_cast<char *>(0);
 
     /* run command */
     if (execv(command, arguments) < 0)

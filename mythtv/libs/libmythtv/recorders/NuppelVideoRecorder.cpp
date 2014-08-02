@@ -177,6 +177,8 @@ NuppelVideoRecorder::NuppelVideoRecorder(TVRec *rec, ChannelBase *channel) :
     hmjpg_vdecimation = 2;
     hmjpg_maxw = 640;
 
+    cleartimeonpause = false;
+
     videoFilterList = "";
     videoFilters = NULL;
     FiltMan = new FilterManager;
@@ -1244,7 +1246,7 @@ void NuppelVideoRecorder::DoV4L1(void)
                                                PROT_READ|PROT_WRITE,
                                                MAP_SHARED,
                                                fd, 0);
-    if (buf <= 0)
+    if (buf == MAP_FAILED)
     {
         QString tmp = "mmap: " + ENO;
         KillChildren();
