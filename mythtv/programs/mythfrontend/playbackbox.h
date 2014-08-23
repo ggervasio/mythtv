@@ -147,11 +147,6 @@ class PlaybackBox : public ScheduleCommon
     void SwitchList(void);
 
     void ShowGroupPopup(void);
-    void customEdit();
-    void previous();
-    void upcoming();
-    void upcomingScheduled();
-    void details();
     void StopSelected(void);
     void showMetadataEditor();
     void showGroupFilter();
@@ -165,7 +160,6 @@ class PlaybackBox : public ScheduleCommon
     MythMenu* createPlaylistStorageMenu();
     MythMenu* createPlaylistJobMenu();
     void changeProfileAndTranscode(int id);
-    void showProgramDetails();
     void showIconHelp();
     void ShowRecGroupChangerUsePlaylist(void)  { ShowRecGroupChanger(true);  }
     void ShowPlayGroupChangerUsePlaylist(void) { ShowPlayGroupChanger(true); }
@@ -178,7 +172,6 @@ class PlaybackBox : public ScheduleCommon
 
     void askStop();
 
-    void doEditScheduled();
     void doAllowRerecord();
 
     void askDelete();
@@ -284,7 +277,7 @@ class PlaybackBox : public ScheduleCommon
               bool ignoreBookmark,
               bool underNetworkControl);
 
-    ProgramInfo *CurrentItem(void);
+    virtual ProgramInfo *GetCurrentProgram(void) const;
 
     void togglePlayListItem(ProgramInfo *pginfo);
     void randomizePlayList(void);

@@ -514,7 +514,8 @@ void ScheduleEditor::ShowSchedInfo()
             menuPopup->AddButton(tr("Program Details"));
         menuPopup->AddButton(tr("Upcoming Episodes"));
         menuPopup->AddButton(tr("Upcoming Recordings"));
-        menuPopup->AddButton(tr("Previously Recorded"));
+        if (m_recordingRule->m_type != kTemplateRecord)
+            menuPopup->AddButton(tr("Previously Recorded"));
 
         popupStack->AddScreen(menuPopup);
     }
@@ -540,7 +541,9 @@ bool ScheduleEditor::keyPressEvent(QKeyEvent *event)
         if (action == "MENU")
             showMenu();
         else if (action == "INFO")
-            ShowDetails(m_recInfo);
+            ShowDetails();
+        else if (action == "GUIDE")
+            ShowGuide();
         else if (action == "UPCOMING")
             showUpcomingByTitle();
         else if (action == "PREVVIEW")
@@ -594,13 +597,13 @@ void ScheduleEditor::customEvent(QEvent *event)
         else if (resultid == "schedinfo")
         {
             if (resulttext == tr("Program Details"))
-                ShowDetails(m_recInfo);
+                ShowDetails();
             else if (resulttext == tr("Upcoming Episodes"))
                 showUpcomingByTitle();
             else if (resulttext == tr("Upcoming Recordings"))
                 showUpcomingByRule();
             else if (resulttext == tr("Previously Recorded"))
-                showPrevious();
+                ShowPrevious();
         }
         else if (resultid == "newrecgroup")
         {
@@ -608,18 +611,6 @@ void ScheduleEditor::customEvent(QEvent *event)
             StoreOptMixin::SetRecGroup(groupID, resulttext);
         }
     }
-}
-
-void ScheduleEditor::showPrevious(void)
-{
-    if (m_recordingRule->m_type == kTemplateRecord)
-        return;
-
-    QString title;
-    if (m_recInfo)
-        title = m_recInfo->GetTitle();
-
-    ShowPrevious(m_recordingRule->m_recordID, title);
 }
 
 void ScheduleEditor::showUpcomingByRule(void)
@@ -918,7 +909,7 @@ bool SchedEditChild::keyPressEvent(QKeyEvent *event)
         if (action == "MENU")
             m_editor->showMenu();
         else if (action == "INFO")
-            m_editor->ShowDetails(m_recInfo);
+            m_editor->ShowDetails();
         else if (action == "UPCOMING")
             m_editor->showUpcomingByTitle();
         if (action == "ESCAPE")

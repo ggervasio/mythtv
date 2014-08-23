@@ -20,6 +20,8 @@
 #include "videoutils.h"
 #include "programinfo.h" // for format_season_and_episode
 
+using namespace std;
+
 struct SortData
 {
     SortData(const QString &title, const QString &filename, const QString &id) :

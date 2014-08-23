@@ -3,7 +3,6 @@
 
 #include <QCoreApplication>
 
-#include "customedit.h"
 #include "recordinginfo.h"
 #include "tv_play.h"
 #include "recordingrule.h"
@@ -86,7 +85,7 @@ bool ViewScheduled::Create()
     connect(m_schedulesList, SIGNAL(itemSelected(MythUIButtonListItem*)),
             SLOT(updateInfo(MythUIButtonListItem*)));
     connect(m_schedulesList, SIGNAL(itemClicked(MythUIButtonListItem*)),
-            SLOT(selected(MythUIButtonListItem*)));
+            SLOT(EditRecording()));
 
     m_schedulesList->SetLCDTitles(tr("Scheduled Recordings"),
                               "shortstarttimedate|channel|titlesubtitle|card");
@@ -161,21 +160,23 @@ bool ViewScheduled::keyPressEvent(QKeyEvent *event)
         handled = true;
 
         if (action == "EDIT")
-            edit();
+            EditScheduled();
         else if (action == "CUSTOMEDIT")
-            customEdit();
+            EditCustom();
         else if (action == "DELETE")
             deleteRule();
         else if (action == "UPCOMING")
-            upcoming();
+            ShowUpcoming();
         else if (action == "VIEWSCHEDULED")
-            upcomingScheduled();
+            ShowUpcomingScheduled();
         else if (action == "PREVRECORDED")
-            previous();
+            ShowPrevious();
         else if (action == "DETAILS" || action == "INFO")
-            details();
+            ShowDetails();
         else if (action == "GUIDE")
-            showGuide();
+            ShowGuide();
+        else if (action == ACTION_CHANNELSEARCH)
+            ShowChannelSearch();
         else if (action == "1")
             setShowAll(true);
         else if (action == "2")
@@ -219,6 +220,7 @@ void ViewScheduled::ShowMenu(void)
             menuPopup->AddButton(tr("Show All"));
         menuPopup->AddButton(tr("Program Details"));
         menuPopup->AddButton(tr("Program Guide"));
+        menuPopup->AddButton(tr("Channel Search"));
         menuPopup->AddButton(tr("Upcoming by title"));
         menuPopup->AddButton(tr("Upcoming scheduled"));
         menuPopup->AddButton(tr("Previously Recorded"));
@@ -529,31 +531,6 @@ void ViewScheduled::updateInfo(MythUIButtonListItem *item)
     }
 }
 
-void ViewScheduled::edit()
-{
-    MythUIButtonListItem *item = m_schedulesList->GetItemCurrent();
-
-    if (!item)
-        return;
-
-    ProgramInfo *pginfo = item->GetData().value<ProgramInfo*>();
-    if (!pginfo)
-        return;
-
-    EditScheduled(pginfo);
-}
-
-void ViewScheduled::customEdit()
-{
-    MythUIButtonListItem *item = m_schedulesList->GetItemCurrent();
-
-    if (!item)
-        return;
-
-    ProgramInfo *pginfo = item->GetData().value<ProgramInfo*>();
-    EditCustom(pginfo);
-}
-
 void ViewScheduled::deleteRule()
 {
     MythUIButtonListItem *item = m_schedulesList->GetItemCurrent();
@@ -587,89 +564,6 @@ void ViewScheduled::deleteRule()
         popupStack->AddScreen(okPopup);
     else
         delete okPopup;
-}
-
-void ViewScheduled::showGuide()
-{
-    MythUIButtonListItem *item = m_schedulesList->GetItemCurrent();
-
-    if (!item)
-        return;
-
-    ProgramInfo *pginfo = item->GetData().value<ProgramInfo*>();
-
-    QString startchannel = pginfo->GetChanNum();
-    uint startchanid = pginfo->GetChanID();
-    QDateTime starttime = pginfo->GetScheduledStartTime();
-    GuideGrid::RunProgramGuide(startchanid, startchannel, starttime);
-}
-
-void ViewScheduled::upcoming()
-{
-    MythUIButtonListItem *item = m_schedulesList->GetItemCurrent();
-    if (!item)
-        return;
-
-    ProgramInfo *pginfo = item->GetData().value<ProgramInfo*>();
-
-    ShowUpcoming(pginfo);
-
-    //FIXME:
-    //EmbedTVWindow();
-}
-
-void ViewScheduled::upcomingScheduled()
-{
-    MythUIButtonListItem *item = m_schedulesList->GetItemCurrent();
-    if (!item)
-        return;
-
-    ProgramInfo *pginfo = item->GetData().value<ProgramInfo*>();
-
-    ShowUpcomingScheduled(pginfo);
-
-    //FIXME:
-    //EmbedTVWindow();
-}
-
-void ViewScheduled::previous()
-{
-    MythUIButtonListItem *item = m_schedulesList->GetItemCurrent();
-    if (!item)
-        return;
-
-    ProgramInfo *pginfo = item->GetData().value<ProgramInfo*>();
-
-    ShowPrevious(pginfo);
-
-    //FIXME:
-    //EmbedTVWindow();
-}
-
-void ViewScheduled::details()
-{
-    MythUIButtonListItem *item = m_schedulesList->GetItemCurrent();
-
-    if (!item)
-        return;
-
-    ProgramInfo *pginfo = item->GetData().value<ProgramInfo*>();
-    if (pginfo)
-        ShowDetails(pginfo);
-
-    EmbedTVWindow();
-}
-
-void ViewScheduled::selected(MythUIButtonListItem *item)
-{
-    if (!item)
-        return;
-
-    ProgramInfo *pginfo = item->GetData().value<ProgramInfo*> ();
-    if (!pginfo)
-        return;
-
-    EditRecording(pginfo);
 }
 
 void ViewScheduled::setShowAll(bool all)
@@ -772,27 +666,31 @@ void ViewScheduled::customEvent(QEvent *event)
             }
             else if (resulttext == tr("Program Details"))
             {
-                details();
+                ShowDetails();
             }
             else if (resulttext == tr("Program Guide"))
             {
-                showGuide();
+                ShowGuide();
+            }
+            else if (resulttext == tr("Channel Search"))
+            {
+                ShowChannelSearch();
             }
             else if (resulttext == tr("Upcoming by title"))
             {
-                upcoming();
+                ShowUpcoming();
             }
             else if (resulttext == tr("Upcoming scheduled"))
             {
-                upcomingScheduled();
+                ShowUpcomingScheduled();
             }
             else if (resulttext == tr("Previously Recorded"))
             {
-                previous();
+                ShowPrevious();
             }
             else if (resulttext == tr("Custom Edit"))
             {
-                customEdit();
+                EditCustom();
             }
             else if (resulttext == tr("Delete Rule"))
             {
@@ -813,4 +711,10 @@ void ViewScheduled::customEvent(QEvent *event)
         else
             ScheduleCommon::customEvent(event);
     }
+}
+
+ProgramInfo *ViewScheduled::GetCurrentProgram(void) const
+{
+    MythUIButtonListItem *item = m_schedulesList->GetItemCurrent();
+    return item ? item->GetData().value<ProgramInfo*>() : NULL;
 }

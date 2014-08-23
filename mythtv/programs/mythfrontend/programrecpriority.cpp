@@ -27,7 +27,6 @@ using namespace std;
 #include "mythdialogbox.h"
 
 // mythfrontend
-#include "customedit.h"
 #include "proglist.h"
 #include "scheduleeditor.h"
 
@@ -597,7 +596,7 @@ bool ProgramRecPriority::keyPressEvent(QKeyEvent *event)
         else if (action == "CUSTOMEDIT")
         {
             saveRecPriority();
-            customEdit();
+            EditCustom();
         }
         else if (action == "DELETE")
         {
@@ -607,10 +606,10 @@ bool ProgramRecPriority::keyPressEvent(QKeyEvent *event)
         else if (action == "UPCOMING")
         {
             saveRecPriority();
-            upcoming();
+            ShowUpcoming();
         }
         else if (action == "INFO" || action == "DETAILS")
-            details();
+            ShowDetails();
         else
             handled = false;
     }
@@ -703,17 +702,17 @@ void ProgramRecPriority::customEvent(QEvent *event)
             }
             else if (resulttext == tr("Program Details"))
             {
-                details();
+                ShowDetails();
             }
             else if (resulttext == tr("Upcoming"))
             {
                 saveRecPriority();
-                upcoming();
+                ShowUpcoming();
             }
             else if (resulttext == tr("Custom Edit"))
             {
                 saveRecPriority();
-                customEdit();
+                EditCustom();
             }
             else if (resulttext == tr("Delete Rule"))
             {
@@ -992,18 +991,6 @@ void ProgramRecPriority::scheduleChanged(int recid)
     countMatches();
 }
 
-void ProgramRecPriority::customEdit(void)
-{
-    MythUIButtonListItem *item = m_programList->GetItemCurrent();
-    if (!item)
-        return;
-
-    ProgramRecPriorityInfo *pgRecInfo =
-                        item->GetData().value<ProgramRecPriorityInfo*>();
-
-    EditCustom(pgRecInfo);
-}
-
 void ProgramRecPriority::remove(void)
 {
     MythUIButtonListItem *item = m_programList->GetItemCurrent();
@@ -1099,57 +1086,6 @@ void ProgramRecPriority::deactivate(void)
             }
         }
     }
-}
-
-void ProgramRecPriority::upcoming(void)
-{
-    MythUIButtonListItem *item = m_programList->GetItemCurrent();
-    if (!item)
-        return;
-
-    ProgramRecPriorityInfo *pgRecInfo =
-                        item->GetData().value<ProgramRecPriorityInfo*>();
-
-    if (!pgRecInfo)
-        return;
-
-    if (m_listMatch[pgRecInfo->GetRecordingRuleID()] > 0)
-    {
-        MythScreenStack *mainStack = GetMythMainWindow()->GetMainStack();
-        ProgLister *pl = new ProgLister(
-            mainStack, plRecordid,
-            QString::number(pgRecInfo->GetRecordingRuleID()), "");
-
-        if (pl->Create())
-            mainStack->AddScreen(pl);
-        else
-            delete pl;
-    }
-    else
-    {
-        ProgLister *pl = NULL;
-        QString trimTitle = pgRecInfo->title;
-        trimTitle.remove(QRegExp(" \\(.*\\)$"));
-        MythScreenStack *mainStack = GetMythMainWindow()->GetMainStack();
-        pl = new ProgLister(mainStack, plTitle, trimTitle,
-                            pgRecInfo->GetSeriesID());
-        if (pl->Create())
-            mainStack->AddScreen(pl);
-        else
-            delete pl;
-    }
-}
-
-void ProgramRecPriority::details(void)
-{
-    MythUIButtonListItem *item = m_programList->GetItemCurrent();
-    if (!item)
-        return;
-
-    ProgramRecPriorityInfo *pgRecInfo = item->GetData().value<ProgramRecPriorityInfo *>
-                                                            ();
-
-    ShowDetails(pgRecInfo);
 }
 
 void ProgramRecPriority::changeRecPriority(int howMuch)
@@ -1660,6 +1596,12 @@ void ProgramRecPriority::RemoveItemFromList(MythUIButtonListItem *item)
         m_programData.erase(it);
 
     m_programList->RemoveItem(item);
+}
+
+ProgramInfo *ProgramRecPriority::GetCurrentProgram(void) const
+{
+    MythUIButtonListItem *item = m_programList->GetItemCurrent();
+    return item ? item->GetData().value<ProgramRecPriorityInfo*>() : NULL;
 }
 
 /* vim: set expandtab tabstop=4 shiftwidth=4: */

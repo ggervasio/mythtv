@@ -540,6 +540,8 @@ void TV::InitKeys(void)
             "Show the Program Guide"), "S");
     REG_KEY("TV Frontend", ACTION_FINDER, QT_TRANSLATE_NOOP("MythControls",
             "Show the Program Finder"), "#");
+    REG_KEY("TV Frontend", ACTION_CHANNELSEARCH, QT_TRANSLATE_NOOP("MythControls",
+            "Show the Channel Search"), "");
     REG_KEY("TV Frontend", "NEXTFAV", QT_TRANSLATE_NOOP("MythControls",
             "Cycle through channel groups and all channels in the "
             "program guide."), "/");
@@ -7925,7 +7927,7 @@ void TV::ToggleOSD(PlayerContext *ctx, bool includeStatusOSD)
         osdInfo info;
         if (ctx->CalcPlayerSliderPosition(info))
         {
-            info.text["title"] = paused ? tr("Paused") : tr("Position");
+            info.text["title"] = (paused ? tr("Paused") : tr("Position")) + GetLiveTVIndex(ctx);
             UpdateOSDStatus(ctx, info, kOSDFunctionalType_Default,
                             paused ? kOSDTimeout_None : kOSDTimeout_Med);
             SetUpdateOSDPosition(true);
@@ -8045,7 +8047,7 @@ void TV::UpdateOSDSeekMessage(const PlayerContext *ctx,
     {
         int osdtype = (doSmartForward) ? kOSDFunctionalType_SmartForward :
             kOSDFunctionalType_Default;
-        info.text["title"] = mesg;
+        info.text["title"] = mesg + GetLiveTVIndex(ctx);
         UpdateOSDStatus(ctx, info, osdtype, timeout);
         SetUpdateOSDPosition(true);
     }
@@ -12937,7 +12939,7 @@ void TV::UnpauseLiveTV(PlayerContext *ctx, bool bQuietly /*=false*/)
     if (ctx->HasPlayer() && ctx->tvchain)
     {
         ctx->ReloadTVChain();
-        ctx->tvchain->SwitchTo(-1);
+        ctx->tvchain->JumpTo(-1, 1);
         ctx->LockDeletePlayer(__FILE__, __LINE__);
         if (ctx->player)
             ctx->player->Play(ctx->ts_normal, true, false);
@@ -13580,6 +13582,19 @@ void TV::ReturnPlayerLock(const PlayerContext *&ctx) const
 {
     playerLock.unlock();
     ctx = NULL;
+}
+
+QString TV::GetLiveTVIndex(const PlayerContext *ctx) const
+{
+#ifdef DEBUG_LIVETV_TRANSITION
+    return (ctx->tvchain ?
+            QString(" (%1/%2)")
+                .arg(ctx->tvchain->GetCurPos())
+                .arg(ctx->tvchain->TotalSize()) : QString());
+#else
+    (void)ctx;
+    return QString();
+#endif
 }
 
 /* vim: set expandtab tabstop=4 shiftwidth=4: */

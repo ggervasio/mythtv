@@ -152,14 +152,7 @@ class GuideGrid : public ScheduleCommon, public JumpToChannelListener
     void volumeUpdate(bool);
     void toggleMute(const bool muteIndividualChannels = false);
 
-    void quickRecord();
-    void editRecSchedule();
-    void editSchedule();
-    void customEdit();
     void deleteRule();
-    void upcoming();
-    void previous();
-    void details();
 
     void Close();
     void customEvent(QEvent *event);
@@ -173,6 +166,8 @@ class GuideGrid : public ScheduleCommon, public JumpToChannelListener
               bool allowFinder = true,
               int changrpid = -1);
    ~GuideGrid();
+    virtual ProgramInfo *GetCurrentProgram(void) const
+        { return m_programInfos[m_currentRow][m_currentCol]; };
 
   private slots:
     void updateTimeout(void);
