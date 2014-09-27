@@ -470,7 +470,7 @@ void ExternalStreamHandler::run(void)
     bool       xon = false;
     QByteArray buffer;
     uint       len, read_len;
-    uint       empty_cnt;
+    uint       empty_cnt = 0;
 
     RunProlog();
 
@@ -599,7 +599,7 @@ void ExternalStreamHandler::run(void)
             else
                 buffer.clear();
         }
-        if (!m_IO || m_IO->Error())
+        if (m_IO->Error())
         {
             m_error = m_IO->ErrorString();
             _error = true;
