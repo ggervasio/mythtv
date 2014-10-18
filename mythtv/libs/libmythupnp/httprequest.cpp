@@ -106,7 +106,7 @@ static MIMETypes g_MIMETypes[] =
     { "3gp" , "video/3gpp"                 }, // Also audio/3gpp
     { "3g2" , "video/3gpp2"                }, // Also audio/3gpp2
     { "asf" , "video/x-ms-asf"             },
-    { "avi" , "video/avi"                  },
+    { "avi" , "video/x-msvideo"            }, // Also video/avi
     { "m4v" , "video/mp4"                  },
     { "mpeg", "video/mpeg"                 },
     { "mpeg2","video/mpeg"                 },
@@ -178,7 +178,9 @@ HTTPRequest::HTTPRequest() : m_procReqLineExp ( "[ \r\n][ \r\n]*"  ),
                              m_bSOAPRequest   ( false ),
                              m_eResponseType  ( ResponseTypeUnknown),
                              m_nResponseStatus( 200 ),
-                             m_pPostProcess   ( NULL )
+                             m_pPostProcess   ( NULL ),
+                             m_bKeepAlive     ( true ),
+                             m_nKeepAliveTimeout ( 0 )
 {
     m_response.open( QIODevice::ReadWrite );
 }
@@ -200,7 +202,7 @@ RequestType HTTPRequest::SetRequestType( const QString &sType )
 
     if (sType.startsWith( QString("HTTP/") )) return( m_eType = RequestTypeResponse );
 
-    LOG(VB_UPNP, LOG_INFO,
+    LOG(VB_HTTP, LOG_INFO,
         QString("HTTPRequest::SentRequestType( %1 ) - returning Unknown.")
             .arg(sType));
 
@@ -211,7 +213,7 @@ RequestType HTTPRequest::SetRequestType( const QString &sType )
 //
 /////////////////////////////////////////////////////////////////////////////
 
-QString HTTPRequest::BuildHeader( long long nSize )
+QString HTTPRequest::BuildResponseHeader( long long nSize )
 {
     QString sHeader;
     QString sContentType = (m_eResponseType == ResponseTypeOther) ?
@@ -227,11 +229,12 @@ QString HTTPRequest::BuildHeader( long long nSize )
         .arg(HttpServer::GetServerVersion());
 
     sHeader += QString( "Connection: %1\r\n" )
-                        .arg( GetKeepAlive() ? "Keep-Alive" : "Close" );
-    if (GetKeepAlive())
+                        .arg( m_bKeepAlive ? "Keep-Alive" : "Close" );
+    if (m_bKeepAlive)
     {
-        int timeout = UPnp::GetConfiguration()->GetValue("HTTP/KeepAliveTimeoutSecs", 10);
-        sHeader += QString( "Keep-Alive: timeout=%1\r\n" ).arg(timeout);
+        if (m_nKeepAliveTimeout == 0) // Value wasn't passed in by the server, so go with the configured value
+            m_nKeepAliveTimeout = gCoreContext->GetNumSetting("HTTP/KeepAliveTimeoutSecs", 10);
+        sHeader += QString( "Keep-Alive: timeout=%1\r\n" ).arg(m_nKeepAliveTimeout);
     }
 
     sHeader += GetAdditionalHeaders();
@@ -252,14 +255,43 @@ QString HTTPRequest::BuildHeader( long long nSize )
 
     sHeader += QString( "Content-Length: %3\r\n" ).arg( nSize );
 
-    // ----------------------------------------------------------------------
-    // Temp Hack to process DLNA header
-                             
-    QString sValue = GetHeaderValue( "getcontentfeatures.dlna.org", "0" );
+    // See DLNA  7.4.1.3.11.4.3 Tolerance to unavailable contentFeatures.dlna.org header
+    //
+    // It is better not to return this header, than to return it containing
+    // invalid or incomplete information. We are unable to currently determine
+    // this information at this stage, so do not return it. Only older devices
+    // look for it. Newer devices use the information provided in the UPnP
+    // response
 
-    if (sValue == "1")
-        sHeader += "contentFeatures.dlna.org: DLNA.ORG_OP=01;DLNA.ORG_CI=0;"
-                   "DLNA.ORG_FLAGS=01500000000000000000000000000000\r\n";
+//     QString sValue = GetHeaderValue( "getContentFeatures.dlna.org", "0" );
+//
+//     if (sValue == "1")
+//         sHeader += "contentFeatures.dlna.org: DLNA.ORG_OP=01;DLNA.ORG_CI=0;"
+//                    "DLNA.ORG_FLAGS=01500000000000000000000000000000\r\n";
+
+
+    // DLNA 7.5.4.3.2.33 MT transfer mode indication
+    QString sTransferMode = GetHeaderValue( "transferMode.dlna.org", "" );
+
+    if (sTransferMode.isEmpty())
+    {
+        if (m_sResponseTypeText.startsWith("video/") ||
+            m_sResponseTypeText.startsWith("audio/"))
+            sTransferMode = "Streaming";
+        else
+            sTransferMode = "Interactive";
+    }
+
+    if (sTransferMode == "Streaming")
+        sHeader += "transferMode.dlna.org: Streaming\r\n";
+    else if (sTransferMode == "Background")
+        sHeader += "transferMode.dlna.org: Background\r\n";
+    else if (sTransferMode == "Interactive")
+        sHeader += "transferMode.dlna.org: Interactive\r\n";
+
+    // HACK Temporary hack for Samsung TVs - Needs to be moved later as it's not entirely DLNA compliant
+    if (!GetHeaderValue( "getcontentFeatures.dlna.org", "" ).isEmpty())
+        sHeader += "contentFeatures.dlna.org: DLNA.ORG_OP=01;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=01500000000000000000000000000000\r\n";
 
     // ----------------------------------------------------------------------
 
@@ -271,7 +303,7 @@ QString HTTPRequest::BuildHeader( long long nSize )
                                     it != respHeaders.end();
                                   ++it )
         {
-            LOG(VB_GENERAL, LOG_DEBUG, QString("(Response Header) %1").arg(*it));
+            LOG(VB_HTTP, LOG_INFO, QString("(Response Header) %1").arg(*it));
         }
     }
 
@@ -293,7 +325,7 @@ qint64 HTTPRequest::SendResponse( void )
         // The following are all eligable for gzip compression
         case ResponseTypeUnknown:
         case ResponseTypeNone:
-            LOG(VB_UPNP, LOG_INFO,
+            LOG(VB_HTTP, LOG_INFO,
                 QString("HTTPRequest::SendResponse( None ) :%1 -> %2:")
                     .arg(GetResponseStatus()) .arg(GetPeerAddress()));
             return( -1 );
@@ -322,7 +354,7 @@ qint64 HTTPRequest::SendResponse( void )
             else
                 break;
         case ResponseTypeFile: // Binary files
-            LOG(VB_UPNP, LOG_INFO,
+            LOG(VB_HTTP, LOG_INFO,
                 QString("HTTPRequest::SendResponse( File ) :%1 -> %2:")
                     .arg(GetResponseStatus()) .arg(GetPeerAddress()));
             return( SendResponseFile( m_sFileName ));
@@ -331,7 +363,7 @@ qint64 HTTPRequest::SendResponse( void )
             break;
     }
 
-    LOG(VB_UPNP, LOG_INFO,
+    LOG(VB_HTTP, LOG_INFO,
         QString("HTTPRequest::SendResponse(xml/html) (%1) :%2 -> %3: %4")
              .arg(m_sFileName) .arg(GetResponseStatus())
              .arg(GetPeerAddress()) .arg(m_eResponseType));
@@ -345,7 +377,7 @@ qint64 HTTPRequest::SendResponse( void )
 //     if (setsockopt(getSocketHandle(), SOL_TCP, TCP_CORK,
 //                    &g_on, sizeof( g_on )) < 0)
 //     {
-//         LOG(VB_UPNP, LOG_INFO,
+//         LOG(VB_HTTP, LOG_INFO,
 //             QString("HTTPRequest::SendResponse(xml/html) "
 //                     "setsockopt error setting TCP_CORK on ") + ENO);
 //     }
@@ -359,7 +391,7 @@ qint64 HTTPRequest::SendResponse( void )
 
     if ( !sETag.isEmpty() && sETag == m_mapRespHeaders[ "ETag" ] )
     {
-        LOG(VB_UPNP, LOG_INFO,
+        LOG(VB_HTTP, LOG_INFO,
             QString("HTTPRequest::SendResponse(%1) - Cached")
                 .arg(sETag));
 
@@ -381,7 +413,7 @@ qint64 HTTPRequest::SendResponse( void )
         cout << m_response.buffer().constData() << endl;
     // ----------------------------------------------------------------------
 
-    LOG(VB_UPNP, LOG_DEBUG, QString("Reponse Content Length: %1").arg(nContentLen));
+    LOG(VB_HTTP, LOG_DEBUG, QString("Reponse Content Length: %1").arg(nContentLen));
 
     // ----------------------------------------------------------------------
     // Should we try to return data gzip'd?
@@ -399,7 +431,7 @@ qint64 HTTPRequest::SendResponse( void )
             pBuffer = &compBuffer;
 
             m_mapRespHeaders[ "Content-Encoding" ] = "gzip";
-            LOG(VB_UPNP, LOG_DEBUG, QString("Reponse Compressed Content Length: %1").arg(compBuffer.buffer().length()));
+            LOG(VB_HTTP, LOG_DEBUG, QString("Reponse Compressed Content Length: %1").arg(compBuffer.buffer().length()));
         }
     }
 
@@ -456,13 +488,14 @@ qint64 HTTPRequest::SendResponse( void )
 
     nContentLen = pBuffer->buffer().length();
 
-    QString    rHeader = BuildHeader( nContentLen );
+    QString    rHeader = BuildResponseHeader( nContentLen );
 
     QByteArray sHeader = rHeader.toUtf8();
+    LOG(VB_HTTP, LOG_DEBUG, QString("Response header size: %1 bytes").arg(sHeader.length()));
     nBytes  = WriteBlock( sHeader.constData(), sHeader.length() );
 
     if (nBytes < sHeader.length())
-        LOG( VB_UPNP, LOG_ERR, QString("HttpRequest::SendResponse(): "
+        LOG( VB_HTTP, LOG_ERR, QString("HttpRequest::SendResponse(): "
                                        "Incomplete write of header, "
                                        "%1 written of %2")
                                         .arg(nBytes).arg(sHeader.length()));
@@ -477,7 +510,7 @@ qint64 HTTPRequest::SendResponse( void )
         //qint64 bytesWritten = WriteBlock( pBuffer->buffer(), pBuffer->buffer().length() );
 
         if (bytesWritten != nContentLen)
-            LOG(VB_UPNP, LOG_ERR, "HttpRequest::SendResponse(): Error occurred while writing response body.");
+            LOG(VB_HTTP, LOG_ERR, "HttpRequest::SendResponse(): Error occurred while writing response body.");
         else
             nBytes += bytesWritten;
     }
@@ -490,7 +523,7 @@ qint64 HTTPRequest::SendResponse( void )
 //     if (setsockopt(getSocketHandle(), SOL_TCP, TCP_CORK,
 //                    &g_off, sizeof( g_off )) < 0)
 //     {
-//         LOG(VB_UPNP, LOG_INFO,
+//         LOG(VB_HTTP, LOG_INFO,
 //             QString("HTTPRequest::SendResponse(xml/html) "
 //                     "setsockopt error setting TCP_CORK off ") + ENO);
 //     }
@@ -510,7 +543,7 @@ qint64 HTTPRequest::SendResponseFile( QString sFileName )
     long long   llStart = 0;
     long long   llEnd   = 0;
 
-    LOG(VB_UPNP, LOG_INFO, QString("SendResponseFile ( %1 )").arg(sFileName));
+    LOG(VB_HTTP, LOG_INFO, QString("SendResponseFile ( %1 )").arg(sFileName));
 
     m_eResponseType     = ResponseTypeOther;
     m_sResponseTypeText = "text/plain";
@@ -524,7 +557,7 @@ qint64 HTTPRequest::SendResponseFile( QString sFileName )
 //     if (setsockopt(getSocketHandle(), SOL_TCP, TCP_CORK,
 //                    &g_on, sizeof( g_on )) < 0)
 //     {
-//         LOG(VB_UPNP, LOG_INFO,
+//         LOG(VB_HTTP, LOG_INFO,
 //             QString("HTTPRequest::SendResponseFile(%1) "
 //                     "setsockopt error setting TCP_CORK on " ).arg(sFileName) +
 //             ENO);
@@ -577,7 +610,7 @@ qint64 HTTPRequest::SendResponseFile( QString sFileName )
             {
                 m_nResponseStatus = 416;
                 llSize = 0;
-                LOG(VB_UPNP, LOG_INFO,
+                LOG(VB_HTTP, LOG_INFO,
                     QString("HTTPRequest::SendResponseFile(%1) - "
                             "invalid byte range %2-%3/%4")
                             .arg(sFileName) .arg(llStart) .arg(llEnd)
@@ -585,9 +618,11 @@ qint64 HTTPRequest::SendResponseFile( QString sFileName )
             }
         }
 
-        // Required by some UPnP devices?
-        m_mapRespHeaders[ "X-User-Agent"    ] = "redsonic";
-        m_mapRespHeaders[ "User-Agent"    ] = "redsonic";
+        // HACK: D-Link DSM-320
+        // The following headers are only required by servers which don't support
+        // http keep alive. We do support it, so we don't need it. Keeping it in
+        // place to prevent someone re-adding it in future
+        //m_mapRespHeaders[ "X-User-Agent"    ] = "redsonic";
 
         // ------------------------------------------------------------------
         //
@@ -596,7 +631,7 @@ qint64 HTTPRequest::SendResponseFile( QString sFileName )
     }
     else
     {
-        LOG(VB_UPNP, LOG_INFO,
+        LOG(VB_HTTP, LOG_INFO,
             QString("HTTPRequest::SendResponseFile(%1) - cannot find file!")
                 .arg(sFileName));
         m_nResponseStatus = 404;
@@ -608,12 +643,13 @@ qint64 HTTPRequest::SendResponseFile( QString sFileName )
     // Write out Header.
     // ----------------------------------------------------------------------
 
-    QString    rHeader = BuildHeader( llSize );
+    QString    rHeader = BuildResponseHeader( llSize );
     QByteArray sHeader = rHeader.toUtf8();
+    LOG(VB_HTTP, LOG_DEBUG, QString("Response header size: %1 bytes").arg(sHeader.length()));
     nBytes = WriteBlock( sHeader.constData(), sHeader.length() );
 
     if (nBytes < sHeader.length())
-        LOG( VB_UPNP, LOG_ERR, QString("HttpRequest::SendResponseFile(): "
+        LOG( VB_HTTP, LOG_ERR, QString("HttpRequest::SendResponseFile(): "
                                        "Incomplete write of header, "
                                        "%1 written of %2")
                                         .arg(nBytes).arg(sHeader.length()));
@@ -623,7 +659,7 @@ qint64 HTTPRequest::SendResponseFile( QString sFileName )
     // ----------------------------------------------------------------------
 
 #if 0
-    LOG(VB_UPNP, LOG_DEBUG,
+    LOG(VB_HTTP, LOG_DEBUG,
         QString("SendResponseFile : size = %1, start = %2, end = %3")
             .arg(llSize).arg(llStart).arg(llEnd));
 #endif
@@ -633,7 +669,7 @@ qint64 HTTPRequest::SendResponseFile( QString sFileName )
 
         if (sent == -1)
         {
-            LOG(VB_UPNP, LOG_INFO,
+            LOG(VB_HTTP, LOG_INFO,
                 QString("SendResponseFile( %1 ) Error: %2 [%3]" )
                     .arg(sFileName) .arg(errno) .arg(strerror(errno)));
 
@@ -649,7 +685,7 @@ qint64 HTTPRequest::SendResponseFile( QString sFileName )
 //     if (setsockopt(getSocketHandle(), SOL_TCP, TCP_CORK,
 //                    &g_off, sizeof( g_off )) < 0)
 //     {
-//         LOG(VB_UPNP, LOG_INFO,
+//         LOG(VB_HTTP, LOG_INFO,
 //             QString("HTTPRequest::SendResponseFile(%1) "
 //                     "setsockopt error setting TCP_CORK off ").arg(sFileName) +
 //             ENO);
@@ -875,7 +911,7 @@ void HTTPRequest::FormatFileResponse( const QString &sFileName )
     {
         m_eResponseType   = ResponseTypeHTML;
         m_nResponseStatus = 404;
-        LOG(VB_UPNP, LOG_INFO,
+        LOG(VB_HTTP, LOG_INFO,
             QString("HTTPRequest::FormatFileResponse('%1') - cannot find file")
                 .arg(sFileName));
     }
@@ -1059,7 +1095,7 @@ QString HTTPRequest::TestMimeType( const QString &sFileName )
             QByteArray head = file.read(8);
             QString    sHex = head.toHex();
 
-            LOG(VB_UPNP, LOG_DEBUG, sLOC + "file starts with " + sHex);
+            LOG(VB_HTTP, LOG_DEBUG, sLOC + "file starts with " + sHex);
 
             if ( sHex == "000001ba44000400" )  // MPEG2 PS
                 sMIME = "video/mpeg";
@@ -1071,7 +1107,7 @@ QString HTTPRequest::TestMimeType( const QString &sFileName )
 
                 if ( head == "DIVX" )
                 {
-                    LOG(VB_UPNP, LOG_DEBUG, sLOC + "('MythTVVi...DIVXLAME')");
+                    LOG(VB_HTTP, LOG_DEBUG, sLOC + "('MythTVVi...DIVXLAME')");
                     sMIME = "video/mp4";
                 }
                 // NuppelVideo is "RJPG" at byte 612
@@ -1085,7 +1121,7 @@ QString HTTPRequest::TestMimeType( const QString &sFileName )
             LOG(VB_GENERAL, LOG_ERR, sLOC + "Could not read file");
     }
 
-    LOG(VB_UPNP, LOG_INFO, sLOC + "type is " + sMIME);
+    LOG(VB_HTTP, LOG_INFO, sLOC + "type is " + sMIME);
     return sMIME;
 }
 
@@ -1097,7 +1133,7 @@ long HTTPRequest::GetParameters( QString sParams, QStringMap &mapParams  )
 {
     long nCount = 0;
 
-    LOG(VB_UPNP, LOG_DEBUG, QString("sParams: '%1'").arg(sParams));
+    LOG(VB_HTTP, LOG_INFO, QString("sParams: '%1'").arg(sParams));
 
     // This looks odd, but it is here to cope with stupid UPnP clients that
     // forget to de-escape the URLs.  We can't map %26 here as well, as that
@@ -1170,24 +1206,28 @@ QString HTTPRequest::GetAdditionalHeaders( void )
 //
 /////////////////////////////////////////////////////////////////////////////
 
-bool HTTPRequest::GetKeepAlive()
+bool HTTPRequest::ParseKeepAlive()
 {
+    // TODO: Think about whether we should use a longer timeout if the client
+    //       has explicitly specified 'Keep-alive'
+
+    // HTTP 1.1 ... server may assume keep-alive
     bool bKeepAlive = true;
 
     // if HTTP/1.0... must default to false
-
     if ((m_nMajor == 1) && (m_nMinor == 0))
         bKeepAlive = false;
 
-    // Read Connection Header...
-
+    // Read Connection Header to see whether the client has explicitly
+    // asked for the connection to be kept alive or closed after the response
+    // is sent
     QString sConnection = GetHeaderValue( "connection", "default" ).toLower();
 
     QStringList sValueList = sConnection.split(",");
 
     if ( sValueList.contains("close") )
     {
-        LOG(VB_GENERAL, LOG_DEBUG, "Client requested the connection be closed");
+        LOG(VB_HTTP, LOG_DEBUG, "Client requested the connection be closed");
         bKeepAlive = false;
     }
     else if (sValueList.contains("keep-alive"))
@@ -1252,17 +1292,17 @@ bool HTTPRequest::ParseRequest()
                 bDone = true;
         }
 
-        if (getenv("HTTPREQUEST_DEBUG"))
+        // Dump request header
+        for ( QStringMap::iterator it  = m_mapHeaders.begin();
+                                it != m_mapHeaders.end();
+                                ++it )
         {
-            // Dump request header
-            for ( QStringMap::iterator it  = m_mapHeaders.begin();
-                                    it != m_mapHeaders.end();
-                                    ++it )
-            {
-                LOG(VB_GENERAL, LOG_DEBUG, QString("(Request Header) %1: %2")
-                                                .arg(it.key()).arg(*it));
-            }
+            LOG(VB_HTTP, LOG_INFO, QString("(Request Header) %1: %2")
+                                            .arg(it.key()).arg(*it));
         }
+
+        // Parse out keep alive
+        m_bKeepAlive = ParseKeepAlive();
 
         // Make sure there are a few default values
         if (!m_mapHeaders.contains("content-length"))
@@ -1348,7 +1388,7 @@ bool HTTPRequest::ParseRequest()
 
 #if 0
         if (m_sMethod != "*" )
-            LOG(VB_UPNP, LOG_DEBUG,
+            LOG(VB_HTTP, LOG_DEBUG,
                 QString("HTTPRequest::ParseRequest - Socket (%1) Base (%2) "
                         "Method (%3) - Bytes in Socket Buffer (%4)")
                     .arg(getSocketHandle()) .arg(m_sBaseUrl)
@@ -1557,7 +1597,7 @@ void HTTPRequest::ExtractMethodFromURL()
     }
 
     m_sBaseUrl = '/' + sList.join( "/" );
-    LOG(VB_UPNP, LOG_INFO, QString("ExtractMethodFromURL(end) : %1 : %2")
+    LOG(VB_HTTP, LOG_INFO, QString("ExtractMethodFromURL(end) : %1 : %2")
                                .arg(m_sMethod).arg(m_sBaseUrl));
 }
 
@@ -1573,7 +1613,7 @@ bool HTTPRequest::ProcessSOAPPayload( const QString &sSOAPAction )
     // Open Supplied XML uPnp Description file.
     // ----------------------------------------------------------------------
 
-    LOG(VB_UPNP, LOG_DEBUG,
+    LOG(VB_HTTP, LOG_INFO,
         QString("HTTPRequest::ProcessSOAPPayload : %1 : ").arg(sSOAPAction));
     QDomDocument doc ( "request" );
 
@@ -1708,7 +1748,7 @@ QString HTTPRequest::Encode(const QString &sIn)
 {
     QString sStr = sIn;
 #if 0
-    LOG(VB_UPNP, LOG_DEBUG, 
+    LOG(VB_HTTP, LOG_DEBUG,
         QString("HTTPRequest::Encode Input : %1").arg(sStr));
 #endif
     sStr.replace('&', "&amp;" ); // This _must_ come first
@@ -1718,7 +1758,7 @@ QString HTTPRequest::Encode(const QString &sIn)
     sStr.replace("'", "&apos;");
 
 #if 0
-    LOG(VB_UPNP, LOG_DEBUG,
+    LOG(VB_HTTP, LOG_DEBUG,
         QString("HTTPRequest::Encode Output : %1").arg(sStr));
 #endif
     return sStr;
@@ -1834,7 +1874,8 @@ QString BufferedSocketDeviceRequest::ReadLine( int msecs )
 {
     QString sLine;
 
-    if (m_pSocket && m_pSocket->isValid())
+    if (m_pSocket && m_pSocket->isValid() &&
+        m_pSocket->state() == QAbstractSocket::ConnectedState)
     {
         bool timeout = false;
         MythTimer timer;
@@ -1846,7 +1887,7 @@ QString BufferedSocketDeviceRequest::ReadLine( int msecs )
             if ( timer.elapsed() >= msecs )
             {
                 timeout = true;
-                LOG(VB_UPNP, LOG_INFO, "BufferedSocketDeviceRequest::ReadLine() - Exceeded Total Elapsed Wait Time." );
+                LOG(VB_HTTP, LOG_INFO, "BufferedSocketDeviceRequest::ReadLine() - Exceeded Total Elapsed Wait Time." );
             }
         }
 
@@ -1864,7 +1905,8 @@ QString BufferedSocketDeviceRequest::ReadLine( int msecs )
 qint64 BufferedSocketDeviceRequest::ReadBlock(char *pData, qint64 nMaxLen,
                                               int msecs)
 {
-    if (m_pSocket && m_pSocket->isValid())
+    if (m_pSocket && m_pSocket->isValid() &&
+        m_pSocket->state() == QAbstractSocket::ConnectedState)
     {
         if (msecs == 0)
             return( m_pSocket->read( pData, nMaxLen ));
@@ -1880,7 +1922,7 @@ qint64 BufferedSocketDeviceRequest::ReadBlock(char *pData, qint64 nMaxLen,
                 if ( timer.elapsed() >= msecs )
                 {
                     bTimeout = true;
-                    LOG(VB_UPNP, LOG_INFO, "BufferedSocketDeviceRequest::ReadBlock() - Exceeded Total Elapsed Wait Time." );
+                    LOG(VB_HTTP, LOG_INFO, "BufferedSocketDeviceRequest::ReadBlock() - Exceeded Total Elapsed Wait Time." );
                 }
             }
 
@@ -1900,7 +1942,8 @@ qint64 BufferedSocketDeviceRequest::ReadBlock(char *pData, qint64 nMaxLen,
 qint64 BufferedSocketDeviceRequest::WriteBlock(const char *pData, qint64 nLen)
 {
     qint64 bytesWritten = -1;
-    if (m_pSocket && m_pSocket->isValid())
+    if (m_pSocket && m_pSocket->isValid() &&
+        m_pSocket->state() == QAbstractSocket::ConnectedState)
     {
         bytesWritten = m_pSocket->write( pData, nLen );
         m_pSocket->waitForBytesWritten();

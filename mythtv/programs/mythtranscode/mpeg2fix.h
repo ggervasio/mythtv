@@ -44,32 +44,10 @@ enum MPFListType {
 class MPEG2frame
 {
   public:
-    MPEG2frame(int size) :
-        isSequence(false), isGop(false),
-        framePos(NULL), gopPos(NULL),
-        mpeg2_seq(), mpeg2_gop(), mpeg2_pic()
-    {
-        av_new_packet(&pkt, size);
-    }
-    ~MPEG2frame()
-    {
-        av_free_packet(&pkt);
-    }
-    void ensure_size(int size)
-    {
-        if (pkt.size < size)
-        {
-            av_grow_packet(&pkt, size - pkt.size);
-        }
-    }
-    void set_pkt(AVPacket *newpkt)
-    {
-        ensure_size(newpkt->size);
-        uint8_t *data = pkt.data;
-        pkt = *newpkt;
-        pkt.data = data;
-        memcpy(pkt.data, newpkt->data, newpkt->size);
-    }
+    MPEG2frame(int size);
+    ~MPEG2frame();
+    void ensure_size(int size);
+    void set_pkt(AVPacket *newpkt);
 
     AVPacket pkt;
     bool isSequence;
@@ -93,9 +71,9 @@ class PTSOffsetQueue
   public:
     PTSOffsetQueue(int vidid, QList<int> keys, int64_t initPTS);
     void SetNextPTS(int64_t newPTS, int64_t atPTS);
-    void SetNextPos(int64_t newPTS, AVPacket &pkt);
+    void SetNextPos(int64_t newPTS, AVPacket *pkt);
     int64_t Get(int idx, AVPacket *pkt);
-    int64_t UpdateOrigPTS(int idx, int64_t &origPTS, AVPacket &pkt);
+    int64_t UpdateOrigPTS(int idx, int64_t &origPTS, AVPacket *pkt);
   private:
     QMap<int, QList<poq_idx_t> > offset;
     QMap<int, QList<poq_idx_t> > orig;

@@ -22,6 +22,10 @@
 
 // Qt headers
 #include <QScriptEngine>
+#include <QSslConfiguration>
+#include <QSslSocket>
+#include <QSslCipher>
+#include <QSslCertificate>
 
 // MythTV headers
 #include "httpserver.h"
@@ -63,7 +67,7 @@ HttpServer::HttpServer(const QString &sApplicationPrefix) :
     setMaxPendingConnections(maxHttpWorkers);
     m_threadPool.setMaxThreadCount(maxHttpWorkers);
 
-    LOG(VB_UPNP, LOG_NOTICE, QString("HttpServer(): Max Thread Count %1")
+    LOG(VB_HTTP, LOG_NOTICE, QString("HttpServer(): Max Thread Count %1")
                                 .arg(m_threadPool.maxThreadCount()));
 
     // ----------------------------------------------------------------------
@@ -83,7 +87,7 @@ HttpServer::HttpServer(const QString &sApplicationPrefix) :
 #endif
     }
 
-    LOG(VB_UPNP, LOG_INFO, QString("HttpServer() - SharePath = %1")
+    LOG(VB_HTTP, LOG_INFO, QString("HttpServer() - SharePath = %1")
             .arg(m_sSharePath));
 
     // -=>TODO: Load Config XML
@@ -103,37 +107,7 @@ HttpServer::HttpServer(const QString &sApplicationPrefix) :
     pEngine->globalObject().setProperty("Rtti",
          pEngine->scriptValueFromQMetaObject< ScriptableRtti >() );
 
-#ifndef QT_NO_OPENSSL
-    m_sslConfig = QSslConfiguration::defaultConfiguration();
-
-    QString hostKeyPath = gCoreContext->GetSetting("hostSSLKey", "");
-    QFile hostKeyFile(hostKeyPath);
-    if (!hostKeyFile.exists() || !hostKeyFile.open(QIODevice::ReadOnly))
-    {
-        LOG(VB_GENERAL, LOG_ERR, QString("HttpServer: Host key file (%1) does not exist").arg(hostKeyPath));
-    } else {
-        QByteArray rawHostKey = hostKeyFile.readAll();
-        m_sslHostKey = QSslKey(rawHostKey, QSsl::Rsa, QSsl::Pem, QSsl::PrivateKey);
-        if (m_sslHostKey.isNull())
-        {
-            LOG(VB_GENERAL, LOG_ERR, QString("HttpServer: Unable to load host key file (%1)").arg(hostKeyPath));
-        } else {
-            QString hostCertPath = gCoreContext->GetSetting("hostSSLCertificate", "");
-            QList<QSslCertificate> certList = QSslCertificate::fromPath(hostCertPath);
-            if (!certList.isEmpty())
-                m_sslHostCert = certList.first();
-
-            if (!m_sslHostCert.isValid())
-                LOG(VB_GENERAL, LOG_ERR, QString("HttpServer: Unable to load host cert file (%1)").arg(hostCertPath));
-            
-            QString caCertPath = gCoreContext->GetSetting("caSSLCertificate", "");
-            m_sslCACertList = QSslCertificate::fromPath(caCertPath);
-
-            if (m_sslCACertList.isEmpty())
-                LOG(VB_GENERAL, LOG_ERR, QString("HttpServer: Unable to load CA cert file (%1)").arg(hostCertPath));
-        }
-    }
-#endif
+    LoadSSLConfig();
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -157,6 +131,82 @@ HttpServer::~HttpServer()
         delete m_pHtmlServer;
 }
 
+void HttpServer::LoadSSLConfig()
+{
+    m_sslConfig = QSslConfiguration::defaultConfiguration();
+
+#if QT_VERSION >= QT_VERSION_CHECK(5,0,0)
+    m_sslConfig.setProtocol(QSsl::SecureProtocols); // Includes SSLv3 which is insecure, but can't be helped
+#else
+    m_sslConfig.setProtocol(QSsl::TlsV1); // SSL v1, v2, v3 are insecure
+#endif
+    m_sslConfig.setSslOption(QSsl::SslOptionDisableLegacyRenegotiation, true); // Potential DoS multiplier
+    m_sslConfig.setSslOption(QSsl::SslOptionDisableCompression, true); // CRIME attack
+
+    QList<QSslCipher> availableCiphers = QSslSocket::supportedCiphers();
+    QList<QSslCipher> secureCiphers;
+    QList<QSslCipher>::iterator it;
+    for (it = availableCiphers.begin(); it != availableCiphers.end(); ++it)
+    {
+        // Remove weak ciphers from the cipher list
+        if ((*it).usedBits() < 128)
+            continue;
+
+        if ((*it).name().startsWith("RC4") || // Weak cipher
+            (*it).name().startsWith("EXP") || // Weak authentication
+            (*it).name().startsWith("ADH") || // No authentication
+            (*it).name().contains("NULL"))    // No encryption
+            continue;
+
+        secureCiphers.append(*it);
+    }
+    m_sslConfig.setCiphers(secureCiphers);
+
+    QString hostKeyPath = gCoreContext->GetSetting("hostSSLKey", "");
+
+    if (hostKeyPath.isEmpty()) // No key, assume no SSL
+        return;
+
+    QFile hostKeyFile(hostKeyPath);
+    if (!hostKeyFile.exists() || !hostKeyFile.open(QIODevice::ReadOnly))
+    {
+        LOG(VB_GENERAL, LOG_ERR, QString("HttpServer: SSL Host key file (%1) does not exist or is not readable").arg(hostKeyPath));
+        return;
+    }
+
+    QByteArray rawHostKey = hostKeyFile.readAll();
+    QSslKey hostKey = QSslKey(rawHostKey, QSsl::Rsa, QSsl::Pem, QSsl::PrivateKey);
+    if (!hostKey.isNull())
+        m_sslConfig.setPrivateKey(hostKey);
+    else
+    {
+        LOG(VB_GENERAL, LOG_ERR, QString("HttpServer: Unable to load host key from file (%1)").arg(hostKeyPath));
+        return;
+    }
+
+    QString hostCertPath = gCoreContext->GetSetting("hostSSLCertificate", "");
+    QSslCertificate hostCert;
+    QList<QSslCertificate> certList = QSslCertificate::fromPath(hostCertPath);
+    if (!certList.isEmpty())
+        hostCert = certList.first();
+
+    if (hostCert.isValid())
+        m_sslConfig.setLocalCertificate(hostCert);
+    else
+    {
+        LOG(VB_GENERAL, LOG_ERR, QString("HttpServer: Unable to load host cert from file (%1)").arg(hostCertPath));
+        return;
+    }
+
+    QString caCertPath = gCoreContext->GetSetting("caSSLCertificate", "");
+    QList< QSslCertificate > CACertList = QSslCertificate::fromPath(caCertPath);
+
+    if (!CACertList.isEmpty())
+        m_sslConfig.setCaCertificates(CACertList);
+    else if (!caCertPath.isEmpty()) // Only warn if a path was actually configured, this isn't an error otherwise
+        LOG(VB_GENERAL, LOG_ERR, QString("HttpServer: Unable to load CA cert file (%1)").arg(caCertPath));
+}
+
 /////////////////////////////////////////////////////////////////////////////
 //
 /////////////////////////////////////////////////////////////////////////////
@@ -174,8 +224,9 @@ QString HttpServer::GetPlatform(void)
 QString HttpServer::GetServerVersion(void)
 {
     QString mythVersion = MYTH_SOURCE_VERSION;
-    mythVersion = mythVersion.right(mythVersion.length() - 1); // Trim off the leading 'v'
-    return QString("MythTV/%2 %1, UPnP/1.0").arg(HttpServer::GetPlatform())
+    if (mythVersion.startsWith("v"))
+        mythVersion = mythVersion.right(mythVersion.length() - 1); // Trim off the leading 'v'
+    return QString("MythTV/%2 %1 UPnP/1.0").arg(HttpServer::GetPlatform())
                                              .arg(mythVersion);
 }
 
@@ -201,7 +252,7 @@ void HttpServer::newTcpConnection(qt_socket_fd_t socket)
 
     m_threadPool.startReserved(
         new HttpWorker(*this, socket, type,
-                       m_sslConfig, m_sslHostKey, m_sslHostCert, m_sslCACertList),
+                       m_sslConfig),
         QString("HttpServer%1").arg(socket));
 }
 
@@ -258,7 +309,7 @@ void HttpServer::DelegateRequest(HTTPRequest *pRequest)
 {
     bool bProcessed = false;
 
-    LOG(VB_UPNP, LOG_DEBUG, QString("m_sBaseUrl: %1").arg( pRequest->m_sBaseUrl ));
+    LOG(VB_HTTP, LOG_DEBUG, QString("m_sBaseUrl: %1").arg( pRequest->m_sBaseUrl ));
     m_rwlock.lockForRead();
 
     QList< HttpServerExtension* > list = m_basePaths.values( pRequest->m_sBaseUrl );
@@ -306,6 +357,22 @@ void HttpServer::DelegateRequest(HTTPRequest *pRequest)
     }
 }
 
+uint HttpServer::GetSocketTimeout(HTTPRequest* pRequest) const
+{
+    int timeout = -1;
+
+    m_rwlock.lockForRead();
+    QList< HttpServerExtension* > list = m_basePaths.values( pRequest->m_sBaseUrl );
+    if (!list.isEmpty())
+        timeout = list.first()->GetSocketTimeout();
+    m_rwlock.unlock();
+
+    if (timeout < 0)
+        timeout = gCoreContext->GetNumSetting("HTTP/KeepAliveTimeoutSecs", 10);
+
+    return timeout;
+}
+
 /////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////
 //
@@ -315,17 +382,13 @@ void HttpServer::DelegateRequest(HTTPRequest *pRequest)
 /////////////////////////////////////////////////////////////////////////////
 
 HttpWorker::HttpWorker(HttpServer &httpServer, qt_socket_fd_t sock,
-                       PoolServerType type, QSslConfiguration sslConfig,
-                       QSslKey hostKey, QSslCertificate hostCert,
-                       QList<QSslCertificate> caCerts) :
-    m_httpServer(httpServer), m_socket(sock), m_socketTimeout(10000),
-    m_connectionType(type), m_sslConfig(sslConfig), m_sslHostKey(hostKey),
-    m_sslHostCert(hostCert), m_sslCACerts(caCerts)
+                       PoolServerType type, QSslConfiguration sslConfig)
+           : m_httpServer(httpServer), m_socket(sock),
+             m_socketTimeout(5 * 1000), m_connectionType(type),
+             m_sslConfig(sslConfig)
 {
-    LOG(VB_UPNP, LOG_DEBUG, QString("HttpWorker(%1): New connection")
+    LOG(VB_HTTP, LOG_INFO, QString("HttpWorker(%1): New connection")
                                         .arg(m_socket));
-    m_socketTimeout = 1000 *
-        UPnp::GetConfiguration()->GetValue("HTTP/KeepAliveTimeoutSecs", 10);
 }                  
 
 /////////////////////////////////////////////////////////////////////////////
@@ -335,7 +398,7 @@ HttpWorker::HttpWorker(HttpServer &httpServer, qt_socket_fd_t sock,
 void HttpWorker::run(void)
 {
 #if 0
-    LOG(VB_UPNP, LOG_DEBUG,
+    LOG(VB_HTTP, LOG_DEBUG,
         QString("HttpWorker::run() socket=%1 -- begin").arg(m_socket));
 #endif
 
@@ -352,17 +415,18 @@ void HttpWorker::run(void)
         if (pSslSocket->setSocketDescriptor(m_socket))
         {
             pSslSocket->setSslConfiguration(m_sslConfig);
-            pSslSocket->setPrivateKey(m_sslHostKey);
-            pSslSocket->setLocalCertificate(m_sslHostCert);
-            pSslSocket->addCaCertificates(m_sslCACerts);
+            pSslSocket->setPrivateKey(m_sslConfig.privateKey());
+            pSslSocket->setLocalCertificate(m_sslConfig.localCertificate());
+            pSslSocket->addCaCertificates(m_sslConfig.caCertificates());
             pSslSocket->startServerEncryption();
             if (pSslSocket->waitForEncrypted(5000))
             {
-                LOG(VB_UPNP, LOG_DEBUG, "SSL Handshake occurred, connection encrypted");
+                LOG(VB_HTTP, LOG_INFO, "SSL Handshake occurred, connection encrypted");
+                LOG(VB_HTTP, LOG_INFO, QString("Using %1 cipher").arg(pSslSocket->sessionCipher().name()));
             }
             else
             {
-                LOG(VB_UPNP, LOG_DEBUG, "SSL Handshake FAILED, connection terminated");
+                LOG(VB_HTTP, LOG_WARNING, "SSL Handshake FAILED, connection terminated");
                 delete pSslSocket;
                 pSslSocket = NULL;
             }
@@ -393,11 +457,12 @@ void HttpWorker::run(void)
     {
         while (m_httpServer.IsRunning() && bKeepAlive && pSocket &&
                pSocket->isValid() &&
-               pSocket->state() != QAbstractSocket::ClosingState)
+               pSocket->state() == QAbstractSocket::ConnectedState)
         {
             // We set a timeout on keep-alive connections to avoid blocking
             // new clients from connecting - Default at time of writing was
-            // 10 seconds
+            // 5 seconds for initial connection, then up to 10 seconds of idle
+            // time between each subsequent request on the same connection
             bTimeout = !(pSocket->waitForReadyRead(m_socketTimeout));
 
             if (bTimeout) // Either client closed the socket or we timed out waiting for new data
@@ -419,6 +484,11 @@ void HttpWorker::run(void)
                     if ( pRequest->ParseRequest() )
                     {
                         bKeepAlive = pRequest->GetKeepAlive();
+                        // The timeout is defined by the Server/Server Extension
+                        // but must appear in the response headers
+                        uint nTimeout = m_httpServer.GetSocketTimeout(pRequest); // Seconds
+                        pRequest->SetKeepAliveTimeout(nTimeout);
+                        m_socketTimeout = nTimeout * 1000; // Milliseconds
 
                         // ------------------------------------------------------
                         // Request Parsed... Pass on to Main HttpServer class to 
@@ -432,7 +502,7 @@ void HttpWorker::run(void)
                     }
                     else
                     {
-                        LOG(VB_UPNP, LOG_ERR, "ParseRequest Failed.");
+                        LOG(VB_HTTP, LOG_ERR, "ParseRequest Failed.");
 
                         pRequest->m_nResponseStatus = 501;
                         bKeepAlive = false;
@@ -444,7 +514,7 @@ void HttpWorker::run(void)
                     if (pRequest->SendResponse() < 0)
                     {
                         bKeepAlive = false;
-                        LOG(VB_UPNP, LOG_ERR,
+                        LOG(VB_HTTP, LOG_ERR,
                             QString("socket(%1) - Error returned from "
                                     "SendResponse... Closing connection")
                                 .arg(pSocket->socketDescriptor()));
@@ -474,21 +544,74 @@ void HttpWorker::run(void)
     }
     catch(...)
     {
-        LOG(VB_GENERAL, LOG_ERR, 
+        LOG(VB_GENERAL, LOG_ERR,
             "HttpWorkerThread::ProcessWork - Unexpected Exception.");
     }
 
     delete pRequest;
 
-    LOG(VB_UPNP, LOG_DEBUG, QString("HttpWorker(%1): Connection %1 closed, requests handled %2")
+    if ((pSocket->error() != QAbstractSocket::UnknownSocketError) &&
+        !(bKeepAlive && pSocket->error() == QAbstractSocket::SocketTimeoutError)) // This 'error' isn't an error when keep-alive is active
+    {
+        LOG(VB_HTTP, LOG_WARNING, QString("HttpWorker(%1): Error %2 (%3)")
+                                   .arg(m_socket)
+                                   .arg(pSocket->errorString())
+                                   .arg(pSocket->error()));
+    }
+
+    int writeTimeout = 5000; // 5 Seconds
+    // Make sure any data in the buffer is flushed before the socket is closed
+    while (m_httpServer.IsRunning() &&
+           pSocket->isValid() &&
+           pSocket->state() == QAbstractSocket::ConnectedState &&
+           pSocket->bytesToWrite() > 0)
+    {
+        LOG(VB_HTTP, LOG_DEBUG, QString("HttpWorker(%1): "
+                                        "Waiting for %2 bytes to be written "
+                                        "before closing the connection.")
+                                            .arg(m_socket)
+                                            .arg(pSocket->bytesToWrite()));
+
+        // If the client stops reading for longer than 'writeTimeout' then
+        // stop waiting for them. We can't afford to leave the socket
+        // connected indefinately, it could be used by another client.
+        //
+        // NOTE: Some clients deliberately stall as a way of 'pausing' A/V
+        // streaming. We should create a new server extension or adjust the
+        // timeout according to the User-Agent, instead of increasing the
+        // standard timeout. However we should ALWAYS have a timeout.
+        if (!pSocket->waitForBytesWritten(writeTimeout))
+        {
+            LOG(VB_GENERAL, LOG_WARNING, QString("HttpWorker(%1): "
+                                         "Timed out waiting to write bytes to "
+                                         "the socket, waited %2 seconds")
+                                            .arg(m_socket)
+                                            .arg(writeTimeout / 1000));
+            break;
+        }
+    }
+
+    if (pSocket->bytesToWrite() > 0)
+    {
+        LOG(VB_HTTP, LOG_WARNING, QString("HttpWorker(%1): "
+                                          "Failed to write %2 bytes to "
+                                          "socket, (%3)")
+                                            .arg(m_socket)
+                                            .arg(pSocket->bytesToWrite())
+                                            .arg(pSocket->errorString()));
+    }
+
+    LOG(VB_HTTP, LOG_INFO, QString("HttpWorker(%1): Connection %2 closed, requests handled %3")
+                                        .arg(m_socket)
                                         .arg(pSocket->socketDescriptor())
                                         .arg(nRequestsHandled));
+
     pSocket->close();
     delete pSocket;
     pSocket = NULL;
 
 #if 0
-    LOG(VB_UPNP, LOG_DEBUG, "HttpWorkerThread::run() -- end");
+    LOG(VB_HTTP, LOG_DEBUG, "HttpWorkerThread::run() -- end");
 #endif
 }
 

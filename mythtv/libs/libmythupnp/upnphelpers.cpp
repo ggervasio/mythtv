@@ -255,26 +255,14 @@ QString DLNAProfileName(const QString &mimeType, const QSize &resolution,
     return sProfileName;
 }
 
-// NOTE The order of the DLNA args is mandatory - 7.4.1.3.17 MM protocolInfo values: 4th field
-QString ProtocolInfoString(UPNPProtocol::TransferProtocol protocol,
-                           const QString &mimeType, const QSize &resolution,
-                           double videoFrameRate, const QString &container,
-                           const QString &videoCodec, const QString &audioCodec,
-                           bool isTranscoded)
+QString DLNAFourthField(UPNPProtocol::TransferProtocol protocol,
+                        const QString &mimeType, const QSize &resolution,
+                        double videoFrameRate, const QString &container,
+                        const QString &videoCodec, const QString &audioCodec,
+                        bool isTranscoded)
 {
-    QString str;
-    QString protocolStr;
+
     QStringList sAdditionalInfoList;
-
-    //
-    //  1st Field = protocol
-    //
-
-    if (protocol == UPNPProtocol::kHTTP)
-        protocolStr = "http-get";
-    else if (protocol == UPNPProtocol::kRTP)
-        protocolStr = "rtsp-rtp-udp";
-
     //
     //  4th_field = pn-param [op-param] [ps-param] [ci-param] [flags-param] [ *(other-param)]
     //
@@ -320,6 +308,7 @@ QString ProtocolInfoString(UPNPProtocol::TransferProtocol protocol,
                                                  DLNA::kv1_5_flag);
     }
 
+
     //
     // Build the complete string
     //
@@ -327,10 +316,65 @@ QString ProtocolInfoString(UPNPProtocol::TransferProtocol protocol,
     // If we have DLNA additional info and we have the mandatory PN param
     // then add it to the string. If the PN is missing then we must ignore the
     // rest
+    // 7.4.1.3.13.8 - "b) The pn-param (DLNA.ORG_PN) is the only required
+    //                    parameter for DLNA media format profiles."
+    //
+    // 7.4.1.3.17.1 -  4th_field = pn-param [op-param] [ps-param] [ci-param] [flags-param] [ *(other-param)]
+    //              - "b) This syntax prohibits the use of the "*" value for
+    //                    content that conforms to a DLNA media format profile.
+    //                    Content that does not conform to a DLNA media format
+    //                    profile can use the "*" value in the 4th field.
+
     if (!sAdditionalInfoList.isEmpty() &&
         sAdditionalInfoList.first().startsWith("DLNA.ORG_PN"))
         sAdditionalInfo = sAdditionalInfoList.join(";");
-    str = QString( "%1:*:%2:%3" ).arg( protocolStr ).arg( mimeType ).arg( sAdditionalInfo );
+
+    return sAdditionalInfo;
+}
+
+
+// NOTE The order of the DLNA args is mandatory - 7.4.1.3.17 MM protocolInfo values: 4th field
+QString ProtocolInfoString(UPNPProtocol::TransferProtocol protocol,
+                           const QString &mimeType, const QSize &resolution,
+                           double videoFrameRate, const QString &container,
+                           const QString &videoCodec, const QString &audioCodec,
+                           bool isTranscoded)
+{
+    QStringList protocolInfoFields;
+
+    //
+    //  1st Field = protocol
+    //
+
+    if (protocol == UPNPProtocol::kHTTP)
+        protocolInfoFields << "http-get";
+    else if (protocol == UPNPProtocol::kRTP)
+        protocolInfoFields << "rtsp-rtp-udp";
+
+    //
+    //  2nd Field =
+    //
+
+        // Not applicable to us, return wildcard
+        protocolInfoFields << "*";
+
+    //
+    //  3rd Field = mime type
+    //
+        protocolInfoFields << mimeType;
+
+    //
+    //  4th Field = Additional Implementation Information (Used by DLNA)
+    //
+    protocolInfoFields << DLNAFourthField(protocol, mimeType, resolution,
+                                          videoFrameRate, container,
+                                          videoCodec, audioCodec,
+                                          isTranscoded);
+
+    if (protocolInfoFields.size() != 4)
+        LOG(VB_GENERAL, LOG_CRIT, "DLNA::ProtocolInfoString() : Invalid number of fields in string");
+
+    QString str = protocolInfoFields.join(":");
 
     if (str.length() > 256)
         LOG(VB_GENERAL, LOG_WARNING, "DLNA::ProtocolInfoString() : ProtocolInfo string exceeds "

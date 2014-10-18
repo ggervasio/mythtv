@@ -55,13 +55,14 @@ void UPnpCDSExtensionResults::Add( CDSObjects objects )
 //
 /////////////////////////////////////////////////////////////////////////////
 
-QString UPnpCDSExtensionResults::GetResultXML(FilterMap &filter)
+QString UPnpCDSExtensionResults::GetResultXML(FilterMap &filter,
+                                              bool ignoreChildren)
 {
     QString sXML;
 
     CDSObjects::const_iterator it = m_List.begin();
     for (; it != m_List.end(); ++it)
-        sXML += (*it)->toXml(filter);
+        sXML += (*it)->toXml(filter, ignoreChildren);
 
     return sXML;
 }
@@ -105,6 +106,16 @@ UPnpCDS::UPnpCDS( UPnpDevice *pDevice, const QString &sSharePath )
     // Add our Service Definition to the device.
 
     RegisterService( pDevice );
+
+    // ContentDirectoryService uses a different schema definition for the FeatureList
+    // to the ConnectionManager, although they appear to be identical
+    m_features.AddAttribute(NameValue( "xmlns",
+                                       "urn:schemas-upnp-org:av:avs" ));
+    m_features.AddAttribute(NameValue( "xmlns:xsi",
+                                       "http://www.w3.org/2001/XMLSchema-instance" ));
+    m_features.AddAttribute(NameValue( "xsi:schemaLocation",
+                                       "urn:schemas-upnp-org:av:avs "
+                                       "http://www.upnp.org/schemas/av/avs.xsd" ));
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -131,7 +142,8 @@ UPnpCDSMethod UPnpCDS::GetMethod( const QString &sURI )
     if (sURI == "GetSearchCapabilities" ) return CDSM_GetSearchCapabilities;
     if (sURI == "GetSortCapabilities"   ) return CDSM_GetSortCapabilities  ;
     if (sURI == "GetSystemUpdateID"     ) return CDSM_GetSystemUpdateID    ;
-    if (sURI == "GetFeatureList"        ) return CDSM_GetFeatureList       ;
+    if (sURI == "X_GetFeatureList" ||     // HACK: Samsung
+        sURI == "GetFeatureList"        ) return CDSM_GetFeatureList       ;
     if (sURI == "GetServiceResetToken"  ) return CDSM_GetServiceResetToken ;
 
     return(  CDSM_Unknown );
@@ -178,7 +190,6 @@ void UPnpCDS::UnregisterExtension( UPnpCDSExtension *pExtension )
     {
         m_extensions.removeAll(pExtension);
         delete pExtension;
-        pExtension = NULL;
     }
 }
 
@@ -489,7 +500,10 @@ void UPnpCDS::HandleBrowse( HTTPRequest *pRequest )
                 nNumberReturned = pResult->m_List.count();
                 nTotalMatches   = pResult->m_nTotalMatches;
                 nUpdateID       = pResult->m_nUpdateID;
-                sResultXML      = pResult->GetResultXML(filter);
+                if (request.m_eBrowseFlag == CDS_BrowseMetadata)
+                    sResultXML      = pResult->GetResultXML(filter, true); // Ignore children
+                else
+                    sResultXML      = pResult->GetResultXML(filter);
             }
 
             delete pResult;
@@ -542,7 +556,7 @@ void UPnpCDS::HandleSearch( HTTPRequest *pRequest )
     request.m_sContainerID      = pRequest->m_mapParams[ "containerid"   ];
     request.m_sFilter           = pRequest->m_mapParams[ "filter"        ];
     request.m_nStartingIndex    =
-        pRequest->m_mapParams[ "startingIndex" ].toLong();
+        pRequest->m_mapParams[ "startingindex" ].toLong();
     request.m_nRequestedCount   =
         pRequest->m_mapParams[ "requestedcount"].toLong();
     request.m_sSortCriteria     = pRequest->m_mapParams[ "sortcriteria"  ];
@@ -828,8 +842,6 @@ UPnpCDSExtensionResults *UPnpCDSExtension::Browse( UPnpCDSRequest *pRequest )
 
     if (pResults != NULL)
     {
-        pRequest->m_sParentId = pRequest->m_sObjectId;
-
         switch( pRequest->m_eBrowseFlag )
         {
             case CDS_BrowseMetadata:
@@ -837,7 +849,13 @@ UPnpCDSExtensionResults *UPnpCDSExtension::Browse( UPnpCDSRequest *pRequest )
                 if (pRequest->m_nRequestedCount == 0)
                     pRequest->m_nRequestedCount = 1; // This should be the case anyway, but enforce it just in case
 
-                LOG(VB_UPNP, LOG_DEBUG, "UPnpCDS::Browse: BrowseMetadata");
+                pRequest->m_sParentId = "0"; // Root
+
+                // Create parent ID by stripping the last token from the object ID
+                if (pRequest->m_sObjectId.contains("/"))
+                    pRequest->m_sParentId = pRequest->m_sObjectId.section("/", 0, -2);
+
+                LOG(VB_UPNP, LOG_DEBUG, QString("UPnpCDS::Browse: BrowseMetadata (%1)").arg(pRequest->m_sObjectId));
                 if (LoadMetadata(pRequest, pResults, tokens, currentToken))
                     return pResults;
                 else
@@ -847,7 +865,8 @@ UPnpCDSExtensionResults *UPnpCDSExtension::Browse( UPnpCDSRequest *pRequest )
 
             case CDS_BrowseDirectChildren:
             {
-                LOG(VB_UPNP, LOG_DEBUG, "UPnpCDS::Browse: BrowseDirectChildren");
+                pRequest->m_sParentId = pRequest->m_sObjectId;
+                LOG(VB_UPNP, LOG_DEBUG, QString("UPnpCDS::Browse: BrowseDirectChildren (%1)").arg(pRequest->m_sObjectId));
                 if (LoadChildren(pRequest, pResults, tokens, currentToken))
                     return pResults;
                 else
@@ -1033,6 +1052,31 @@ IDToken UPnpCDSExtension::GetCurrentToken(const QString& Id) const
     return IDToken(key, value);
 }
 
+QString UPnpCDSExtension::CreateIDString(const QString &requestId,
+                                         const QString &name,
+                                         int value)
+{
+    return CreateIDString(requestId, name, QString::number(value));
+}
+
+QString UPnpCDSExtension::CreateIDString(const QString &requestId,
+                                         const QString &name,
+                                         const QString &value)
+{
+    IDToken currentToken = GetCurrentToken(requestId);
+    QString currentName = currentToken.first;
+    QString currentValue = currentToken.second;
+
+    // For metadata requests the request ID will be the ID of the result, so
+    // we don't need to do anything
+    if (currentName == name.toLower() && !currentValue.isEmpty() &&
+        currentValue == value.toLower())
+        return requestId;
+    else if (currentName == name.toLower() && currentValue.isEmpty())
+        return QString("%1=%2").arg(requestId).arg(value);
+    else
+        return QString("%1/%2=%3").arg(requestId).arg(name).arg(value);
+}
 
 void UPnpCDSExtension::CreateRoot()
 {
