@@ -4829,10 +4829,31 @@ RecordingInfo *TVRec::SwitchRecordingRingBuffer(const RecordingInfo &rcinfo)
 {
     LOG(VB_RECORD, LOG_INFO, LOC + "SwitchRecordingRingBuffer()");
 
-    if (switchingBuffer || !recorder || !curRecording ||
-        (rcinfo.GetChanID() != curRecording->GetChanID()))
+    if (switchingBuffer)
     {
-        LOG(VB_RECORD, LOG_ERR, LOC + "SwitchRecordingRingBuffer() -> false 1");
+        LOG(VB_RECORD, LOG_ERR, LOC + "SwitchRecordingRingBuffer -> "
+            "already switching.");
+        return NULL;
+    }
+
+    if (!recorder)
+    {
+        LOG(VB_RECORD, LOG_ERR, LOC + "SwitchRecordingRingBuffer -> "
+            "invalid recorder.");
+        return NULL;
+    }
+
+    if (!curRecording)
+    {
+        LOG(VB_RECORD, LOG_ERR, LOC + "SwitchRecordingRingBuffer -> "
+            "invalid recording.");
+        return NULL;
+    }
+
+    if (rcinfo.GetChanID() != curRecording->GetChanID())
+    {
+        LOG(VB_RECORD, LOG_ERR, LOC + "SwitchRecordingRingBuffer -> "
+            "Not the same channel.");
         return NULL;
     }
 
@@ -4844,8 +4865,8 @@ RecordingInfo *TVRec::SwitchRecordingRingBuffer(const RecordingInfo &rcinfo)
     if (pn != recProfileName)
     {
         LOG(VB_RECORD, LOG_ERR, LOC +
-            QString("SwitchRecordingRingBuffer() "
-                    "switch profile '%1' to '%2' -> false 2")
+            QString("SwitchRecordingRingBuffer() -> "
+                    "cannot switch profile '%1' to '%2'")
             .arg(recProfileName).arg(pn));
         return NULL;
     }
@@ -4864,7 +4885,8 @@ RecordingInfo *TVRec::SwitchRecordingRingBuffer(const RecordingInfo &rcinfo)
         FinishedRecording(ri, NULL);
         ri->MarkAsInUse(false, kRecorderInUseID);
         delete ri;
-        LOG(VB_RECORD, LOG_ERR, LOC + "SwitchRecordingRingBuffer() -> false 3");
+        LOG(VB_RECORD, LOG_ERR, LOC + "SwitchRecordingRingBuffer() -> "
+            "Failed to create new RB.");
         return NULL;
     }
     else
@@ -4898,7 +4920,7 @@ RecordingInfo *TVRec::SwitchRecordingRingBuffer(const RecordingInfo &rcinfo)
         }
 #endif
 
-        LOG(VB_RECORD, LOG_INFO, LOC + "SwitchRecordingRingBuffer() -> true");
+        LOG(VB_RECORD, LOG_INFO, LOC + "SwitchRecordingRingBuffer -> done");
         return ri;
     }
 }

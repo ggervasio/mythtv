@@ -70,7 +70,7 @@ using namespace std;
 extern "C" {
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
-#include "pxsup2dast.h"
+#include "external/pxsup2dast.h"
 }
 
 // mytharchive headers
@@ -1001,7 +1001,7 @@ int NativeArchive::importRecording(const QDomElement &itemNode,
         }
     }
 
-    QString destFile = gCoreContext->GenMythURL(gCoreContext->GetMasterServerIP(),
+    QString destFile = gCoreContext->GenMythURL(gCoreContext->GetMasterHostName(),
                                                 gCoreContext->GetMasterServerPort(),
                                                 basename , "Default");
 

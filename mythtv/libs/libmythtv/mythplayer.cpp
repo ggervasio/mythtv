@@ -261,6 +261,14 @@ MythPlayer::MythPlayer(PlayerFlags flags)
 
 MythPlayer::~MythPlayer(void)
 {
+    // NB the interactiveTV thread is a client of OSD so must be deleted
+    // before locking and deleting the OSD
+    {
+        QMutexLocker lk0(&itvLock);
+        delete interactiveTV;
+        interactiveTV = NULL;
+    }
+
     QMutexLocker lk1(&osdLock);
     QMutexLocker lk2(&vidExitLock);
     QMutexLocker lk3(&videofiltersLock);
@@ -277,12 +285,6 @@ MythPlayer::~MythPlayer(void)
     {
         delete decoderThread;
         decoderThread = NULL;
-    }
-
-    if (interactiveTV)
-    {
-        delete interactiveTV;
-        interactiveTV = NULL;
     }
 
     if (FiltMan)
@@ -545,11 +547,11 @@ void MythPlayer::ReinitOSD(void)
         }
         QRect visible, total;
         float aspect, scaling;
+        videoOutput->GetOSDBounds(total, visible, aspect,
+                                  scaling, 1.0f);
         if (osd)
         {
             osd->SetPainter(videoOutput->GetOSDPainter());
-            videoOutput->GetOSDBounds(total, visible, aspect,
-                                      scaling, 1.0f);
             int stretch = (int)((aspect * 100) + 0.5f);
             if ((osd->Bounds() != visible) ||
                 (osd->GetFontStretch() != stretch))
@@ -565,8 +567,7 @@ void MythPlayer::ReinitOSD(void)
         if (GetInteractiveTV())
         {
             QMutexLocker locker(&itvLock);
-            total = videoOutput->GetMHEGBounds();
-            interactiveTV->Reinit(total);
+            interactiveTV->Reinit(total, visible, aspect);
             itvVisible = false;
         }
 #endif // USING_MHEG
@@ -940,7 +941,8 @@ int MythPlayer::OpenFile(uint retries)
         MythTimer peekTimer; peekTimer.start();
         while (player_ctx->buffer->Peek(testbuf, testreadsize) != testreadsize)
         {
-            if (peekTimer.elapsed() > 1500 || bigTimer.elapsed() > timeout)
+            // NB need to allow for streams encountering network congestion
+            if (peekTimer.elapsed() > 30000 || bigTimer.elapsed() > timeout)
             {
                 LOG(VB_GENERAL, LOG_ERR, LOC +
                     QString("OpenFile(): Could not read first %1 bytes of '%2'")
@@ -2170,7 +2172,7 @@ bool MythPlayer::PrebufferEnoughFrames(int min_buffers)
             // to recover from serious problems if frames get leaked.
             DiscardVideoFrames(true);
         }
-        if (waited_for > 20000) // 20 seconds
+        if (waited_for > 30000) // 30 seconds for internet streamed media
         {
             LOG(VB_GENERAL, LOG_ERR, LOC +
                 "Waited too long for decoder to fill video buffers. Exiting..");
@@ -2333,8 +2335,7 @@ void MythPlayer::VideoStart(void)
         if (GetInteractiveTV())
         {
             QMutexLocker locker(&itvLock);
-            total = videoOutput->GetMHEGBounds();
-            interactiveTV->Reinit(total);
+            interactiveTV->Reinit(total, visible, aspect);
         }
 #endif // USING_MHEG
 
@@ -2971,7 +2972,7 @@ void MythPlayer::EventLoop(void)
     }
 
     // Change interactive stream if requested
-    { QMutexLocker locker(&itvLock);
+    { QMutexLocker locker(&streamLock);
     if (!m_newStream.isEmpty())
     {
         QString stream = m_newStream;
@@ -5200,6 +5201,7 @@ void MythPlayer::ITVRestart(uint chanid, uint cardid, bool isLiveTV)
 #endif // USING_MHEG
 }
 
+// Called from the interactiveTV (MHIContext) thread
 void MythPlayer::SetVideoResize(const QRect &videoRect)
 {
     if (videoOutput)
@@ -5209,6 +5211,7 @@ void MythPlayer::SetVideoResize(const QRect &videoRect)
 /** \fn MythPlayer::SetAudioByComponentTag(int tag)
  *  \brief Selects the audio stream using the DVB component tag.
  */
+// Called from the interactiveTV (MHIContext) thread
 bool MythPlayer::SetAudioByComponentTag(int tag)
 {
     QMutexLocker locker(&decoder_change_lock);
@@ -5220,6 +5223,7 @@ bool MythPlayer::SetAudioByComponentTag(int tag)
 /** \fn MythPlayer::SetVideoByComponentTag(int tag)
  *  \brief Selects the video stream using the DVB component tag.
  */
+// Called from the interactiveTV (MHIContext) thread
 bool MythPlayer::SetVideoByComponentTag(int tag)
 {
     QMutexLocker locker(&decoder_change_lock);
@@ -5236,15 +5240,16 @@ static inline double SafeFPS(DecoderBase *decoder)
     return fps > 0 ? fps : 25.0;
 }
 
-// Called from MHIContext::Begin/End/Stream on the MHIContext::StartMHEGEngine thread
+// Called from the interactiveTV (MHIContext) thread
 bool MythPlayer::SetStream(const QString &stream)
 {
     // The stream name is empty if the stream is closing
     LOG(VB_PLAYBACK, LOG_INFO, LOC + QString("SetStream '%1'").arg(stream));
 
-    QMutexLocker locker(&itvLock);
+    QMutexLocker locker(&streamLock);
     m_newStream = stream;
     m_newStream.detach();
+    locker.unlock();
     // Stream will be changed by JumpToStream called from EventLoop
     // If successful will call interactiveTV->StreamStarted();
 
@@ -5328,11 +5333,13 @@ void MythPlayer::JumpToStream(const QString &stream)
     LOG(VB_PLAYBACK, LOG_INFO, LOC + "JumpToStream - end");
 }
 
+// Called from the interactiveTV (MHIContext) thread
 long MythPlayer::GetStreamPos()
 {
     return (long)((1000 * GetFramesPlayed()) / SafeFPS(decoder));
 }
 
+// Called from the interactiveTV (MHIContext) thread
 long MythPlayer::GetStreamMaxPos()
 {
     long maxpos = (long)(1000 * (totalDuration > 0 ? totalDuration : totalLength));
@@ -5340,6 +5347,7 @@ long MythPlayer::GetStreamMaxPos()
     return maxpos > pos ? maxpos : pos;
 }
 
+// Called from the interactiveTV (MHIContext) thread
 long MythPlayer::SetStreamPos(long ms)
 {
     uint64_t frameNum = (uint64_t)((ms * SafeFPS(decoder)) / 1000);
@@ -5349,6 +5357,7 @@ long MythPlayer::SetStreamPos(long ms)
     return ms;
 }
 
+// Called from the interactiveTV (MHIContext) thread
 void MythPlayer::StreamPlay(bool play)
 {
     if (play)
