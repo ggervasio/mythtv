@@ -1066,6 +1066,9 @@ void MainServer::ProcessRequestWork(MythSocket *sock)
 
 void MainServer::customEvent(QEvent *e)
 {
+    if (!e)
+        return;
+
     QStringList broadcast;
     QSet<QString> receivers;
 
@@ -1093,7 +1096,7 @@ void MainServer::customEvent(QEvent *e)
             me->ExtraDataCount() >= 5)
         {
             bool ok = true;
-            QString pginfokey = me->ExtraData(0); // pginfo->MakeUniqueKey()
+            uint recordingID  = me->ExtraData(0).toUInt(); // pginfo->GetRecordingID()
             QString filename  = me->ExtraData(1); // outFileName
             QString msg       = me->ExtraData(2);
             QString datetime  = me->ExtraData(3);
@@ -1102,7 +1105,7 @@ void MainServer::customEvent(QEvent *e)
             {
                 LOG(VB_PLAYBACK, LOG_INFO, LOC +
                     QString("Preview Queued: '%1' '%2'")
-                        .arg(pginfokey).arg(filename));
+                        .arg(recordingID).arg(filename));
                 return;
             }
 
@@ -1113,7 +1116,7 @@ void MainServer::customEvent(QEvent *e)
             {
                 QByteArray data = file.readAll();
                 QStringList extra("OK");
-                extra.push_back(pginfokey);
+                extra.push_back(QString::number(recordingID));
                 extra.push_back(msg);
                 extra.push_back(datetime);
                 extra.push_back(QString::number(data.size()));
@@ -1377,18 +1380,14 @@ void MainServer::customEvent(QEvent *e)
             return;
 
         MythEvent mod_me("");
-        if (me->Message().startsWith("MASTER_UPDATE_PROG_INFO"))
+        if (me->Message().startsWith("MASTER_UPDATE_REC_INFO"))
         {
             QStringList tokens = me->Message().simplified().split(" ");
-            uint chanid = 0;
-            QDateTime recstartts;
-            if (tokens.size() >= 3)
-            {
-                chanid     = tokens[1].toUInt();
-                recstartts = MythDate::fromString(tokens[2]);
-            }
+            uint recordedid = 0;
+            if (tokens.size() >= 2)
+                recordedid = tokens[1].toUInt();
 
-            ProgramInfo evinfo(chanid, recstartts);
+            ProgramInfo evinfo(recordedid);
             if (evinfo.GetChanID())
             {
                 QDateTime rectime = MythDate::current().addSecs(
@@ -1582,7 +1581,10 @@ void MainServer::HandleVersion(MythSocket *socket, const QStringList &slist)
 /**
  * \addtogroup myth_network_protocol
  * \par        ANN Playback \e host \e wantevents
- * Register \e host as a client, and prevent shutdown of the socket.
+ * Register \e host as a non-frontend client, and prevent shutdown of the socket.
+ *
+ * \par        ANN Frontend \e host \e wantevents
+ * Register \e host as a Frontend client, and allow shutdown of the socket when idle
  *
  * \par        ANN Monitor  \e host \e wantevents
  * Register \e host as a client, and allow shutdown of the socket
@@ -1629,7 +1631,8 @@ void MainServer::HandleAnnounce(QStringList &slist, QStringList commands,
     }
     sockListLock.unlock();
 
-    if (commands[1] == "Playback" || commands[1] == "Monitor")
+    if (commands[1] == "Playback" || commands[1] == "Monitor" ||
+        commands[1] == "Frontend")
     {
         if (commands.size() < 4)
         {
@@ -1653,26 +1656,31 @@ void MainServer::HandleAnnounce(QStringList &slist, QStringList commands,
                 .arg(commands[2]).arg(eventsMode));
         PlaybackSock *pbs = new PlaybackSock(this, socket, commands[2],
                                              eventsMode);
-        pbs->setBlockShutdown(commands[1] == "Playback");
+        pbs->setBlockShutdown((commands[1] == "Playback") ||
+                              (commands[1] == "Frontend"));
 
         sockListLock.lockForWrite();
         controlSocketList.remove(socket);
         playbackList.push_back(pbs);
         sockListLock.unlock();
 
-        Frontend *frontend = new Frontend();
-        frontend->name = commands[2];
-        // On a combined mbe/fe the frontend will connect using the localhost
-        // address, we need the external IP which happily will be the same as
-        // the backend's external IP
-        if (frontend->name == gCoreContext->GetMasterHostName())
-            frontend->ip = QHostAddress(gCoreContext->GetBackendServerIP());
-        else
-            frontend->ip = socket->GetPeerAddress();
-        if (gBackendContext)
-            gBackendContext->SetFrontendConnected(frontend);
-        else
-            delete frontend;
+        if (commands[1] == "Frontend")
+        {
+            pbs->SetAsFrontend();
+            Frontend *frontend = new Frontend();
+            frontend->name = commands[2];
+            // On a combined mbe/fe the frontend will connect using the localhost
+            // address, we need the external IP which happily will be the same as
+            // the backend's external IP
+            if (frontend->name == gCoreContext->GetMasterHostName())
+                frontend->ip = QHostAddress(gCoreContext->GetBackendServerIP());
+            else
+                frontend->ip = socket->GetPeerAddress();
+            if (gBackendContext)
+                gBackendContext->SetFrontendConnected(frontend);
+            else
+                delete frontend;
+        }
 
     }
     else if (commands[1] == "MediaServer")
@@ -2322,31 +2330,28 @@ void MainServer::DoDeleteThread(DeleteStruct *ds)
 
     delete_file_immediately(ds->m_filename + ".txd", followLinks, true);
 
-    // Delete all preview thumbnails and srt subtitles.
-
+    // Delete all related files, though not the recording itself
+    // i.e. preview thumbnails, srt subtitles, orphaned transcode temporary
+    //      files
+    //
+    // TODO: Delete everything with this basename to catch stray
+    //       .tmp and .old files, and future proof it
     QFileInfo fInfo( ds->m_filename );
-    QString nameFilter = fInfo.fileName() + "*.png";
+    QStringList nameFilters;
+    nameFilters.push_back(fInfo.fileName() + "*.png");
+    nameFilters.push_back(fInfo.fileName() + "*.jpg");
+    nameFilters.push_back(fInfo.fileName() + ".tmp");
+    nameFilters.push_back(fInfo.fileName() + ".old");
+    nameFilters.push_back(fInfo.fileName() + ".map");
+    nameFilters.push_back(fInfo.fileName() + ".tmp.map");
+    nameFilters.push_back(fInfo.baseName() + ".srt");  // e.g. 1234_20150213165800.srt
 
-    // QDir's nameFilter uses spaces or semicolons to separate globs,
-    // so replace them with the "match any character" wildcard
-    // since mythrename.pl may have included them in filenames
-    nameFilter.replace(QRegExp("( |;)"), "?");
+    QDir dir (fInfo.path());
+    QFileInfoList miscFiles = dir.entryInfoList(nameFilters);
 
-    QStringList nameFilters(nameFilter);
-
-    nameFilter = fInfo.fileName();
-    nameFilter.replace(QRegExp("\\.mpg$"), ".srt");
-    nameFilters.append(nameFilter);
-
-    QDir      dir  ( fInfo.path() );
-    dir.setNameFilters(nameFilters);
-
-    for (uint nIdx = 0; nIdx < dir.count(); nIdx++)
+    for (int nIdx = 0; nIdx < miscFiles.size(); nIdx++)
     {
-        QString sFileName = QString( "%1/%2" )
-                               .arg( fInfo.path() )
-                               .arg( dir[ nIdx ] );
-
+        QString sFileName = miscFiles.at(nIdx).absoluteFilePath();
         delete_file_immediately( sFileName, followLinks, true);
     }
     // -----------------------------------------------------------------------
@@ -2463,8 +2468,8 @@ void MainServer::DoDeleteInDB(DeleteStruct *ds)
     sleep(1);
 
     // Notify the frontend so it can requery for Free Space
-    QString msg = QString("RECORDING_LIST_CHANGE DELETE %1 %2")
-        .arg(ds->m_chanid).arg(ds->m_recstartts.toString(Qt::ISODate));
+    QString msg = QString("RECORDING_LIST_CHANGE DELETE %1")
+        .arg(ds->m_recordedid);
     gCoreContext->SendEvent(MythEvent(msg));
 
     // sleep a little to let frontends reload the recordings list
@@ -4397,6 +4402,7 @@ void MainServer::HandleRecorderQuery(QStringList &slist, QStringList &commands,
         else
         {
             ProgramInfo dummy;
+            dummy.SetInputID(enc->GetCardID());
             dummy.ToStringList(retlist);
         }
     }
@@ -4460,6 +4466,7 @@ void MainServer::HandleRecorderQuery(QStringList &slist, QStringList &commands,
         else
         {
             ProgramInfo dummy;
+            dummy.SetInputID(enc->GetCardID());
             dummy.ToStringList(retlist);
         }
     }
@@ -4874,6 +4881,7 @@ void MainServer::HandleRemoteEncoder(QStringList &slist, QStringList &commands,
         else
         {
             ProgramInfo dummy;
+            dummy.SetInputID(enc->GetCardID());
             dummy.ToStringList(retlist);
         }
     }
@@ -7726,7 +7734,7 @@ void MainServer::connectionClosed(MythSocket *socket)
                     QString("SLAVE_DISCONNECTED HOSTNAME %1")
                             .arg(pbs->getHostname()));
             }
-            else if (ismaster)
+            else if (ismaster && pbs->IsFrontend())
             {
                 if (gBackendContext)
                     gBackendContext->SetFrontendDisconnected(pbs->getHostname());
@@ -7772,7 +7780,8 @@ void MainServer::connectionClosed(MythSocket *socket)
 
             // Since we may already be holding the scheduler lock
             // delay handling the disconnect until a little later. #9885
-            SendSlaveDisconnectedEvent(disconnectedSlaves, needsReschedule);
+            if (!disconnectedSlaves.isEmpty())
+                SendSlaveDisconnectedEvent(disconnectedSlaves, needsReschedule);
 
             return;
         }
@@ -8126,6 +8135,7 @@ void MainServer::reconnectTimeout(void)
         else
         {
             ProgramInfo dummy;
+            dummy.SetInputID(elink->GetCardID());
             dummy.ToStringList(strlist);
         }
     }

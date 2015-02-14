@@ -164,7 +164,6 @@ ProgramInfo::ProgramInfo(void) :
 
     sourceid(0),
     inputid(0),
-    cardid(0),
 
     findid(0),
 
@@ -249,7 +248,6 @@ ProgramInfo::ProgramInfo(const ProgramInfo &other) :
 
     sourceid(other.sourceid),
     inputid(other.inputid),
-    cardid(other.cardid),
 
     findid(other.findid),
     programflags(other.programflags),
@@ -300,7 +298,7 @@ ProgramInfo::ProgramInfo(uint _recordedid)
     }
     else
     {
-        LOG(VB_GENERAL, LOG_ERR, LOC +
+        LOG(VB_GENERAL, LOG_CRIT, LOC +
             QString("Failed to find recorded entry for %1.")
             .arg(_recordedid));
         clear();
@@ -432,7 +430,6 @@ ProgramInfo::ProgramInfo(
 
     sourceid(0),
     inputid(0),
-    cardid(0),
 
     findid(_findid),
 
@@ -552,7 +549,6 @@ ProgramInfo::ProgramInfo(
 
     sourceid(0),
     inputid(0),
-    cardid(0),
 
     findid(_findid),
 
@@ -681,7 +677,6 @@ ProgramInfo::ProgramInfo(
 
     sourceid(0),
     inputid(0),
-    cardid(0),
 
     findid(_findid),
 
@@ -735,7 +730,6 @@ ProgramInfo::ProgramInfo(
         recpriority = s.recpriority;
         recstartts  = s.recstartts;
         recendts    = s.recendts;
-        cardid      = s.cardid;
         inputid     = s.inputid;
         dupin       = s.dupin;
         dupmethod   = s.dupmethod;
@@ -837,7 +831,6 @@ ProgramInfo::ProgramInfo(
 
     sourceid(0),
     inputid(0),
-    cardid(0),
 
     findid(0),
 
@@ -1097,7 +1090,6 @@ void ProgramInfo::clone(const ProgramInfo &other,
 
     sourceid = other.sourceid;
     inputid = other.inputid;
-    cardid = other.cardid;
 
     findid = other.findid;
     programflags = other.programflags;
@@ -1207,7 +1199,6 @@ void ProgramInfo::clear(void)
 
     sourceid = 0;
     inputid = 0;
-    cardid = 0;
 
     findid = 0;
 
@@ -1336,7 +1327,7 @@ void ProgramInfo::ToStringList(QStringList &list) const
     INT_TO_LIST(findid);       // 16
     STR_TO_LIST(hostname);     // 17
     INT_TO_LIST(sourceid);     // 18
-    INT_TO_LIST(cardid);       // 19
+    INT_TO_LIST(inputid);      // 19 (formerly cardid)
     INT_TO_LIST(inputid);      // 20
     INT_TO_LIST(recpriority);  // 21
     INT_TO_LIST(recstatus);    // 22
@@ -1438,7 +1429,7 @@ bool ProgramInfo::FromStringList(QStringList::const_iterator &it,
     INT_FROM_LIST(findid);           // 16
     STR_FROM_LIST(hostname);         // 17
     INT_FROM_LIST(sourceid);         // 18
-    INT_FROM_LIST(cardid);           // 19
+    NEXT_STR();                      // 19 (formerly cardid)
     INT_FROM_LIST(inputid);          // 20
     INT_FROM_LIST(recpriority);      // 21
     ENUM_FROM_LIST(recstatus, RecStatusType); // 22
@@ -1683,7 +1674,7 @@ void ProgramInfo::ToMap(InfoMap &progMap,
     }
     progMap["rectypestatus"] = tmp_rec;
 
-    progMap["card"] = ::toString(GetRecordingStatus(), cardid);
+    progMap["card"] = ::toString(GetRecordingStatus(), inputid);
     progMap["input"] = ::toString(GetRecordingStatus(), inputid);
     progMap["inputname"] = QueryInputDisplayName();
 
@@ -1945,7 +1936,6 @@ bool ProgramInfo::LoadProgramFromRecorded(
         parentid = 0;
         sourceid = 0;
         inputid = 0;
-        cardid = 0;
 
         // everything below this line (in context) is not serialized
         spread = startCol = -1;
@@ -2409,10 +2399,20 @@ bool ProgramInfo::SaveBasename(const QString &basename)
     MSqlQuery query(MSqlQuery::InitCon());
     query.prepare("UPDATE recorded "
                   "SET basename = :BASENAME "
-                  "WHERE chanid = :CHANID AND "
-                  "      starttime = :STARTTIME;");
-    query.bindValue(":CHANID", chanid);
-    query.bindValue(":STARTTIME", recstartts);
+                  "WHERE recordedid = :RECORDEDID;");
+    query.bindValue(":RECORDEDID", recordedid);
+    query.bindValue(":BASENAME", basename);
+
+    if (!query.exec())
+    {
+        MythDB::DBError("SetRecordBasename", query);
+        return false;
+    }
+
+    query.prepare("UPDATE recordedfile "
+                  "SET basename = :BASENAME "
+                  "WHERE recordedid = :RECORDEDID;");
+    query.bindValue(":RECORDEDID", recordedid);
     query.bindValue(":BASENAME", basename);
 
     if (!query.exec())
@@ -2432,7 +2432,7 @@ bool ProgramInfo::SaveBasename(const QString &basename)
  *  If the base part of pathname is not empty this will return
  *  that value otherwise this queries the recorded table in the
  *  DB for the basename stored there for this ProgramInfo's
- *  chanid and recstartts.
+ *  recordedid
  */
 QString ProgramInfo::QueryBasename(void) const
 {
@@ -2443,11 +2443,9 @@ QString ProgramInfo::QueryBasename(void) const
     MSqlQuery query(MSqlQuery::InitCon());
     query.prepare(
         "SELECT basename "
-        "FROM recorded "
-        "WHERE chanid    = :CHANID AND "
-        "      starttime = :STARTTIME");
-    query.bindValue(":CHANID",    chanid);
-    query.bindValue(":STARTTIME", recstartts);
+        "FROM recordedfile "
+        "WHERE recordedid = :RECORDEDID;");
+    query.bindValue(":RECORDEDID", recordedid);
 
     if (!query.exec())
     {
@@ -2460,8 +2458,8 @@ QString ProgramInfo::QueryBasename(void) const
     else
     {
         LOG(VB_GENERAL, LOG_INFO,
-                 QString("QueryBasename found no entry for %1 @ %2")
-                     .arg(chanid).arg(recstartts.toString(Qt::ISODate)));
+                 QString("QueryBasename found no entry for recording ID %1")
+                     .arg(recordedid));
     }
 
     return QString();
@@ -2609,6 +2607,8 @@ void ProgramInfo::SaveBookmark(uint64_t frame)
         SaveMarkupMap(bookmarkmap);
     }
 
+    set_flag(programflags, FL_BOOKMARK, is_valid);
+
     if (IsRecording())
     {
         MSqlQuery query(MSqlQuery::InitCon());
@@ -2625,26 +2625,24 @@ void ProgramInfo::SaveBookmark(uint64_t frame)
 
         if (!query.exec())
             MythDB::DBError("bookmark flag update", query);
+
+        SendUpdateEvent();
     }
-
-    set_flag(programflags, FL_BOOKMARK, is_valid);
-
-    SendUpdateEvent();
 }
 
 void ProgramInfo::SendUpdateEvent(void)
 {
-    updater->insert(chanid, recstartts, kPIUpdate);
+    updater->insert(recordedid, kPIUpdate);
 }
 
 void ProgramInfo::SendAddedEvent(void) const
 {
-    updater->insert(chanid, recstartts, kPIAdd);
+    updater->insert(recordedid, kPIAdd);
 }
 
 void ProgramInfo::SendDeletedEvent(void) const
 {
-    updater->insert(chanid, recstartts, kPIDelete);
+    updater->insert(recordedid, kPIDelete);
 }
 
 /** \brief Queries Latest bookmark timestamp from the database.
@@ -2823,6 +2821,8 @@ void ProgramInfo::SaveWatched(bool watched)
             MythDB::DBError("Set watched flag", query);
         else
             UpdateLastDelete(watched);
+
+        SendUpdateEvent();
     }
     else if (IsVideoFile())
     {
@@ -2849,7 +2849,6 @@ void ProgramInfo::SaveWatched(bool watched)
     }
 
     set_flag(programflags, FL_WATCHED, watched);
-    SendUpdateEvent();
 }
 
 /** \brief Queries "recorded" table for its "editing" field
@@ -4822,15 +4821,14 @@ bool ProgramInfo::QueryTuningInfo(QString &channum, QString &input) const
     input.clear();
     MSqlQuery query(MSqlQuery::InitCon());
 
-    query.prepare("SELECT channel.channum, cardinput.inputname "
-                  "FROM channel, capturecard, cardinput "
-                  "WHERE channel.chanid     = :CHANID            AND "
-                  "      cardinput.cardid   = capturecard.cardid AND "
-                  "      cardinput.sourceid = :SOURCEID          AND "
-                  "      capturecard.cardid = :CARDID");
+    query.prepare("SELECT channel.channum, capturecard.inputname "
+                  "FROM channel, capturecard "
+                  "WHERE channel.chanid       = :CHANID            AND "
+                  "      capturecard.sourceid = :SOURCEID          AND "
+                  "      capturecard.cardid   = :INPUTID");
     query.bindValue(":CHANID",   chanid);
     query.bindValue(":SOURCEID", sourceid);
-    query.bindValue(":CARDID",   cardid);
+    query.bindValue(":INPUTID",  inputid);
 
     if (query.exec() && query.next())
     {
@@ -4872,8 +4870,8 @@ QString ProgramInfo::QueryInputDisplayName(void) const
     {
         MSqlQuery query(MSqlQuery::InitCon());
         query.prepare("SELECT displayname, cardid, inputname "
-                      "FROM cardinput "
-                      "WHERE cardinputid = :INPUTID");
+                      "FROM capturecard "
+                      "WHERE cardid = :INPUTID");
         query.bindValue(":INPUTID", inputid);
 
         if (!query.exec())
@@ -5801,7 +5799,7 @@ void ProgramInfo::SaveFilesize(uint64_t fsize)
     if (!query.exec())
         MythDB::DBError("File size update", query);
 
-    updater->insert(chanid, recstartts, kPIUpdateFileSize, fsize);
+    updater->insert(recordedid, kPIUpdateFileSize, fsize);
 }
 
 uint64_t ProgramInfo::GetFilesize(void) const

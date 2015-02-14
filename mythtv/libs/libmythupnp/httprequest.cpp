@@ -54,6 +54,8 @@
 #define O_LARGEFILE 0
 #endif
 
+using namespace std;
+
 static MIMETypes g_MIMETypes[] =
 {
     // Image Mime Types
@@ -81,6 +83,7 @@ static MIMETypes g_MIMETypes[] =
     { "doc" , "application/vnd.ms-word"    },
     { "gz"  , "application/x-tar"          },
     { "js"  , "application/javascript"     },
+    { "m3u" , "application/x-mpegurl"      }, // HTTP Live Streaming
     { "m3u8", "application/x-mpegurl"      }, // HTTP Live Streaming
     { "ogx" , "application/ogg"            }, // http://wiki.xiph.org/index.php/MIME_Types_and_File_Extensions
     { "pdf" , "application/pdf"            },
@@ -105,20 +108,23 @@ static MIMETypes g_MIMETypes[] =
     // Video Mime Types
     { "3gp" , "video/3gpp"                 }, // Also audio/3gpp
     { "3g2" , "video/3gpp2"                }, // Also audio/3gpp2
+    { "asx" , "video/x-ms-asf"             },
     { "asf" , "video/x-ms-asf"             },
     { "avi" , "video/x-msvideo"            }, // Also video/avi
+    { "m2p" , "video/mp2p"                 }, // RFC 3555
     { "m4v" , "video/mp4"                  },
-    { "mpeg", "video/mpeg"                 },
-    { "mpeg2","video/mpeg"                 },
-    { "mpg" , "video/mpeg"                 },
-    { "mpg2", "video/mpeg"                 },
+    { "mpeg", "video/mp2p"                 }, // RFC 3555
+    { "mpeg2","video/mp2p"                 }, // RFC 3555
+    { "mpg" , "video/mp2p"                 }, // RFC 3555
+    { "mpg2", "video/mp2p"                 }, // RFC 3555
     { "mov" , "video/quicktime"            },
     { "mp4" , "video/mp4"                  },
     { "mkv" , "video/x-matroska"           }, // See http://matroska.org/technical/specs/notes.html#MIME (See NOTE 1)
     { "nuv" , "video/nupplevideo"          },
     { "ogv" , "video/ogg"                  }, // Defined: http://wiki.xiph.org/index.php/MIME_Types_and_File_Extensions
-    { "ts"  , "video/mp2t"                 }, // HTTP Live Streaming
-    { "vob" , "video/mpeg"                 },
+    { "ps"  , "video/mp2p"                 }, // RFC 3555
+    { "ts"  , "video/mp2t"                 }, // RFC 3555
+    { "vob" , "video/mpeg"                 }, // Also video/dvd
     { "wmv" , "video/x-ms-wmv"             }
 };
 
@@ -221,39 +227,39 @@ QString HTTPRequest::BuildResponseHeader( long long nSize )
     //-----------------------------------------------------------------------
     // Headers describing the connection
     //-----------------------------------------------------------------------
-    sHeader = QString( "%1 %2\r\n"
-                       "Date: %3\r\n"
-                       "Server: %4\r\n" )
-        .arg(GetResponseProtocol()).arg(GetResponseStatus())
-        .arg(MythDate::current().toString("d MMM yyyy hh:mm:ss"))
-        .arg(HttpServer::GetServerVersion());
 
-    sHeader += QString( "Connection: %1\r\n" )
-                        .arg( m_bKeepAlive ? "Keep-Alive" : "Close" );
+    // The protocol string
+    sHeader = QString( "%1 %2\r\n" ).arg(GetResponseProtocol())
+                                    .arg(GetResponseStatus());
+
+    SetResponseHeader("Date", MythDate::current().toString("ddd, d MMM yyyy hh:mm:ss").append(" GMT")); // RFC 822
+    SetResponseHeader("Server", HttpServer::GetServerVersion());
+
+    SetResponseHeader("Connection", m_bKeepAlive ? "Keep-Alive" : "Close" );
     if (m_bKeepAlive)
     {
         if (m_nKeepAliveTimeout == 0) // Value wasn't passed in by the server, so go with the configured value
             m_nKeepAliveTimeout = gCoreContext->GetNumSetting("HTTP/KeepAliveTimeoutSecs", 10);
-        sHeader += QString( "Keep-Alive: timeout=%1\r\n" ).arg(m_nKeepAliveTimeout);
+        SetResponseHeader("Keep-Alive", QString("timeout=%1").arg(m_nKeepAliveTimeout));
     }
-
-    sHeader += GetAdditionalHeaders();
 
     //-----------------------------------------------------------------------
     // Headers describing the content
     //-----------------------------------------------------------------------
-    sHeader += QString( "Content-Type: %1\r\n" ).arg( sContentType );
+    SetResponseHeader("Content-Language", gCoreContext->GetLanguageAndVariant().replace("_", "-"));
+    SetResponseHeader("Content-Type", sContentType);
 
     // Default to 'inline' but we should support 'attachment' when it would
     // be appropriate i.e. not when streaming a file to a upnp player or browser
     // that can support it natively
     if (!m_sFileName.isEmpty())
     {
+        // TODO: Add support for utf8 encoding - RFC 5987
         QString filename = QFileInfo(m_sFileName).fileName(); // Strip any path
-        sHeader += QString( "Content-Disposition: inline; filename=\"%2\"\r\n" ).arg( filename );
+        SetResponseHeader("Content-Disposition", QString("inline; filename=\"%2\"").arg(QString(filename.toLatin1())));
     }
 
-    sHeader += QString( "Content-Length: %3\r\n" ).arg( nSize );
+    SetResponseHeader("Content-Length", QString::number(nSize));
 
     // See DLNA  7.4.1.3.11.4.3 Tolerance to unavailable contentFeatures.dlna.org header
     //
@@ -271,7 +277,7 @@ QString HTTPRequest::BuildResponseHeader( long long nSize )
 
 
     // DLNA 7.5.4.3.2.33 MT transfer mode indication
-    QString sTransferMode = GetHeaderValue( "transferMode.dlna.org", "" );
+    QString sTransferMode = GetRequestHeader( "transferMode.dlna.org", "" );
 
     if (sTransferMode.isEmpty())
     {
@@ -283,30 +289,29 @@ QString HTTPRequest::BuildResponseHeader( long long nSize )
     }
 
     if (sTransferMode == "Streaming")
-        sHeader += "transferMode.dlna.org: Streaming\r\n";
+        SetResponseHeader("transferMode.dlna.org", "Streaming");
     else if (sTransferMode == "Background")
-        sHeader += "transferMode.dlna.org: Background\r\n";
+        SetResponseHeader("transferMode.dlna.org", "Background");
     else if (sTransferMode == "Interactive")
-        sHeader += "transferMode.dlna.org: Interactive\r\n";
+        SetResponseHeader("transferMode.dlna.org", "Interactive");
 
     // HACK Temporary hack for Samsung TVs - Needs to be moved later as it's not entirely DLNA compliant
-    if (!GetHeaderValue( "getcontentFeatures.dlna.org", "" ).isEmpty())
-        sHeader += "contentFeatures.dlna.org: DLNA.ORG_OP=01;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=01500000000000000000000000000000\r\n";
+    if (!GetRequestHeader( "getcontentFeatures.dlna.org", "" ).isEmpty())
+        SetResponseHeader("contentFeatures.dlna.org", "DLNA.ORG_OP=01;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=01500000000000000000000000000000");
 
     // ----------------------------------------------------------------------
 
     if (getenv("HTTPREQUEST_DEBUG"))
     {
         // Dump response header
-        QStringList respHeaders = sHeader.split("\r\n");
-        for ( QStringList::iterator it  = respHeaders.begin();
-                                    it != respHeaders.end();
-                                  ++it )
+        QMap<QString, QString>::iterator it;
+        for ( it = m_mapRespHeaders.begin(); it != m_mapRespHeaders.end(); ++it )
         {
-            LOG(VB_HTTP, LOG_INFO, QString("(Response Header) %1").arg(*it));
+            LOG(VB_HTTP, LOG_INFO, QString("(Response Header) %1: %2").arg(it.key()).arg(it.value()));
         }
     }
 
+    sHeader += GetResponseHeaders();
     sHeader += "\r\n";
 
     return sHeader;
@@ -387,7 +392,7 @@ qint64 HTTPRequest::SendResponse( void )
     // Check for ETag match...
     // ----------------------------------------------------------------------
 
-    QString sETag = GetHeaderValue( "If-None-Match", "" );
+    QString sETag = GetRequestHeader( "If-None-Match", "" );
 
     if ( !sETag.isEmpty() && sETag == m_mapRespHeaders[ "ETag" ] )
     {
@@ -436,7 +441,7 @@ qint64 HTTPRequest::SendResponse( void )
     }
 
     // ----------------------------------------------------------------------
-    // NOTE: Access-Control-Allow-Origin Wildcard
+    // SECURITY: Access-Control-Allow-Origin Wildcard
     //
     // This is a REALLY bad idea, so bad in fact that I'm including it here but
     // commented out in the hope that anyone thinking of adding it in the future
@@ -455,32 +460,32 @@ qint64 HTTPRequest::SendResponse( void )
     // ----------------------------------------------------------------------
 
     // ----------------------------------------------------------------------
-    // Allow the WebFrontend on the Master backend and ONLY this machine
-    // to access resources on a frontend or slave web server
+    // SECURITY: Allow the WebFrontend on the Master backend and ONLY this
+    // machine to access resources on a frontend or slave web server
+    //
+    // TODO: Add hostname:port combo as well as ip:port
     //
     // http://www.w3.org/TR/cors/#introduction
     // ----------------------------------------------------------------------
     QString masterAddrPort = QString("%1:%2").arg(gCoreContext->GetMasterServerIP())
-                                            .arg(gCoreContext->GetMasterServerStatusPort());
+                                             .arg(gCoreContext->GetMasterServerStatusPort());
+    QString masterTLSAddrPort = QString("%1:%2").arg(gCoreContext->GetMasterServerIP())
+                                                .arg(gCoreContext->GetSetting( "BackendSSLPort", "6554" ));
 
     QStringList allowedOrigins;
     allowedOrigins << QString("http://%1").arg(masterAddrPort);
-    allowedOrigins << QString("https://%2").arg(masterAddrPort);
+    allowedOrigins << QString("https://%2").arg(masterTLSAddrPort);
 
     if (!m_mapHeaders[ "origin" ].isEmpty())
     {
         if (allowedOrigins.contains(m_mapHeaders[ "origin" ]))
-            m_mapRespHeaders[ "Access-Control-Allow-Origin" ] = m_mapHeaders[ "origin" ];
+            SetResponseHeader( "Access-Control-Allow-Origin" ,
+                               m_mapHeaders[ "origin" ]);
         else
             LOG(VB_GENERAL, LOG_CRIT, QString("HTTPRequest: Cross-origin request "
                                               "received with origin (%1)")
                                                  .arg(m_mapHeaders[ "origin" ]));
     }
-
-    // ----------------------------------------------------------------------
-    // Force IE into 'standards' mode
-    // ----------------------------------------------------------------------
-    m_mapRespHeaders[ "X-UA-Compatible" ] = "IE=Edge";
 
     // ----------------------------------------------------------------------
     // Write out Header.
@@ -583,7 +588,7 @@ qint64 HTTPRequest::SendResponseFile( QString sFileName )
         // ------------------------------------------------------------------
 
         bool    bRange = false;
-        QString sRange = GetHeaderValue( "range", "" );
+        QString sRange = GetRequestHeader( "range", "" );
 
         if (!sRange.isEmpty())
         {
@@ -609,6 +614,11 @@ qint64 HTTPRequest::SendResponseFile( QString sFileName )
             else
             {
                 m_nResponseStatus = 416;
+                // RFC 7233 - A server generating a 416 (Range Not Satisfiable)
+                // response to a byte-range request SHOULD send a Content-Range
+                // header field with an unsatisfied-range value
+                m_mapRespHeaders[ "Content-Range" ] = QString("bytes */%3")
+                                                              .arg( llSize );
                 llSize = 0;
                 LOG(VB_HTTP, LOG_INFO,
                     QString("HTTPRequest::SendResponseFile(%1) - "
@@ -728,6 +738,8 @@ qint64 HTTPRequest::SendData( QIODevice *pDevice, qint64 llStart, qint64 llBytes
     qint64 llBytesToRead    = 0;
     qint64 llBytesRead      = 0;
     qint64 llBytesWritten   = 0;
+
+    memset (aBuffer, 0, sizeof(aBuffer));
 
     while ((sent < llBytes) && !pDevice->atEnd())
     {
@@ -1098,7 +1110,7 @@ QString HTTPRequest::TestMimeType( const QString &sFileName )
             LOG(VB_HTTP, LOG_DEBUG, sLOC + "file starts with " + sHex);
 
             if ( sHex == "000001ba44000400" )  // MPEG2 PS
-                sMIME = "video/mpeg";
+                sMIME = "video/mp2p";
 
             if ( head == "MythTVVi" )
             {
@@ -1172,7 +1184,7 @@ long HTTPRequest::GetParameters( QString sParams, QStringMap &mapParams  )
 //
 /////////////////////////////////////////////////////////////////////////////
 
-QString HTTPRequest::GetHeaderValue( const QString &sKey, QString sDefault )
+QString HTTPRequest::GetRequestHeader( const QString &sKey, QString sDefault )
 {
     QStringMap::iterator it = m_mapHeaders.find( sKey.toLower() );
 
@@ -1187,7 +1199,7 @@ QString HTTPRequest::GetHeaderValue( const QString &sKey, QString sDefault )
 //
 /////////////////////////////////////////////////////////////////////////////
 
-QString HTTPRequest::GetAdditionalHeaders( void )
+QString HTTPRequest::GetResponseHeaders( void )
 {
     QString sHeader = m_szServerHeaders;
 
@@ -1221,7 +1233,7 @@ bool HTTPRequest::ParseKeepAlive()
     // Read Connection Header to see whether the client has explicitly
     // asked for the connection to be kept alive or closed after the response
     // is sent
-    QString sConnection = GetHeaderValue( "connection", "default" ).toLower();
+    QString sConnection = GetRequestHeader( "connection", "default" ).toLower();
 
     QStringList sValueList = sConnection.split(",");
 
@@ -1379,7 +1391,7 @@ bool HTTPRequest::ParseRequest()
         }
 
         // Check to see if this is a SOAP encoded message
-        QString sSOAPAction = GetHeaderValue( "SOAPACTION", "" );
+        QString sSOAPAction = GetRequestHeader( "SOAPACTION", "" );
 
         if (!sSOAPAction.isEmpty())
             bSuccess = ProcessSOAPPayload( sSOAPAction );
@@ -1566,10 +1578,8 @@ bool HTTPRequest::ParseRange( QString sRange,
             return false;
     }
 
-#if 0
-    LOG(VB_GENERAL, LOG_DEBUG, QString("%1 Range Requested %2 - %3")
+    LOG(VB_HTTP, LOG_DEBUG, QString("%1 Range Requested %2 - %3")
         .arg(getSocketHandle()) .arg(*pllStart) .arg(*pllEnd));
-#endif
 
     return true;
 }
@@ -1720,7 +1730,7 @@ Serializer *HTTPRequest::GetSerializer()
                                                        m_sNameSpace, m_sMethod);
     else
     {
-        QString sAccept = GetHeaderValue( "Accept", "*/*" );
+        QString sAccept = GetRequestHeader( "Accept", "*/*" );
         
         if (sAccept.contains( "application/json", Qt::CaseInsensitive ))    
             pSerializer = (Serializer *)new JSONSerializer(&m_response,
@@ -1852,6 +1862,81 @@ bool HTTPRequest::Authenticated()
     return true;
 }
 
+/////////////////////////////////////////////////////////////////////////////
+//
+/////////////////////////////////////////////////////////////////////////////
+
+void HTTPRequest::SetResponseHeader(const QString& sKey, const QString& sValue,
+                                    bool replace)
+{
+    if (!replace && m_mapRespHeaders.contains(sKey))
+        return;
+
+    m_mapRespHeaders[sKey] = sValue;
+}
+
+/////////////////////////////////////////////////////////////////////////////
+//
+/////////////////////////////////////////////////////////////////////////////
+
+QString HTTPRequest::GetHostName()
+{
+    // TODO: This only deals with the HTTP 1.1 case, 1.0 should be rare but we
+    //       should probably still handle it
+
+    // RFC 3875 - The is the hostname or ip address in the client request, not
+    //            the name or ip we might otherwise know for this server
+    QString hostname = m_mapHeaders["host"];
+    if (!hostname.isEmpty())
+    {
+        // Strip the port
+        if (hostname.contains("]:")) // IPv6 port
+        {
+            return hostname.section("]:", 0 , 0);
+        }
+        else if (hostname.contains(":")) // IPv4 port
+        {
+            return hostname.section(":", 0 , 0);
+        }
+        else
+            return hostname;
+    }
+
+    return GetHostAddress();
+}
+
+
+QString HTTPRequest::GetRequestType( ) const
+{
+    QString type;
+    switch ( m_eType )
+    {
+        case RequestTypeGet :
+            type = "GET";
+            break;
+        case RequestTypeHead :
+            type = "HEAD";
+            break;
+        case RequestTypePost :
+            type = "POST";
+            break;
+        case RequestTypeMSearch:
+            type = "M-SEARCH";
+            break;
+        case RequestTypeSubscribe :
+            type = "SUBSCRIBE";
+            break;
+        case RequestTypeUnsubscribe :
+            type = "UNSUBSCRIBE";
+            break;
+        case RequestTypeNotify:
+            type = "NOTIFY";
+            break;
+    }
+
+    return type;
+}
+
 
 /////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////
@@ -1960,6 +2045,16 @@ QString BufferedSocketDeviceRequest::GetHostAddress()
 {
     return( m_pSocket->localAddress().toString() );
 }
+
+/////////////////////////////////////////////////////////////////////////////
+//
+/////////////////////////////////////////////////////////////////////////////
+
+quint16 BufferedSocketDeviceRequest::GetHostPort()
+{
+    return( m_pSocket->localPort() );
+}
+
 
 /////////////////////////////////////////////////////////////////////////////
 //

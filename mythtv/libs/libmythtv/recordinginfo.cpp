@@ -97,7 +97,6 @@ RecordingInfo::RecordingInfo(
 
     uint _sourceid,
     uint _inputid,
-    uint _cardid,
 
     uint _findid,
 
@@ -156,7 +155,6 @@ RecordingInfo::RecordingInfo(
 
     sourceid = _sourceid;
     inputid = _inputid;
-    cardid = _cardid;
 
     findid = _findid;
 
@@ -1620,7 +1618,7 @@ void RecordingInfo::SaveFilesize(uint64_t fsize)
     GetRecordingFile()->m_fileSize = fsize;
     GetRecordingFile()->Save(); // Ideally this would be called just the once when all metadata is gathered
 
-    updater->insert(chanid, recstartts, kPIUpdateFileSize, fsize);
+    updater->insert(recordedid, kPIUpdateFileSize, fsize);
 
     ProgramInfo::SaveFilesize(fsize); // Temporary
 }
@@ -1630,7 +1628,7 @@ void RecordingInfo::SetFilesize(uint64_t fsize)
     if (!GetRecordingFile())
         LoadRecordingFile();
     GetRecordingFile()->m_fileSize = fsize;
-    updater->insert(chanid, recstartts, kPIUpdateFileSize, fsize);
+    updater->insert(recordedid, kPIUpdateFileSize, fsize);
     //ProgramInfo::SetFilesize(fsize);
 }
 

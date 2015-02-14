@@ -314,7 +314,7 @@ static QString extract_commflag_state(const ProgramInfo &pginfo)
                               pginfo.GetRecordingStartTime()))
         return "queued";
 
-    return (pginfo.GetProgramFlags() & FL_COMMFLAG ? "yes" : "no");
+    return ((pginfo.GetProgramFlags() & FL_COMMFLAG) ? "yes" : "no");
 }
 
 
@@ -338,33 +338,29 @@ static QString extract_subtitle(
 static void push_onto_del(QStringList &list, const ProgramInfo &pginfo)
 {
     list.clear();
-    list.push_back(QString::number(pginfo.GetChanID()));
-    list.push_back(pginfo.GetRecordingStartTime(MythDate::ISODate));
+    list.push_back(QString::number(pginfo.GetRecordingID()));
     list.push_back(QString() /* force Delete */);
     list.push_back(QString()); /* forget history */
 }
 
-static bool extract_one_del(
-    QStringList &list, uint &chanid, QDateTime &recstartts)
+static bool extract_one_del(QStringList &list, uint &recordingID)
 {
-    if (list.size() < 4)
+    if (list.size() < 3)
     {
         list.clear();
         return false;
     }
 
-    chanid     = list[0].toUInt();
-    recstartts = MythDate::fromString(list[1]);
+    recordingID = list[0].toUInt();
 
     list.pop_front();
     list.pop_front();
     list.pop_front();
-    list.pop_front();
 
-    if (!chanid || !recstartts.isValid())
+    if (!recordingID)
         LOG(VB_GENERAL, LOG_ERR, LOC + "extract_one_del() invalid entry");
 
-    return chanid && recstartts.isValid();
+    return recordingID;
 }
 
 void * PlaybackBox::RunPlaybackBox(void * player, bool showTV)
@@ -793,7 +789,7 @@ void PlaybackBox::SetItemIcons(MythUIButtonListItem *item, ProgramInfo* pginfo)
 {
     bool disp_flag_stat[sizeof(disp_flags)/sizeof(char*)];
 
-    disp_flag_stat[0] = !m_playList.filter(pginfo->MakeUniqueKey()).empty();
+    disp_flag_stat[0] = m_playList.contains(pginfo->GetRecordingID());
     disp_flag_stat[1] = pginfo->IsWatched();
     disp_flag_stat[2] = pginfo->IsPreserved();
     disp_flag_stat[3] = pginfo->HasCutlist();
@@ -1047,9 +1043,9 @@ void PlaybackBox::HandlePreviewEvent(const QStringList &list)
         return;
     }
 
-    const QString piKey       = list[0];
-    const QString previewFile = list[1];
-    const QString message     = list[2];
+    uint          recordingID  = list[0].toUInt();
+    const QString previewFile  = list[1];
+    const QString message      = list[2];
 
     bool found = false;
     for (uint i = 4; i < (uint) list.size(); i++)
@@ -1080,7 +1076,7 @@ void PlaybackBox::HandlePreviewEvent(const QStringList &list)
         return;
     }
 
-    ProgramInfo *info = m_programInfoCache.GetProgramInfo(piKey);
+    ProgramInfo *info = m_programInfoCache.GetRecordingInfo(recordingID);
     MythUIButtonListItem *item = NULL;
 
     if (info)
@@ -1477,14 +1473,14 @@ static bool save_position(
         MythUIButtonListItem *item = recordingList->GetItemAt(i);
         ProgramInfo *pginfo = item->GetData().value<ProgramInfo*>();
         itemSelPref.push_back(groupSelPref.front());
-        itemSelPref.push_back(pginfo->MakeUniqueKey());
+        itemSelPref.push_back(QString::number(pginfo->GetRecordingID()));
     }
     for (int i = curPos; (i >= 0) && (i < recordingList->GetCount()); i--)
     {
         MythUIButtonListItem *item = recordingList->GetItemAt(i);
         ProgramInfo *pginfo = item->GetData().value<ProgramInfo*>();
         itemSelPref.push_back(groupSelPref.front());
-        itemSelPref.push_back(pginfo->MakeUniqueKey());
+        itemSelPref.push_back(QString::number(pginfo->GetRecordingID()));
     }
 
     int topPos = recordingList->GetTopItemPos();
@@ -1496,13 +1492,13 @@ static bool save_position(
             ProgramInfo *pginfo = item->GetData().value<ProgramInfo*>();
             if (i == topPos)
             {
-                itemTopPref.push_front(pginfo->MakeUniqueKey());
+                itemTopPref.push_front(QString::number(pginfo->GetRecordingID()));
                 itemTopPref.push_front(groupSelPref.front());
             }
             else
             {
                 itemTopPref.push_back(groupSelPref.front());
-                itemTopPref.push_back(pginfo->MakeUniqueKey());
+                itemTopPref.push_back(QString::number(pginfo->GetRecordingID()));
             }
         }
     }
@@ -1535,12 +1531,12 @@ static void restore_position(
         if (itemSelPref[i] != groupname)
             continue;
 
-        const QString key = itemSelPref[i+1];
+        uint recordingID = itemSelPref[i+1].toUInt();
         for (uint j = 0; j < (uint)recordingList->GetCount(); j++)
         {
             MythUIButtonListItem *item = recordingList->GetItemAt(j);
             ProgramInfo *pginfo = item->GetData().value<ProgramInfo*>();
-            if (pginfo && (pginfo->MakeUniqueKey() == key))
+            if (pginfo && (pginfo->GetRecordingID() == recordingID))
             {
                 sel = j;
                 i = itemSelPref.size();
@@ -1556,12 +1552,12 @@ static void restore_position(
         if (itemTopPref[i] != groupname)
             continue;
 
-        const QString key = itemTopPref[i+1];
+        uint recordingID = itemTopPref[i+1].toUInt();
         for (uint j = 0; j < (uint)recordingList->GetCount(); j++)
         {
             MythUIButtonListItem *item = recordingList->GetItemAt(j);
             ProgramInfo *pginfo = item->GetData().value<ProgramInfo*>();
-            if (pginfo && (pginfo->MakeUniqueKey() == key))
+            if (pginfo && (pginfo->GetRecordingID() == recordingID))
             {
                 top = j;
                 i = itemTopPref.size();
@@ -1603,8 +1599,8 @@ bool PlaybackBox::UpdateUILists(void)
     }
 
     // Cache available status for later restoration
-    QMap<QString, AvailableStatusType> asCache;
-    QString asKey;
+    QMap<uint, AvailableStatusType> asCache;
+    uint asRecordingID;
 
     if (!m_progLists.isEmpty())
     {
@@ -1612,8 +1608,8 @@ bool PlaybackBox::UpdateUILists(void)
         ProgramList::iterator end = m_progLists[""].end();
         for (; it != end; ++it)
         {
-            asKey = (*it)->MakeUniqueKey();
-            asCache[asKey] = (*it)->GetAvailableStatus();
+            asRecordingID = (*it)->GetRecordingID();
+            asCache[asRecordingID] = (*it)->GetAvailableStatus();
         }
     }
 
@@ -1698,9 +1694,9 @@ bool PlaybackBox::UpdateUILists(void)
                     m_progLists[""].push_front(p);
                 }
 
-                asKey = p->MakeUniqueKey();
-                if (asCache.contains(asKey))
-                    p->SetAvailableStatus(asCache[asKey], "UpdateUILists");
+                asRecordingID = p->GetRecordingID();
+                if (asCache.contains(asRecordingID))
+                    p->SetAvailableStatus(asCache[asRecordingID], "UpdateUILists");
                 else
                     p->SetAvailableStatus(asAvailable,  "UpdateUILists");
 
@@ -2157,7 +2153,7 @@ bool PlaybackBox::UpdateUILists(void)
     UpdateUIGroupList(groupSelPref);
     UpdateUsageUI();
 
-    QStringList::const_iterator it = m_playList.begin();
+    QList<uint>::const_iterator it = m_playList.begin();
     for (; it != m_playList.end(); ++it)
     {
         ProgramInfo *pginfo = FindProgramInUILists(*it);
@@ -2182,7 +2178,7 @@ void PlaybackBox::playSelectedPlaylist(bool _random)
     if (_random)
     {
         m_playListPlay.clear();
-        QStringList tmp = m_playList;
+        QList<uint> tmp = m_playList;
         while (!tmp.isEmpty())
         {
             uint i = random() % tmp.size();
@@ -2460,10 +2456,9 @@ bool PlaybackBox::Play(
     }
     else
     {
-        // User may have saved or deleted a bookmark,
-        // requiring update of preview..
-        ProgramInfo *pginfo = m_programInfoCache.GetProgramInfo(
-            tvrec.GetChanID(), tvrec.GetRecordingStartTime());
+        // User may have saved or deleted a bookmark
+        // requiring update of bookmark icon..
+        ProgramInfo *pginfo = m_programInfoCache.GetRecordingInfo(tvrec.GetRecordingID());
         if (pginfo)
             UpdateUIListItem(pginfo, true);
     }
@@ -2474,11 +2469,10 @@ bool PlaybackBox::Play(
     return playCompleted;
 }
 
-void PlaybackBox::RemoveProgram(
-    uint chanid, const QDateTime &recstartts,
-    bool forgetHistory, bool forceMetadataDelete)
+void PlaybackBox::RemoveProgram( uint recordingID, bool forgetHistory,
+                                 bool forceMetadataDelete)
 {
-    ProgramInfo *delItem = FindProgramInUILists(chanid, recstartts);
+    ProgramInfo *delItem = FindProgramInUILists(recordingID);
 
     if (!delItem)
         return;
@@ -2490,16 +2484,15 @@ void PlaybackBox::RemoveProgram(
         return;
     }
 
-    if (m_playList.contains(delItem->MakeUniqueKey()))
+    if (m_playList.contains(delItem->GetRecordingID()))
         togglePlayListItem(delItem);
 
     if (!forceMetadataDelete)
         delItem->UpdateLastDelete(true);
 
     delItem->SetAvailableStatus(asPendingDelete, "RemoveProgram");
-    m_helper.DeleteRecording(
-        delItem->GetChanID(), delItem->GetRecordingStartTime(),
-        forceMetadataDelete, forgetHistory);
+    m_helper.DeleteRecording( delItem->GetRecordingID(),
+                              forceMetadataDelete, forgetHistory);
 
     // if the item is in the current recording list UI then delete it.
     MythUIButtonListItem *uiItem =
@@ -2543,16 +2536,15 @@ void PlaybackBox::ShowDeletePopup(DeletePopupType type)
     {
         push_onto_del(m_delList, *delItem);
     }
-    else if (m_delList.size() >= 4)
+    else if (m_delList.size() >= 3)
     {
-        delItem = FindProgramInUILists(
-            m_delList[0].toUInt(), MythDate::fromString(m_delList[1]));
+        delItem = FindProgramInUILists(m_delList[0].toUInt());
     }
 
     if (!delItem)
         return;
 
-    uint other_delete_cnt = (m_delList.size() / 4) - 1;
+    uint other_delete_cnt = (m_delList.size() / 3) - 1;
 
     label += CreateProgramInfoString(*delItem);
 
@@ -2742,7 +2734,7 @@ MythMenu* PlaybackBox::createPlaylistJobMenu(void)
 
     QString jobTitle;
     QString command;
-    QStringList::Iterator it;
+    QList<uint>::Iterator it;
     ProgramInfo *tmpItem;
     bool isTranscoding = true;
     bool isFlagging = true;
@@ -3122,7 +3114,7 @@ void PlaybackBox::ShowActionPopup(const ProgramInfo &pginfo)
     if ((asFileNotFound  == pginfo.GetAvailableStatus()) ||
         (asZeroByte      == pginfo.GetAvailableStatus()))
     {
-        if (m_playList.contains(pginfo.MakeUniqueKey()))
+        if (m_playList.contains(pginfo.GetRecordingID()))
             m_popupMenu->AddItem(tr("Remove from Playlist"), SLOT(togglePlayListItem()));
         else
             m_popupMenu->AddItem(tr("Add to Playlist"), SLOT(togglePlayListItem()));
@@ -3163,7 +3155,7 @@ void PlaybackBox::ShowActionPopup(const ProgramInfo &pginfo)
 
     if (!m_player)
     {
-        if (m_playList.contains(pginfo.MakeUniqueKey()))
+        if (m_playList.contains(pginfo.GetRecordingID()))
             m_popupMenu->AddItem(tr("Remove from Playlist"),
                                  SLOT(togglePlayListItem()));
         else
@@ -3243,7 +3235,7 @@ QString PlaybackBox::CreateProgramInfoString(const ProgramInfo &pginfo) const
 
 void PlaybackBox::doClearPlaylist(void)
 {
-    QStringList::Iterator it;
+    QList<uint>::Iterator it;
     for (it = m_playList.begin(); it != m_playList.end(); ++it)
     {
         ProgramInfo *tmpItem = FindProgramInUILists(*it);
@@ -3302,7 +3294,7 @@ void PlaybackBox::doAllowRerecord()
 void PlaybackBox::doPlaylistAllowRerecord()
 {
     ProgramInfo *pginfo;
-    QStringList::Iterator it;
+    QList<uint>::Iterator it;
 
     for (it = m_playList.begin(); it != m_playList.end(); ++it)
     {
@@ -3364,7 +3356,7 @@ void PlaybackBox::doBeginLookup()
 void PlaybackBox::doPlaylistJobQueueJob(int jobType, int jobFlags)
 {
     ProgramInfo *tmpItem;
-    QStringList::Iterator it;
+    QList<uint>::Iterator it;
 
     for (it = m_playList.begin(); it != m_playList.end(); ++it)
     {
@@ -3388,7 +3380,7 @@ void PlaybackBox::doPlaylistJobQueueJob(int jobType, int jobFlags)
 void PlaybackBox::stopPlaylistJobQueueJob(int jobType)
 {
     ProgramInfo *tmpItem;
-    QStringList::Iterator it;
+    QList<uint>::Iterator it;
 
     for (it = m_playList.begin(); it != m_playList.end(); ++it)
     {
@@ -3425,7 +3417,7 @@ void PlaybackBox::PlaylistDelete(bool forgetHistory)
 {
     QString forceDeleteStr("0");
 
-    QStringList::const_iterator it;
+    QList<uint>::const_iterator it;
     QStringList list;
     for (it = m_playList.begin(); it != m_playList.end(); ++it)
     {
@@ -3433,8 +3425,7 @@ void PlaybackBox::PlaylistDelete(bool forgetHistory)
         if (tmpItem && tmpItem->QueryIsDeleteCandidate())
         {
             tmpItem->SetAvailableStatus(asPendingDelete, "PlaylistDelete");
-            list.push_back(QString::number(tmpItem->GetChanID()));
-            list.push_back(tmpItem->GetRecordingStartTime(MythDate::ISODate));
+            list.push_back(QString::number(tmpItem->GetRecordingID()));
             list.push_back(forceDeleteStr);
             list.push_back(forgetHistory ? "1" : "0");
 
@@ -3453,25 +3444,24 @@ void PlaybackBox::PlaylistDelete(bool forgetHistory)
     doClearPlaylist();
 }
 
+// FIXME: Huh? This doesn't specify which recording to undelete, it just
+// undeletes the first one on the list
 void PlaybackBox::Undelete(void)
 {
-    uint chanid;
-    QDateTime recstartts;
-    if (extract_one_del(m_delList, chanid, recstartts))
-        m_helper.UndeleteRecording(chanid, recstartts);
+    uint recordingID;
+    if (extract_one_del(m_delList, recordingID))
+        m_helper.UndeleteRecording(recordingID);
 }
 
 void PlaybackBox::Delete(DeleteFlags flags)
 {
-    uint chanid;
-    QDateTime recstartts;
-    while (extract_one_del(m_delList, chanid, recstartts))
+    uint recordingID;
+    while (extract_one_del(m_delList, recordingID))
     {
         if (flags & kIgnore)
             continue;
 
-        RemoveProgram(chanid, recstartts,
-                      flags & kForgetHistory, flags & kForce);
+        RemoveProgram(recordingID, flags & kForgetHistory, flags & kForce);
 
         if (!(flags & kAllRemaining))
             break;
@@ -3516,30 +3506,12 @@ void PlaybackBox::ShowAllRecordings(void)
 
 ProgramInfo *PlaybackBox::FindProgramInUILists(const ProgramInfo &pginfo)
 {
-    return FindProgramInUILists(
-        pginfo.GetChanID(), pginfo.GetRecordingStartTime(),
-        pginfo.GetRecordingGroup());
+    return FindProgramInUILists( pginfo.GetRecordingID(),
+                                 pginfo.GetRecordingGroup());
 }
 
-/// Extracts chanid and recstartts from a string constructed by
-/// ProgramInfo::MakeUniqueKey() returns the matching program info
-/// from the UI program info lists.
-ProgramInfo *PlaybackBox::FindProgramInUILists(const QString &key)
-{
-    uint chanid;
-    QDateTime recstartts;
-    if (ProgramInfo::ExtractKey(key, chanid, recstartts))
-        return FindProgramInUILists(chanid, recstartts);
-
-    LOG(VB_GENERAL, LOG_ERR, LOC +
-        QString("FindProgramInUILists(%1) called with invalid key").arg(key));
-
-    return NULL;
-}
-
-ProgramInfo *PlaybackBox::FindProgramInUILists(
-    uint chanid, const QDateTime &recstartts,
-    QString recgroup)
+ProgramInfo *PlaybackBox::FindProgramInUILists(uint recordingID,
+                                               QString recgroup)
 {
     // LiveTV ProgramInfo's are not in the aggregated list
     ProgramList::iterator _it[2] = {
@@ -3558,8 +3530,7 @@ ProgramInfo *PlaybackBox::FindProgramInUILists(
         ProgramList::iterator it = _it[i], end = _end[i];
         for (; it != end; ++it)
         {
-            if ((*it)->GetRecordingStartTime() == recstartts &&
-                (*it)->GetChanID() == chanid)
+            if ((*it)->GetRecordingID() == recordingID)
             {
                 return *it;
             }
@@ -3684,23 +3655,23 @@ void PlaybackBox::togglePlayListItem(ProgramInfo *pginfo)
     if (!pginfo)
         return;
 
-    QString key = pginfo->MakeUniqueKey();
+    uint recordingID = pginfo->GetRecordingID();
 
     MythUIButtonListItem *item =
                     m_recordingList->GetItemByData(qVariantFromValue(pginfo));
 
-    if (m_playList.contains(key))
+    if (m_playList.contains(recordingID))
     {
         if (item)
             item->DisplayState("no", "playlist");
 
-        m_playList.removeAll(key);
+        m_playList.removeAll(recordingID);
     }
     else
     {
         if (item)
           item->DisplayState("yes", "playlist");
-        m_playList.append(key);
+        m_playList.append(recordingID);
     }
 }
 
@@ -3952,13 +3923,9 @@ void PlaybackBox::customEvent(QEvent *event)
         if (message.startsWith("RECORDING_LIST_CHANGE"))
         {
             QStringList tokens = message.simplified().split(" ");
-            uint chanid = 0;
-            QDateTime recstartts;
-            if (tokens.size() >= 4)
-            {
-                chanid = tokens[2].toUInt();
-                recstartts = MythDate::fromString(tokens[3]);
-            }
+            uint recordingID = 0;
+            if (tokens.size() >= 3)
+                recordingID = tokens[2].toUInt();
 
             if ((tokens.size() >= 2) && tokens[1] == "UPDATE")
             {
@@ -3966,19 +3933,18 @@ void PlaybackBox::customEvent(QEvent *event)
                 if (evinfo.HasPathname() || evinfo.GetChanID())
                     HandleUpdateProgramInfoEvent(evinfo);
             }
-            else if (chanid && recstartts.isValid() && (tokens[1] == "ADD"))
+            else if (recordingID && (tokens[1] == "ADD"))
             {
-                ProgramInfo evinfo(chanid, recstartts);
+                ProgramInfo evinfo(recordingID);
                 if (evinfo.GetChanID())
                 {
                     evinfo.SetRecordingStatus(rsRecording);
                     HandleRecordingAddEvent(evinfo);
                 }
             }
-            else if (chanid && recstartts.isValid() && (tokens[1] == "DELETE"))
+            else if (recordingID && (tokens[1] == "DELETE"))
             {
-                if (chanid && recstartts.isValid())
-                    HandleRecordingRemoveEvent(chanid, recstartts);
+                HandleRecordingRemoveEvent(recordingID);
             }
             else
             {
@@ -4017,19 +3983,17 @@ void PlaybackBox::customEvent(QEvent *event)
         {
             QStringList tokens = message.simplified().split(" ");
             bool ok = false;
-            uint chanid = 0;
-            QDateTime recstartts;
+            uint recordingID = 0;
             uint64_t filesize = 0ULL;
-            if (tokens.size() >= 4)
+            if (tokens.size() >= 3)
             {
-                chanid     = tokens[1].toUInt();
-                recstartts = MythDate::fromString(tokens[2]);
-                filesize   = tokens[3].toLongLong(&ok);
+                recordingID = tokens[1].toUInt();
+                filesize   = tokens[2].toLongLong(&ok);
             }
-            if (chanid && recstartts.isValid() && ok)
+            if (recordingID && ok)
             {
-                HandleUpdateProgramInfoFileSizeEvent(
-                    chanid, recstartts, filesize);
+
+                HandleUpdateProgramInfoFileSizeEvent(recordingID, filesize);
             }
         }
         else if (message == "UPDATE_UI_LIST")
@@ -4053,21 +4017,25 @@ void PlaybackBox::customEvent(QEvent *event)
         else if (message == "LOCAL_PBB_DELETE_RECORDINGS")
         {
             QStringList list;
-            for (uint i = 0; i+3 < (uint)me->ExtraDataList().size(); i+=4)
+            for (uint i = 0; i+2 < (uint)me->ExtraDataList().size(); i+=3)
             {
-                ProgramInfo *pginfo = m_programInfoCache.GetProgramInfo(
-                        me->ExtraDataList()[i+0].toUInt(),
-                        MythDate::fromString(me->ExtraDataList()[i+1]));
+                uint recordingID = me->ExtraDataList()[i+0].toUInt();
+                ProgramInfo *pginfo =
+                                m_programInfoCache.GetRecordingInfo(recordingID);
 
                 if (!pginfo)
+                {
+                    LOG(VB_GENERAL, LOG_WARNING, LOC +
+                                    QString("LOCAL_PBB_DELETE_RECORDINGS - "
+                                            "No matching recording %1")
+                                                    .arg(recordingID));
                     continue;
+                }
 
-                QString forceDeleteStr = me->ExtraDataList()[i+2];
-                QString forgetHistoryStr = me->ExtraDataList()[i+3];
+                QString forceDeleteStr = me->ExtraDataList()[i+1];
+                QString forgetHistoryStr = me->ExtraDataList()[i+2];
 
-                list.push_back(QString::number(pginfo->GetChanID()));
-                list.push_back(
-                    pginfo->GetRecordingStartTime(MythDate::ISODate));
+                list.push_back(QString::number(pginfo->GetRecordingID()));
                 list.push_back(forceDeleteStr);
                 list.push_back(forgetHistoryStr);
                 pginfo->SetAvailableStatus(asPendingDelete,
@@ -4089,14 +4057,13 @@ void PlaybackBox::customEvent(QEvent *event)
         }
         else if (message == "DELETE_FAILURES")
         {
-            if (me->ExtraDataList().size() < 4)
+            if (me->ExtraDataList().size() < 3)
                 return;
 
-            for (uint i = 0; i+3 < (uint)me->ExtraDataList().size(); i += 4)
+            for (uint i = 0; i+2 < (uint)me->ExtraDataList().size(); i += 3)
             {
-                ProgramInfo *pginfo = m_programInfoCache.GetProgramInfo(
-                        me->ExtraDataList()[i+0].toUInt(),
-                        MythDate::fromString(me->ExtraDataList()[i+1]));
+                ProgramInfo *pginfo = m_programInfoCache.GetRecordingInfo(
+                        me->ExtraDataList()[i+0].toUInt());
                 if (pginfo)
                 {
                     pginfo->SetAvailableStatus(asAvailable, "DELETE_FAILURES");
@@ -4104,7 +4071,7 @@ void PlaybackBox::customEvent(QEvent *event)
                 }
             }
 
-            bool forceDelete = me->ExtraDataList()[2].toUInt();
+            bool forceDelete = me->ExtraDataList()[1].toUInt();
             if (!forceDelete)
             {
                 m_delList = me->ExtraDataList();
@@ -4143,7 +4110,7 @@ void PlaybackBox::customEvent(QEvent *event)
         {
             const uint kMaxUIWaitTime = 10000; // ms
             QStringList list = me->ExtraDataList();
-            QString key = list[0];
+            uint recordingID = list[0].toUInt();
             CheckAvailabilityType cat =
                 (CheckAvailabilityType) list[1].toInt();
             AvailableStatusType availableStatus =
@@ -4158,7 +4125,7 @@ void PlaybackBox::customEvent(QEvent *event)
                 time_elapsed += 24 * 60 * 60 * 1000;
 
             AvailableStatusType old_avail = availableStatus;
-            ProgramInfo *pginfo = FindProgramInUILists(key);
+            ProgramInfo *pginfo = FindProgramInUILists(recordingID);
             if (pginfo)
             {
                 pginfo->SetFilesize(max(pginfo->GetFilesize(), fs));
@@ -4202,7 +4169,7 @@ void PlaybackBox::customEvent(QEvent *event)
         }
         else if ((message == "PLAY_PLAYLIST") && !m_playListPlay.empty())
         {
-            QString key = m_playListPlay.front();
+            uint recordingID = m_playListPlay.front();
             m_playListPlay.pop_front();
 
             if (!m_playListPlay.empty())
@@ -4213,27 +4180,27 @@ void PlaybackBox::customEvent(QEvent *event)
                     m_helper.CheckAvailability(*pginfo, kCheckForCache);
             }
 
-            ProgramInfo *pginfo = FindProgramInUILists(key);
+            ProgramInfo *pginfo = FindProgramInUILists(recordingID);
             if (pginfo)
                 Play(*pginfo, true, false, false);
         }
         else if ((message == "SET_PLAYBACK_URL") && (me->ExtraDataCount() == 2))
         {
-            QString piKey = me->ExtraData(0);
-            ProgramInfo *info = m_programInfoCache.GetProgramInfo(piKey);
+            uint recordingID = me->ExtraData(0).toUInt();
+            ProgramInfo *info = m_programInfoCache.GetRecordingInfo(recordingID);
             if (info)
                 info->SetPathname(me->ExtraData(1));
         }
         else if ((message == "FOUND_ARTWORK") && (me->ExtraDataCount() >= 5))
         {
-            VideoArtworkType type      = (VideoArtworkType) me->ExtraData(2).toInt();
-            QString          pikey     = me->ExtraData(3);
-            QString          group     = me->ExtraData(4);
-            QString          fn        = me->ExtraData(5);
+            VideoArtworkType type       = (VideoArtworkType) me->ExtraData(2).toInt();
+            uint             recordingID = me->ExtraData(3).toUInt();
+            QString          group      = me->ExtraData(4);
+            QString          fn         = me->ExtraData(5);
 
-            if (!pikey.isEmpty())
+            if (recordingID)
             {
-                ProgramInfo *pginfo = m_programInfoCache.GetProgramInfo(pikey);
+                ProgramInfo *pginfo = m_programInfoCache.GetRecordingInfo(recordingID);
                 if (pginfo &&
                     m_recordingList->GetItemByData(qVariantFromValue(pginfo)) ==
                     m_recordingList->GetItemCurrent() &&
@@ -4263,14 +4230,13 @@ void PlaybackBox::customEvent(QEvent *event)
         ScheduleCommon::customEvent(event);
 }
 
-void PlaybackBox::HandleRecordingRemoveEvent(
-    uint chanid, const QDateTime &recstartts)
+void PlaybackBox::HandleRecordingRemoveEvent(uint recordingID)
 {
-    if (!m_programInfoCache.Remove(chanid, recstartts))
+    if (!m_programInfoCache.Remove(recordingID))
     {
         LOG(VB_GENERAL, LOG_WARNING, LOC +
-            QString("Failed to remove %1:%2, reloading list")
-                .arg(chanid).arg(recstartts.toString(Qt::ISODate)));
+            QString("Failed to remove %1, reloading list")
+                .arg(recordingID));
         m_programInfoCache.ScheduleLoad();
         return;
     }
@@ -4286,8 +4252,7 @@ void PlaybackBox::HandleRecordingRemoveEvent(
         ProgramList::iterator pit = (*git).begin();
         while (pit != (*git).end())
         {
-            if ((*pit)->GetChanID()             == chanid &&
-                (*pit)->GetRecordingStartTime() == recstartts)
+            if ((*pit)->GetRecordingID() == recordingID)
             {
                 if (!git.key().isEmpty() && git.key() == groupname)
                 {
@@ -4351,7 +4316,7 @@ void PlaybackBox::HandleRecordingAddEvent(const ProgramInfo &evinfo)
 void PlaybackBox::HandleUpdateProgramInfoEvent(const ProgramInfo &evinfo)
 {
     QString old_recgroup = m_programInfoCache.GetRecGroup(
-        evinfo.GetChanID(), evinfo.GetRecordingStartTime());
+        evinfo.GetRecordingID());
 
     if (!m_programInfoCache.Update(evinfo))
         return;
@@ -4369,12 +4334,12 @@ void PlaybackBox::HandleUpdateProgramInfoEvent(const ProgramInfo &evinfo)
     ScheduleUpdateUIList();
 }
 
-void PlaybackBox::HandleUpdateProgramInfoFileSizeEvent(
-    uint chanid, const QDateTime &recstartts, uint64_t filesize)
+void PlaybackBox::HandleUpdateProgramInfoFileSizeEvent(uint recordingID,
+                                                       uint64_t filesize)
 {
-    m_programInfoCache.UpdateFileSize(chanid, recstartts, filesize);
+    m_programInfoCache.UpdateFileSize(recordingID, filesize);
 
-    ProgramInfo *dst = FindProgramInUILists(chanid, recstartts);
+    ProgramInfo *dst = FindProgramInUILists(recordingID);
     if (dst)
         UpdateUIListItem(dst, false);
 }
@@ -4738,7 +4703,7 @@ void PlaybackBox::ShowPlayGroupChanger(bool use_playlist)
 void PlaybackBox::doPlaylistExpireSetting(bool turnOn)
 {
     ProgramInfo *tmpItem;
-    QStringList::Iterator it;
+    QList<uint>::Iterator it;
 
     for (it = m_playList.begin(); it != m_playList.end(); ++it)
     {
@@ -4755,7 +4720,7 @@ void PlaybackBox::doPlaylistExpireSetting(bool turnOn)
 void PlaybackBox::doPlaylistWatchedSetting(bool turnOn)
 {
     ProgramInfo *tmpItem;
-    QStringList::Iterator it;
+    QList<uint>::Iterator it;
 
     for (it = m_playList.begin(); it != m_playList.end(); ++it)
     {
@@ -4887,7 +4852,7 @@ void PlaybackBox::setRecGroup(QString newRecGroup)
 
     if (m_op_on_playlist)
     {
-        QStringList::const_iterator it;
+        QList<uint>::const_iterator it;
         for (it = m_playList.begin(); it != m_playList.end(); ++it )
         {
             ProgramInfo *p = FindProgramInUILists(*it);
@@ -4941,7 +4906,7 @@ void PlaybackBox::setPlayGroup(QString newPlayGroup)
 
     if (m_op_on_playlist)
     {
-        QStringList::Iterator it;
+        QList<uint>::Iterator it;
 
         for (it = m_playList.begin(); it != m_playList.end(); ++it )
         {

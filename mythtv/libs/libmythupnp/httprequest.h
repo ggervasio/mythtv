@@ -19,8 +19,6 @@
 #include <QTextStream>
 #include <QTcpSocket>
 
-using namespace std;
-
 #include "upnpexp.h"
 #include "upnputil.h"
 #include "serializers/serializer.h"
@@ -152,15 +150,13 @@ class UPNP_PUBLIC HTTPRequest
         void            SetRequestProtocol  ( const QString &sLine  );
         ContentType     SetContentType      ( const QString &sType  );
 
-        void            SetServerHeaders    ( void );
-
         void            ProcessRequestLine  ( const QString &sLine  );
         bool            ProcessSOAPPayload  ( const QString &sSOAPAction );
         void            ExtractMethodFromURL( );
 
         QString         GetResponseStatus   ( void );
         QString         GetResponseType     ( void );
-        QString         GetAdditionalHeaders( void );
+        QString         GetResponseHeaders  ( void );
 
         bool            ParseRange          ( QString sRange, 
                                               long long   llSize, 
@@ -196,7 +192,11 @@ class UPNP_PUBLIC HTTPRequest
         qint64          SendResponse    ( void );
         qint64          SendResponseFile( QString sFileName );
 
-        QString         GetHeaderValue  ( const QString &sKey, QString sDefault );
+        void            SetResponseHeader ( const QString &sKey,
+                                            const QString &sValue,
+                                            bool replace = false );
+
+        QString         GetRequestHeader  ( const QString &sKey, QString sDefault );
 
         bool            GetKeepAlive () { return m_bKeepAlive; }
 
@@ -204,6 +204,8 @@ class UPNP_PUBLIC HTTPRequest
 
         QString         GetRequestProtocol  () const;
         QString         GetResponseProtocol () const;
+
+        QString         GetRequestType () const;
 
         static QString  GetMimeType     ( const QString &sFileExtension );
         static QStringList GetSupportedMimeTypes ();
@@ -221,9 +223,11 @@ class UPNP_PUBLIC HTTPRequest
         virtual qint64  ReadBlock       ( char *pData, qint64 nMaxLen, int msecs = 0 ) = 0;
         virtual qint64  WriteBlock      ( const char *pData,
                                           qint64 nLen    ) = 0;
-        virtual QString GetHostAddress  () = 0;
-        virtual QString GetPeerAddress  () = 0;
-        virtual int     getSocketHandle () = 0;
+        virtual QString  GetHostName     ();  // RFC 3875 - The name in the client request
+        virtual QString  GetHostAddress  () = 0;
+        virtual quint16  GetHostPort     () = 0;
+        virtual QString  GetPeerAddress  () = 0;
+        virtual int      getSocketHandle () = 0;
 };
 
 /////////////////////////////////////////////////////////////////////////////
@@ -241,12 +245,13 @@ class BufferedSocketDeviceRequest : public HTTPRequest
                  BufferedSocketDeviceRequest( QTcpSocket *pSocket );
         virtual ~BufferedSocketDeviceRequest() {};
 
-        virtual QString ReadLine        ( int msecs );
-        virtual qint64  ReadBlock       ( char *pData, qint64 nMaxLen, int msecs = 0  );
-        virtual qint64  WriteBlock      ( const char *pData, qint64 nLen    );
-        virtual QString GetHostAddress  ();
-        virtual QString GetPeerAddress  ();
-        virtual int     getSocketHandle () {return( m_pSocket->socketDescriptor() ); }
+        virtual QString  ReadLine        ( int msecs );
+        virtual qint64   ReadBlock       ( char *pData, qint64 nMaxLen, int msecs = 0  );
+        virtual qint64   WriteBlock      ( const char *pData, qint64 nLen    );
+        virtual QString  GetHostAddress  ();
+        virtual quint16  GetHostPort     ();
+        virtual QString  GetPeerAddress  ();
+        virtual int      getSocketHandle () {return( m_pSocket->socketDescriptor() ); }
 
 };
 

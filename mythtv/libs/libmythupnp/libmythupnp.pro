@@ -28,7 +28,7 @@ HEADERS += configuration.h
 HEADERS += soapclient.h mythxmlclient.h mmembuf.h upnpexp.h
 HEADERS += upnpserviceimpl.h
 HEADERS += servicehost.h wsdl.h htmlserver.h serverSideScripting.h xsd.h
-HEADERS += upnphelpers.h
+HEADERS += upnphelpers.h websocket.h
 
 HEADERS += services/rtti.h
 HEADERS += serviceHosts/rttiServiceHost.h
@@ -36,6 +36,8 @@ HEADERS += serviceHosts/rttiServiceHost.h
 HEADERS += serializers/serializer.h     serializers/xmlSerializer.h 
 HEADERS += serializers/jsonSerializer.h serializers/soapSerializer.h
 HEADERS += serializers/xmlplistSerializer.h
+
+HEADERS += websocket_extensions/*.h
 
 SOURCES += mmulticastsocketdevice.cpp
 SOURCES += msocketdevice.cpp
@@ -49,13 +51,15 @@ SOURCES += configuration.cpp soapclient.cpp mythxmlclient.cpp mmembuf.cpp
 SOURCES += upnpserviceimpl.cpp
 SOURCES += htmlserver.cpp serverSideScripting.cpp
 SOURCES += servicehost.cpp wsdl.cpp upnpsubscription.cpp xsd.cpp
-SOURCES += upnphelpers.cpp
+SOURCES += upnphelpers.cpp websocket.cpp
 
 SOURCES += services/rtti.cpp
 
 SOURCES += serializers/serializer.cpp     serializers/xmlSerializer.cpp
 SOURCES += serializers/jsonSerializer.cpp 
 SOURCES += serializers/xmlplistSerializer.cpp
+
+SOURCES += websocket_extensions/*.cpp
 
 INCLUDEPATH += ../libmythbase ../libmythservicecontracts ..
 INCLUDEPATH += ./serializers

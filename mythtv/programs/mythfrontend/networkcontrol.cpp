@@ -1226,10 +1226,10 @@ QString NetworkControl::processTheme( NetworkCommand* nc)
 
         QString widgetName = nc->getArg(2);
         QStringList path = widgetName.split('/');
-        int x = nc->getArg(3).toInt();
-        int y = nc->getArg(4).toInt();
-        int w = nc->getArg(5).toInt();
-        int h = nc->getArg(6).toInt();
+        QString x = nc->getArg(3);
+        QString y = nc->getArg(4);
+        QString w = nc->getArg(5);
+        QString h = nc->getArg(6);
 
         MythScreenStack *stack = GetMythMainWindow()->GetStack("popup stack");
         MythScreenType *topScreen = stack->GetTopScreen();
@@ -1421,7 +1421,7 @@ QString NetworkControl::processHelp(NetworkCommand *nc)
             "theme showborders                - Toggle showing widget borders\r\n"
             "theme shownames ON/OFF           - Toggle showing widget names\r\n"
             "theme getwidgetnames PATH        - Display the name and type of all the child widgets from PATH\r\n"
-            "theme getarea WIDGETNAME         - Get the position of widget WIDGET on the active screen\r\n"
+            "theme getarea WIDGETNAME         - Get the area of widget WIDGET on the active screen\r\n"
             "theme setarea WIDGETNAME X Y W H - Change the area of widget WIDGET to X Y W H on the active screen\r\n";
     }
 

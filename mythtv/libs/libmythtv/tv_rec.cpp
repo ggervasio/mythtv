@@ -119,7 +119,7 @@ TVRec::TVRec(int capturecardnum)
       // tvchain
       tvchain(NULL),
       // RingBuffer info
-      ringBuffer(NULL), rbFileExt("mpg")
+      ringBuffer(NULL), rbFileExt("ts")
 {
     QMutexLocker locker(&cardsLock);
     cards[cardid] = this;
@@ -271,7 +271,7 @@ ProgramInfo *TVRec::GetRecording(void)
     }
     else
         tmppginfo = new ProgramInfo();
-    tmppginfo->SetCardID(cardid);
+    tmppginfo->SetInputID(cardid);
 
     return tmppginfo;
 }
@@ -299,9 +299,9 @@ void TVRec::RecordPending(const ProgramInfo *rcinfo, int secsleft,
     if (secsleft < 0)
     {
         LOG(VB_RECORD, LOG_INFO, LOC + "Pending recording revoked on " +
-            QString("inputid %1").arg(rcinfo->GetInputID()));
+            QString("cardid %1").arg(rcinfo->GetInputID()));
 
-        PendingMap::iterator it = pendingRecordings.find(rcinfo->GetCardID());
+        PendingMap::iterator it = pendingRecordings.find(rcinfo->GetInputID());
         if (it != pendingRecordings.end())
         {
             (*it).ask = false;
@@ -311,7 +311,7 @@ void TVRec::RecordPending(const ProgramInfo *rcinfo, int secsleft,
     }
 
     LOG(VB_RECORD, LOG_INFO, LOC +
-        QString("RecordPending on inputid %1").arg(rcinfo->GetInputID()));
+        QString("RecordPending on cardid %1").arg(rcinfo->GetInputID()));
 
     PendingInfo pending;
     pending.info            = new ProgramInfo(*rcinfo);
@@ -320,17 +320,17 @@ void TVRec::RecordPending(const ProgramInfo *rcinfo, int secsleft,
     pending.ask             = true;
     pending.doNotAsk        = false;
 
-    pendingRecordings[rcinfo->GetCardID()] = pending;
+    pendingRecordings[rcinfo->GetInputID()] = pending;
 
     // If this isn't a recording for this instance to make, we are done
-    if (rcinfo->GetCardID() != cardid)
+    if (rcinfo->GetInputID() != cardid)
         return;
 
     // We also need to check our input groups
     vector<uint> cardids = CardUtil::GetConflictingCards(
         rcinfo->GetInputID(), cardid);
 
-    pendingRecordings[rcinfo->GetCardID()].possibleConflicts = cardids;
+    pendingRecordings[rcinfo->GetInputID()].possibleConflicts = cardids;
 
     pendlock.unlock();
     statelock.unlock();
@@ -959,7 +959,7 @@ void TVRec::FinishedRecording(RecordingInfo *curRec, RecordingQuality *recq)
             .arg(toString(is_good ? curRec->GetRecordingStatus()
                           : rsFailed, kSingleRecord)));
         MythEvent me(QString("UPDATE_RECORDING_STATUS %1 %2 %3 %4 %5")
-                     .arg(curRec->GetCardID())
+                     .arg(curRec->GetInputID())
                      .arg(curRec->GetChanID())
                      .arg(curRec->GetScheduledStartTime(MythDate::ISODate))
                      .arg(is_good ? curRec->GetRecordingStatus() : rsFailed)
@@ -1121,7 +1121,7 @@ void TVRec::ChangeState(TVState nextState)
 void TVRec::TeardownRecorder(uint request_flags)
 {
     LOG(VB_RECORD, LOG_INFO, LOC + QString("TeardownRecorder(%1)")
-        .arg(request_flags & kFlagKillRec ? "kFlagKillRec" : ""));
+        .arg((request_flags & kFlagKillRec) ? "kFlagKillRec" : ""));
 
     pauseNotify = false;
     ispip = false;
@@ -1214,9 +1214,9 @@ static bool get_use_eit(uint cardid)
     MSqlQuery query(MSqlQuery::InitCon());
     query.prepare(
         "SELECT SUM(useeit) "
-        "FROM videosource, cardinput "
-        "WHERE videosource.sourceid = cardinput.sourceid AND"
-        "      cardinput.cardid     = :CARDID");
+        "FROM videosource, capturecard "
+        "WHERE videosource.sourceid = capturecard.sourceid AND"
+        "      capturecard.cardid     = :CARDID");
     query.bindValue(":CARDID", cardid);
 
     if (!query.exec() || !query.isActive())
@@ -1234,9 +1234,9 @@ static bool is_dishnet_eit(uint cardid)
     MSqlQuery query(MSqlQuery::InitCon());
     query.prepare(
         "SELECT SUM(dishnet_eit) "
-        "FROM videosource, cardinput "
-        "WHERE videosource.sourceid = cardinput.sourceid AND"
-        "      cardinput.cardid     = :CARDID");
+        "FROM videosource, capturecard "
+        "WHERE videosource.sourceid = capturecard.sourceid AND"
+        "      capturecard.cardid     = :CARDID");
     query.bindValue(":CARDID", cardid);
 
     if (!query.exec() || !query.isActive())
@@ -1564,7 +1564,7 @@ void TVRec::HandlePendingRecordings(void)
         {
             LOG(VB_RECORD, LOG_INFO, LOC + "Deleting stale pending recording " +
                 QString("%1 '%2'")
-                    .arg((*it).info->GetCardID())
+                    .arg((*it).info->GetInputID())
                     .arg((*it).info->GetTitle()));
 
             delete (*it).info;
@@ -1577,7 +1577,7 @@ void TVRec::HandlePendingRecordings(void)
     it = pendingRecordings.begin();
     if ((1 == pendingRecordings.size()) &&
         (*it).ask &&
-        ((*it).info->GetCardID() == cardid) &&
+        ((*it).info->GetInputID() == cardid) &&
         (GetState() == kState_WatchingLiveTV))
     {
         CheckForRecGroupChange();
@@ -1708,8 +1708,8 @@ QString TVRec::GetStartChannel(uint cardid, const QString &startinput)
     MSqlQuery query(MSqlQuery::InitCon());
     query.prepare(
         "SELECT startchan "
-        "FROM cardinput "
-        "WHERE cardinput.cardid   = :CARDID    AND "
+        "FROM capturecard "
+        "WHERE capturecard.cardid = :CARDID    AND "
         "      inputname          = :INPUTNAME");
     query.bindValue(":CARDID",    cardid);
     query.bindValue(":INPUTNAME", startinput);
@@ -1733,9 +1733,8 @@ QString TVRec::GetStartChannel(uint cardid, const QString &startinput)
     // get a valid channel on our current input.
     query.prepare(
         "SELECT channum "
-        "FROM capturecard, cardinput, channel "
-        "WHERE capturecard.cardid = cardinput.cardid   AND "
-        "      channel.sourceid   = cardinput.sourceid AND "
+        "FROM capturecard, channel "
+        "WHERE channel.sourceid   = capturecard.sourceid AND "
         "      capturecard.cardid = :CARDID AND "
         "      inputname          = :INPUTNAME");
     query.bindValue(":CARDID",    cardid);
@@ -1760,9 +1759,8 @@ QString TVRec::GetStartChannel(uint cardid, const QString &startinput)
     // widen search to any input.
     query.prepare(
         "SELECT channum, inputname "
-        "FROM capturecard, cardinput, channel "
-        "WHERE capturecard.cardid = cardinput.cardid   AND "
-        "      channel.sourceid   = cardinput.sourceid AND "
+        "FROM capturecard, channel "
+        "WHERE channel.sourceid   = capturecard.sourceid AND "
         "      capturecard.cardid = :CARDID");
     query.bindValue(":CARDID", cardid);
 
@@ -2186,13 +2184,13 @@ bool TVRec::ShouldSwitchToAnotherCard(QString chanid)
 
     query.prepare(
         "SELECT channel.channum "
-        "FROM channel,cardinput "
+        "FROM channel, capturecard "
         "WHERE ( channel.chanid = :CHANID OR             "
         "        ( channel.channum  = :CHANNUM AND       "
         "          channel.callsign = :CALLSIGN    )     "
         "      )                                     AND "
-        "      channel.sourceid = cardinput.sourceid AND "
-        "      cardinput.cardid = :CARDID");
+        "      channel.sourceid = capturecard.sourceid AND "
+        "      capturecard.cardid = :CARDID");
     query.bindValue(":CHANID", chanid);
     query.bindValue(":CHANNUM", channelname);
     query.bindValue(":CALLSIGN", callsign);
@@ -2211,14 +2209,14 @@ bool TVRec::ShouldSwitchToAnotherCard(QString chanid)
 
     // We didn't find it on the current card, so now we check other cards.
     query.prepare(
-        "SELECT channel.channum, cardinput.cardid "
-        "FROM channel,cardinput "
+        "SELECT channel.channum, capturecard.cardid "
+        "FROM channel, capturecard "
         "WHERE ( channel.chanid = :CHANID OR              "
         "        ( channel.channum  = :CHANNUM AND        "
         "          channel.callsign = :CALLSIGN    )      "
         "      )                                      AND "
-        "      channel.sourceid  = cardinput.sourceid AND "
-        "      cardinput.cardid != :CARDID");
+        "      channel.sourceid  = capturecard.sourceid AND "
+        "      capturecard.cardid != :CARDID");
     query.bindValue(":CHANID", chanid);
     query.bindValue(":CHANNUM", channelname);
     query.bindValue(":CALLSIGN", callsign);
@@ -2313,11 +2311,10 @@ bool TVRec::CheckChannelPrefix(const QString &prefix,
 
     MSqlQuery query(MSqlQuery::InitCon());
     QString basequery = QString(
-        "SELECT channel.chanid, channel.channum, cardinput.cardid "
-        "FROM channel, capturecard, cardinput "
+        "SELECT channel.chanid, channel.channum, capturecard.cardid "
+        "FROM channel, capturecard "
         "WHERE channel.channum LIKE '%1%'            AND "
-        "      channel.sourceid = cardinput.sourceid AND "
-        "      cardinput.cardid = capturecard.cardid");
+        "      channel.sourceid = capturecard.sourceid");
 
     QString cardquery[2] =
     {
@@ -2716,27 +2713,6 @@ void TVRec::CheckForRecGroupChange(void)
     }
 }
 
-static uint get_input_id(uint cardid, const QString &inputname)
-{
-    MSqlQuery query(MSqlQuery::InitCon());
-
-    query.prepare(
-        "SELECT cardinputid "
-        "FROM cardinput "
-        "WHERE cardid    = :CARDID AND "
-        "      inputname = :INNAME");
-
-    query.bindValue(":CARDID", cardid);
-    query.bindValue(":INNAME", inputname);
-
-    if (!query.exec() || !query.isActive())
-        MythDB::DBError("get_input_id", query);
-    else if (query.next())
-        return query.value(0).toUInt();
-
-    return 0;
-}
-
 /** \fn TVRec::NotifySchedulerOfRecording(RecordingInfo*)
  *  \brief Tell scheduler about the recording.
  *
@@ -2753,8 +2729,7 @@ void TVRec::NotifySchedulerOfRecording(RecordingInfo *rec)
 
     // Notify scheduler of the recording.
     // + set up recording so it can be resumed
-    rec->SetCardID(cardid);
-    rec->SetInputID(get_input_id(cardid, channel->GetCurrentInput()));
+    rec->SetInputID(cardid);
     rec->SetRecordingRuleType(rec->GetRecordingRule()->m_type);
 
     if (rec->GetRecordingRuleType() == kNotRecording)
@@ -2864,7 +2839,7 @@ void TVRec::SetLiveRecording(int recording)
     }
 
     MythEvent me(QString("UPDATE_RECORDING_STATUS %1 %2 %3 %4 %5")
-                 .arg(curRecording->GetCardID())
+                 .arg(curRecording->GetInputID())
                  .arg(curRecording->GetChanID())
                  .arg(curRecording->GetScheduledStartTime(MythDate::ISODate))
                  .arg(recstat)
@@ -4097,7 +4072,7 @@ MPEGStreamData *TVRec::TuningSignalCheck(void)
     {
         curRecording->SetRecordingStatus(newRecStatus);
         MythEvent me(QString("UPDATE_RECORDING_STATUS %1 %2 %3 %4 %5")
-                    .arg(curRecording->GetCardID())
+                    .arg(curRecording->GetInputID())
                     .arg(curRecording->GetChanID())
                     .arg(curRecording->GetScheduledStartTime(MythDate::ISODate))
                     .arg(newRecStatus)
@@ -4443,7 +4418,7 @@ void TVRec::TuningRestartRecorder(void)
         ProgramInfo *progInfo = tvchain->GetProgramAt(-1);
         RecordingInfo recinfo(*progInfo);
         delete progInfo;
-        recinfo.SetCardID(cardid);
+        recinfo.SetInputID(cardid);
         recorder->SetRecording(&recinfo);
     }
     recorder->Reset();
@@ -4651,7 +4626,7 @@ bool TVRec::GetProgramRingBufferForLiveTV(RecordingInfo **pginfo,
             chanid, MythDate::current(true), true, hoursMax);
     }
 
-    prog->SetCardID(cardid);
+    prog->SetInputID(cardid);
 
     if (prog->GetRecordingStartTime() == prog->GetRecordingEndTime())
     {

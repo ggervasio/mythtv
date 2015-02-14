@@ -201,6 +201,8 @@ NuppelVideoRecorder::NuppelVideoRecorder(TVRec *rec, ChannelBase *channel) :
     resetcapture = false;
 
     SetPositionMapType(MARK_KEYFRAME);
+
+    m_containerFormat = formatNUV;
 }
 
 NuppelVideoRecorder::~NuppelVideoRecorder(void)

@@ -230,6 +230,20 @@ void MpegRecorder::SetOption(const QString &opt, const QString &value)
         {
             if (QString(streamType[i]) == value)
             {
+                if (QString(streamType[i]) == "MPEG-2 TS")
+                {
+                     m_containerFormat = formatMPEG2_TS;
+                }
+                else if (QString(streamType[i]) == "MPEG-2 PS")
+                {
+                     m_containerFormat = formatMPEG2_PS;
+                }
+                else
+                {
+                    // TODO Expand AVContainer to include other types in
+                    //      streamType
+                    m_containerFormat = formatUnknown;
+                }
                 streamtype = i;
                 found = true;
                 break;

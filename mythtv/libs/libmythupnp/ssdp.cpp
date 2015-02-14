@@ -27,6 +27,8 @@
 #include <stdlib.h>
 #include <errno.h>
 
+using namespace std;
+
 /////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////
 //
@@ -745,7 +747,7 @@ void SSDPExtension::GetDeviceDesc( HTTPRequest *pRequest )
 {
     pRequest->m_eResponseType = ResponseTypeXML;
 
-    QString sUserAgent = pRequest->GetHeaderValue( "User-Agent", "" );
+    QString sUserAgent = pRequest->GetRequestHeader( "User-Agent", "" );
 
     LOG(VB_UPNP, LOG_DEBUG, "SSDPExtension::GetDeviceDesc - " +
         QString( "Host=%1 Port=%2 UserAgent=%3" )
