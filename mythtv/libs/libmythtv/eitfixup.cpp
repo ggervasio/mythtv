@@ -35,6 +35,7 @@ EITFixUp::EITFixUp()
       m_ukThen("\\s*(Then|Followed by) 60 Seconds\\.", Qt::CaseInsensitive),
       m_ukNew("(New\\.|\\s*(Brand New|New)\\s*(Series|Episode)\\s*[:\\.\\-])",Qt::CaseInsensitive),
       m_ukNewTitle("^(Brand New|New:)\\s*",Qt::CaseInsensitive),
+      m_ukAlsoInHD("\\s*Also in HD\\.",Qt::CaseInsensitive),
       m_ukCEPQ("[:\\!\\.\\?]"),
       m_ukColonPeriod("[:\\.]"),
       m_ukDotSpaceStart("^\\. "),
@@ -42,7 +43,7 @@ EITFixUp::EITFixUp()
       m_ukSpaceColonStart("^[ |:]*"),
       m_ukSpaceStart("^ "),
       m_ukPart("\\s*\\(?\\s*(?:Part|Pt)\\s*(\\d{1,2})\\s*(?:of|/)\\s*(\\d{1,2})\\s*\\)?\\s*(?:\\.|:)?", Qt::CaseInsensitive),
-      m_ukSeries("\\s*\\(?\\s*(?!Part|Pt)(?:Season|Series|S)?\\s*(\\d{1,2})(?:,|:)?\\s*(?:Episode|Ep)?\\s*(\\d{1,2})\\s*(?:of|/)\\s*(\\d{1,2})\\s*\\)?\\s*(?:\\.|:)?", Qt::CaseInsensitive),
+      m_ukSeries("\\s*\\(?\\s*(?!Part|Pt)((?:Season|Series|S)\\s*(\\d{1,2})(?:,|:)?)?\\s*(?:Episode|Ep)?\\s*(\\d{1,2})\\s*((?:of|/)\\s*(\\d{1,2})\\s*)?\\)?\\s*(?:\\.|:)?", Qt::CaseInsensitive),
       m_ukCC("\\[(?:(AD|SL|S|W|HD),?)+\\]"),
       m_ukYear("[\\[\\(]([\\d]{4})[\\)\\]]"),
       m_uk24ep("^\\d{1,2}:00[ap]m to \\d{1,2}:00[ap]m: "),
@@ -735,10 +736,18 @@ void EITFixUp::FixUK(DBEventEIT &event) const
     // "All New To 4Music!
     event.description = event.description.remove(m_ukAllNew);
 
+    // Removal of 'Also in HD' text
+ 	event.description = event.description.remove(m_ukAlsoInHD);
+
     // Remove [AD,S] etc.
+    bool    ccMatched = false;
     QRegExp tmpCC = m_ukCC;
-    if ((position1 = tmpCC.indexIn(event.description)) != -1)
+    position1 = 0;
+    while ((position1 = tmpCC.indexIn(event.description, position1)) != -1)
     {
+        ccMatched = true;
+        position1 += tmpCC.matchedLength();
+
         QStringList tmpCCitems = tmpCC.cap(0).remove("[").remove("]").split(",");
         if (tmpCCitems.contains("AD"))
             event.audioProps |= AUD_VISUALIMPAIR;
@@ -750,8 +759,10 @@ void EITFixUp::FixUK(DBEventEIT &event) const
             event.subtitleType |= SUB_SIGNED;
         if (tmpCCitems.contains("W"))
             event.videoProps |= VID_WIDESCREEN;
-        event.description = event.description.remove(m_ukCC);
     }
+
+    if(ccMatched)
+        event.description = event.description.remove(m_ukCC);
 
     event.title       = event.title.trimmed();
     event.description = event.description.trimmed();
@@ -762,17 +773,22 @@ void EITFixUp::FixUK(DBEventEIT &event) const
     QRegExp tmpSeries = m_ukSeries;
     if ((position1 = tmpSeries.indexIn(event.title)) != -1)
     {
-        if (!tmpSeries.cap(1).isEmpty())
+        if (!tmpSeries.cap(2).isEmpty())
         {
-            event.season = tmpSeries.cap(1).toUInt();
+            event.season = tmpSeries.cap(2).toUInt();
             series = true;
         }
 
-        if ((tmpSeries.cap(2).toUInt() <= tmpSeries.cap(3).toUInt())
-            && tmpSeries.cap(3).toUInt()<=50)
+        if (tmpSeries.cap(5).isEmpty())
         {
-            event.episode = tmpSeries.cap(2).toUInt();
-            event.totalepisodes  = tmpSeries.cap(3).toUInt();
+            event.episode = tmpSeries.cap(3).toUInt();
+            series = true;
+        }
+        else if ((tmpSeries.cap(3).toUInt() <= tmpSeries.cap(5).toUInt())
+                 && tmpSeries.cap(5).toUInt() <= 50)
+        {
+            event.episode = tmpSeries.cap(3).toUInt();
+            event.totalepisodes  = tmpSeries.cap(5).toUInt();
             series = true;
         }
 
@@ -783,17 +799,22 @@ void EITFixUp::FixUK(DBEventEIT &event) const
     }
     else if ((position1 = tmpSeries.indexIn(event.description)) != -1)
     {
-        if (!tmpSeries.cap(1).isEmpty())
+        if (!tmpSeries.cap(2).isEmpty())
         {
-            event.season = tmpSeries.cap(1).toUInt();
+            event.season = tmpSeries.cap(2).toUInt();
             series = true;
         }
 
-        if ((tmpSeries.cap(2).toUInt() <= tmpSeries.cap(3).toUInt())
-            && tmpSeries.cap(3).toUInt() <= 50)
+        if (tmpSeries.cap(5).isEmpty())
         {
-            event.episode = tmpSeries.cap(2).toUInt();
-            event.totalepisodes  = tmpSeries.cap(3).toUInt();
+            event.episode = tmpSeries.cap(3).toUInt();
+            series = true;
+        }
+        else if ((tmpSeries.cap(3).toUInt() <= tmpSeries.cap(5).toUInt())
+                 && tmpSeries.cap(5).toUInt() <= 50)
+        {
+            event.episode = tmpSeries.cap(3).toUInt();
+            event.totalepisodes  = tmpSeries.cap(5).toUInt();
             series = true;
         }
 
@@ -2092,8 +2113,8 @@ void EITFixUp::FixDK(DBEventEIT &event) const
         }
     }
     // Description search
-    // Season (Sæson [:digit:]+.) => episode = season episode number
-    // or year (- år [:digit:]+(\\)|:) ) => episode = total episode number
+    // Season (SÃ¦son [:digit:]+.) => episode = season episode number
+    // or year (- Ã¥r [:digit:]+(\\)|:) ) => episode = total episode number
     tmpRegEx = m_dkSeason1;
     position = event.description.indexOf(tmpRegEx);
     if (position != -1)

@@ -30,6 +30,7 @@
 #include <QSslSocket>
 #include <QSslCipher>
 #include <QSslCertificate>
+#include <QUuid>
 
 // MythTV headers
 #include "upnputil.h"
@@ -44,6 +45,55 @@
 #include "serviceHosts/rttiServiceHost.h"
 
 using namespace std;
+
+
+/**
+ * \brief Handle an OPTIONS request
+ */
+bool HttpServerExtension::ProcessOptions(HTTPRequest* pRequest)
+{
+    pRequest->m_eResponseType   = ResponseTypeHeader;
+    pRequest->m_nResponseStatus = 405; // Method Not Available
+
+    QStringList allowedMethods;
+    if (m_nSupportedMethods & RequestTypeGet)
+        allowedMethods.append("GET");
+    if (m_nSupportedMethods & RequestTypeHead)
+        allowedMethods.append("HEAD");
+    if (m_nSupportedMethods & RequestTypePost)
+        allowedMethods.append("POST");
+//     if (m_nSupportedMethods & RequestTypePut)
+//         allowedMethods.append("PUT");
+//     if (m_nSupportedMethods & RequestTypeDelete)
+//         allowedMethods.append("DELETE");
+//     if (m_nSupportedMethods & RequestTypeConnect)
+//         allowedMethods.append("CONNECT");
+    if (m_nSupportedMethods & RequestTypeOptions)
+        allowedMethods.append("OPTIONS");
+//     if (m_nSupportedMethods & RequestTypeTrace)
+//         allowedMethods.append("TRACE");
+    if (m_nSupportedMethods & RequestTypeMSearch)
+        allowedMethods.append("M-SEARCH");
+    if (m_nSupportedMethods & RequestTypeSubscribe)
+        allowedMethods.append("SUBSCRIBE");
+    if (m_nSupportedMethods & RequestTypeUnsubscribe)
+        allowedMethods.append("UNSUBSCRIBE");
+    if (m_nSupportedMethods & RequestTypeNotify)
+        allowedMethods.append("NOTIFY");
+
+    if (!allowedMethods.isEmpty())
+    {
+        pRequest->SetResponseHeader("Allow", allowedMethods.join(", "));
+        return true;
+    }
+
+    LOG(VB_GENERAL, LOG_ERR, QString("HttpServerExtension::ProcessOptions(): "
+                                     "Error: No methods supported for "
+                                     "extension - %1").arg(m_sName));
+
+    return false;
+}
+
 
 /////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////
@@ -62,7 +112,8 @@ QString  HttpServer::s_platform;
 
 HttpServer::HttpServer() :
     ServerPool(), m_sSharePath(GetShareDir()),
-    m_threadPool("HttpServerPool"), m_running(true)
+    m_threadPool("HttpServerPool"), m_running(true),
+    m_privateToken(QUuid::createUuid().toString()) // Cryptographically random and sufficiently long enough to act as a secure token
 {
     // Number of connections processed concurrently
     int maxHttpWorkers = max(QThread::idealThreadCount() * 2, 2); // idealThreadCount can return -1
@@ -186,8 +237,22 @@ void HttpServer::LoadSSLConfig()
     if (!certList.isEmpty())
         hostCert = certList.first();
 
-    if (hostCert.isValid())
+    if (!hostCert.isNull())
+    {
+        if (hostCert.effectiveDate() > QDateTime::currentDateTime())
+        {
+            LOG(VB_GENERAL, LOG_ERR, QString("HttpServer: Host certificate start date in future (%1)").arg(hostCertPath));
+            return;
+        }
+
+        if (hostCert.expiryDate() < QDateTime::currentDateTime())
+        {
+            LOG(VB_GENERAL, LOG_ERR, QString("HttpServer: Host certificate has expired (%1)").arg(hostCertPath));
+            return;
+        }
+
         m_sslConfig.setLocalCertificate(hostCert);
+    }
     else
     {
         LOG(VB_GENERAL, LOG_ERR, QString("HttpServer: Unable to load host cert from file (%1)").arg(hostCertPath));
@@ -306,7 +371,10 @@ void HttpServer::DelegateRequest(HTTPRequest *pRequest)
     {
         try
         {
-            bProcessed = list[ nIdx ]->ProcessRequest(pRequest);
+            if (pRequest->m_eType == RequestTypeOptions)
+                bProcessed = list[ nIdx ]->ProcessOptions(pRequest);
+            else
+                bProcessed = list[ nIdx ]->ProcessRequest(pRequest);
         }
         catch(...)
         {
@@ -322,7 +390,10 @@ void HttpServer::DelegateRequest(HTTPRequest *pRequest)
     {
         try
         {
-            bProcessed = (*it)->ProcessRequest(pRequest);
+            if (pRequest->m_eType == RequestTypeOptions)
+                bProcessed = (*it)->ProcessOptions(pRequest);
+            else
+                bProcessed = (*it)->ProcessRequest(pRequest);
         }
         catch(...)
         {
@@ -392,6 +463,7 @@ void HttpWorker::run(void)
     bool                    bKeepAlive = true;
     HTTPRequest            *pRequest   = NULL;
     QTcpSocket             *pSocket;
+    bool                    bEncrypted = false;
 
     if (m_connectionType == kSSLServer)
     {
@@ -406,6 +478,7 @@ void HttpWorker::run(void)
             {
                 LOG(VB_HTTP, LOG_INFO, "SSL Handshake occurred, connection encrypted");
                 LOG(VB_HTTP, LOG_INFO, QString("Using %1 cipher").arg(pSslSocket->sessionCipher().name()));
+                bEncrypted = true;
             }
             else
             {
@@ -439,8 +512,7 @@ void HttpWorker::run(void)
 
     try
     {
-        while (m_httpServer.IsRunning() && bKeepAlive && pSocket &&
-               pSocket->isValid() &&
+        while (m_httpServer.IsRunning() && bKeepAlive && pSocket->isValid() &&
                pSocket->state() == QAbstractSocket::ConnectedState)
         {
             // We set a timeout on keep-alive connections to avoid blocking
@@ -465,6 +537,7 @@ void HttpWorker::run(void)
                 pRequest = new BufferedSocketDeviceRequest( pSocket );
                 if (pRequest != NULL)
                 {
+                    pRequest->m_bEncrypted = bEncrypted;
                     if ( pRequest->ParseRequest() )
                     {
                         bKeepAlive = pRequest->GetKeepAlive();
@@ -479,7 +552,9 @@ void HttpWorker::run(void)
                         // delegate processing to HttpServerExtensions.
                         // ------------------------------------------------------
                         if ((pRequest->m_nResponseStatus != 400) &&
-                            (pRequest->m_nResponseStatus != 401))
+                            (pRequest->m_nResponseStatus != 401) &&
+                            (pRequest->m_nResponseStatus != 403) &&
+                            pRequest->m_eType != RequestTypeUnknown)
                             m_httpServer.DelegateRequest(pRequest);
 
                         nRequestsHandled++;

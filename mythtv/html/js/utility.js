@@ -10,8 +10,6 @@
 
 function getArg(name)
 {
-    name = name.toLowerCase();
-
     if (isValidObject(this.Parameters))
         return this.Parameters[name];
     else
@@ -28,6 +26,14 @@ function getBoolArg(name)
 {
     // Should check for string types here such as 'true' and 'false'
     return Boolean(getIntegerArg(name));
+}
+
+function getArgArray()
+{
+    if (isValidObject(this.Parameters))
+        return this.Parameters;
+    else
+        return Array();
 }
 
 function getArgCount()

@@ -254,9 +254,9 @@ function showDetail(parentID, type)
     // FIXME: We should be able to get a Program object back from
     // from the Services API that contains all the information available
     // whether it's a recording or not
-    var url = "/tv/ajax_backends/program_util.qsp?_action=getProgramDetailHTML&chanID=" + chanId + "&startTime=" + startTime;
+    var url = "/tv/ajax_backends/program_util.qsp?_action=getProgramDetailHTML&ChanId=" + chanId + "&StartTime=" + startTime;
     if (type == "recording")
-        url = "/tv/ajax_backends/program_util.qsp?_action=getRecordingDetailHTML&recordedID=" + recordedId;
+        url = "/tv/ajax_backends/program_util.qsp?_action=getRecordingDetailHTML&RecordedId=" + recordedId;
 
     var ajaxRequest = $.ajax( url )
                             .done(function()
@@ -339,7 +339,7 @@ function loadScheduler(type, chanID, startTime)
 
 function checkRecordingStatus(chanID, startTime)
 {
-//     var url = "/tv/ajax_backends/dvr_util.qsp?_action=checkRecStatus&chanID=" + chanID + "&startTime=" + startTime;
+//     var url = "/tv/ajax_backends/dvr_util.qsp?_action=checkRecStatus&ChanId=" + chanID + "&StartTime=" + startTime;
 //     var ajaxRequest = $.ajax( url ).done(function()
 //                             {
 //                                 var response = ajaxRequest.responseText.trim().split("#");
@@ -391,12 +391,13 @@ function deleteRecRule(chanID, startTime)
         return;
     }
     hideMenu("optMenu");
-    var url = "/tv/ajax_backends/dvr_util.qsp?_action=deleteRecRule&recRuleID=" + recRuleID + "&chanID=" + chanID + "&startTime=" + startTime;
+    var url = "/tv/ajax_backends/dvr_util.qsp?_action=deleteRecRule&RecRuleId=" + recRuleID + "&ChanId=" + chanID + "&StartTime=" + startTime;
     var ajaxRequest = $.ajax( url )
                             .done(function()
                             {
                                 var response = ajaxRequest.responseText.trim().split("#");
                                 recRuleChanged( response[0], response[1] );
+                                reloadTVContent();
                             });
 }
 
@@ -410,7 +411,7 @@ function dontRecord(chanID, startTime)
     }
     var recRuleID = layer.getAttribute("data-recordid");
     hideMenu("optMenu");
-    var url = "/tv/ajax_backends/dvr_util.qsp?_action=dontRecord&chanID=" + chanID + "&startTime=" + startTime;
+    var url = "/tv/ajax_backends/dvr_util.qsp?_action=dontRecord&ChanId=" + chanID + "&StartTime=" + startTime;
     var ajaxRequest = $.ajax( url )
                             .done(function()
                             {
@@ -429,7 +430,7 @@ function neverRecord(chanID, startTime)
     }
     var recRuleID = layer.getAttribute("data-recordid");
     hideMenu("optMenu");
-    var url = "/tv/ajax_backends/dvr_util.qsp?_action=neverRecord&chanID=" + chanID + "&startTime=" + startTime;
+    var url = "/tv/ajax_backends/dvr_util.qsp?_action=neverRecord&ChanId=" + chanID + "&StartTime=" + startTime;
     var ajaxRequest = $.ajax( url )
                             .done(function()
                             {
@@ -460,10 +461,13 @@ function loadTVContent(url, targetDivID, transition, args)
 
     if (!targetDivID)
         targetDivID = "content";
-    if (!transition)
-        transition = "none"; // dissolve
+    if ((getSetting('', 'WebFrontend_enableAnimations', 1) == 0) ||
+        !transition)
+        transition = "none";
 
-    if (transition === "none")
+    console.log("Transition: " + transition);
+
+    if (targetDivID === "content" && transition === "none")
     {
         loadFrontendContent(url);
         return;
@@ -502,6 +506,10 @@ function loadTVContent(url, targetDivID, transition, args)
         case 'dissolve':
             dissolveTransition(targetDiv.id, newDiv.id);
             break;
+        case 'none':
+            postLoad(targetDiv.id, newDiv.id);
+            break;
+
     }
     newDiv.id = targetDivID;
 
@@ -557,7 +565,11 @@ function saveFormData(formElement, callback)
         dataType: "text",
         success:function(data, textStatus, jqXHR)
         {
-            callback(data.trim());
+            if (data)
+            {
+                console.log("saveFormData response: " + data.trim());
+                callback(data.trim());
+            }
             $("#saveFormDataSuccess").show().delay(5000).fadeOut();
         },
         error: function(jqXHR, textStatus, errorThrown)
@@ -586,8 +598,9 @@ function loadJScroll()
     });
 }
 
-function postLoad()
+function postLoad(oldDivID, newDivID)
 {
+    $("#" + oldDivID).remove();
     loadJScroll();
 }
 
@@ -599,8 +612,7 @@ function leftSlideTransition(oldDivID, newDivID)
     $("#" + newDivID).css("width", $("#" + oldDivID).width());
     $("#" + newDivID).addClass("leftSlideInTransitionStart");
     $("#" + oldDivID).bind("transitionend", function() {
-        $("#" + oldDivID).remove();
-        postLoad();
+        postLoad(oldDivID, newDivID);
 
     });
     $("#" + newDivID).bind("transitionend", function() {
@@ -620,8 +632,7 @@ function rightSlideTransition(oldDivID, newDivID)
     $("#" + newDivID).css("width", $("#" + oldDivID).width());
     $("#" + newDivID).addClass("rightSlideInTransitionStart");
     $("#" + oldDivID).bind("transitionend", function() {
-        $("#" + oldDivID).remove();
-        postLoad();
+        postLoad(oldDivID, newDivID);
 
     });
     $("#" + newDivID).bind("transitionend", function() {
@@ -648,8 +659,7 @@ function dissolveTransition(oldDivID, newDivID)
 
     // Browser prefixes suck
     $("#" + oldDivID).bind("webkitAnimationEnd", function() {
-        $("#" + oldDivID).remove();
-        postLoad();
+        postLoad(oldDivID, newDivID);
     });
     $("#" + newDivID).bind("webkitAnimationEnd", function() {
         $("#" + newDivID).removeClass("dissolveInTransitionStart");

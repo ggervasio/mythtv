@@ -18,6 +18,9 @@
 #include <QBuffer>
 #include <QTextStream>
 #include <QTcpSocket>
+#include <QDateTime>
+
+#include "mythsession.h"
 
 #include "upnpexp.h"
 #include "upnputil.h"
@@ -36,14 +39,22 @@
 typedef enum 
 {
     RequestTypeUnknown      = 0x0000,
+    // HTTP 1.1
     RequestTypeGet          = 0x0001,
     RequestTypeHead         = 0x0002,
     RequestTypePost         = 0x0004,
-    RequestTypeMSearch      = 0x0008,
-    RequestTypeSubscribe    = 0x0010,
-    RequestTypeUnsubscribe  = 0x0020,
-    RequestTypeNotify       = 0x0040,
-    RequestTypeResponse     = 0x0080
+//     RequestTypePut          = 0x0008,
+//     RequestTypeDelete       = 0x0010,
+//     RequestTypeConnect      = 0x0020,
+    RequestTypeOptions      = 0x0040,
+//     RequestTypeTrace        = 0x0080, // SECURITY: XST attack risk, shouldn't include cookies or other sensitive info
+    // UPnP
+    RequestTypeMSearch      = 0x0100,
+    RequestTypeSubscribe    = 0x0200,
+    RequestTypeUnsubscribe  = 0x0400,
+    RequestTypeNotify       = 0x0800,
+    // Not a request type
+    RequestTypeResponse     = 0x1000
 
 } RequestType;                
 
@@ -66,10 +77,10 @@ typedef enum
     ResponseTypeText     =  5,
     ResponseTypeSVG      =  6,
     ResponseTypeFile     =  7,
-    ResponseTypeOther    =  8
+    ResponseTypeOther    =  8,
+    ResponseTypeHeader   =  9
 
 } ResponseType;
-
 
 typedef struct
 {
@@ -105,14 +116,16 @@ class UPNP_PUBLIC HTTPRequest
         RequestType         m_eType;
         ContentType         m_eContentType;
 
-        QString             m_sRawRequest;
+        QString             m_sRawRequest; // e.g. GET /foo/bar.html HTTP/1.1
 
-        QString             m_sBaseUrl;
-        QString             m_sResourceUrl;
+        QString             m_sRequestUrl; // Raw request URL
+        QString             m_sBaseUrl; // Path section of URL, without parameters
+        QString             m_sResourceUrl; // Duplicate of Base URL!?
         QString             m_sMethod;
 
         QStringMap          m_mapParams;
         QStringMap          m_mapHeaders;
+        QStringMap          m_mapCookies;
 
         QString             m_sPayload;
 
@@ -121,6 +134,7 @@ class UPNP_PUBLIC HTTPRequest
         int                 m_nMinor;
 
         bool                m_bProtected;
+        bool                m_bEncrypted;
 
         bool                m_bSOAPRequest;
         QString             m_sNameSpace;
@@ -139,6 +153,9 @@ class UPNP_PUBLIC HTTPRequest
 
         IPostProcess       *m_pPostProcess;
 
+        QString             m_sPrivateToken;
+        MythUserSession     m_userSession;
+
     private:
 
         bool                m_bKeepAlive;
@@ -152,7 +169,7 @@ class UPNP_PUBLIC HTTPRequest
 
         void            ProcessRequestLine  ( const QString &sLine  );
         bool            ProcessSOAPPayload  ( const QString &sSOAPAction );
-        void            ExtractMethodFromURL( );
+        void            ExtractMethodFromURL( ); // Service method, not HTTP method
 
         QString         GetResponseStatus   ( void );
         QString         GetResponseType     ( void );
@@ -165,13 +182,22 @@ class UPNP_PUBLIC HTTPRequest
 
         bool            ParseKeepAlive      ( void );
 
+        void            ParseCookies        ( void );
+
         QString         BuildResponseHeader ( long long nSize );
 
         qint64          SendData            ( QIODevice *pDevice, qint64 llStart, qint64 llBytes );
         qint64          SendFile            ( QFile &file, qint64 llStart, qint64 llBytes );
 
-        bool            IsUrlProtected      ( const QString &sBaseUrl );
+        bool            IsProtected         () const { return m_bProtected; }
+        bool            IsEncrypted         () const { return m_bEncrypted; }
         bool            Authenticated       ();
+
+        QString         GetAuthenticationHeader (bool isStale = false);
+        QString         CalculateDigestNonce ( const QString &timeStamp);
+
+        bool            BasicAuthentication ();
+        bool            DigestAuthentication ();
 
     public:
         
@@ -196,6 +222,10 @@ class UPNP_PUBLIC HTTPRequest
                                             const QString &sValue,
                                             bool replace = false );
 
+        void            SetCookie ( const QString &sKey, const QString &sValue,
+                                    const QDateTime &dtExpires,
+                                    bool secure );
+
         QString         GetRequestHeader  ( const QString &sKey, QString sDefault );
 
         bool            GetKeepAlive () { return m_bKeepAlive; }
@@ -216,6 +246,8 @@ class UPNP_PUBLIC HTTPRequest
         static QString  GetETagHash     ( const QByteArray &data );
 
         void            SetKeepAliveTimeout ( int nTimeout ) { m_nKeepAliveTimeout = nTimeout; }
+
+        bool            IsUrlProtected      ( const QString &sBaseUrl );
 
         // ------------------------------------------------------------------
 

@@ -113,7 +113,7 @@ QString formattedFieldValue(const QVariant &value)
         field.setValue(value);
 
     MSqlQuery query(MSqlQuery::InitCon());
-    QString result = QString::fromUtf8(query.driver()->formatValue(field).toAscii().data());
+    QString result = QString::fromUtf8(query.driver()->formatValue(field).toLatin1().data());
     return result;
 }
 
@@ -551,7 +551,7 @@ void SmartPlaylistEditor::editCriteria(void)
     if (!item)
         return;
 
-    SmartPLCriteriaRow *row = qVariantValue<SmartPLCriteriaRow*> (item->GetData());
+    SmartPLCriteriaRow *row = item->GetData().value<SmartPLCriteriaRow*>();
 
     if (!row)
         return;
@@ -590,7 +590,7 @@ void SmartPlaylistEditor::doDeleteCriteria(bool doit)
         if (!item)
             return;
 
-        SmartPLCriteriaRow *row = qVariantValue<SmartPLCriteriaRow*> (item->GetData());
+        SmartPLCriteriaRow *row = item->GetData().value<SmartPLCriteriaRow*>();
 
         if (!row)
             return;
@@ -658,7 +658,7 @@ void SmartPlaylistEditor::criteriaChanged()
         if (!item)
             return;
 
-        SmartPLCriteriaRow *row = qVariantValue<SmartPLCriteriaRow*> (item->GetData());
+        SmartPLCriteriaRow *row = item->GetData().value<SmartPLCriteriaRow*>();
 
         if (!row)
             return;
@@ -1758,7 +1758,7 @@ void SmartPLResultViewer::trackVisible(MythUIButtonListItem *item)
 
     if (item->GetImageFilename().isEmpty())
     {
-        MusicMetadata *mdata = qVariantValue<MusicMetadata*> (item->GetData());
+        MusicMetadata *mdata = item->GetData().value<MusicMetadata *>();
         if (mdata)
         {
             QString artFile = mdata->getAlbumArtFile();
@@ -1786,7 +1786,7 @@ void SmartPLResultViewer::showTrackInfo(void)
     if (!item)
         return;
 
-    MusicMetadata *mdata = qVariantValue<MusicMetadata*> (item->GetData());
+    MusicMetadata *mdata = item->GetData().value<MusicMetadata *>();
     if (!mdata)
         return;
 

@@ -19,11 +19,13 @@ function getSetting(hostname, key, defValue) {
     $.getJSON("/Myth/GetSetting",
         { HostName: hostname, Key: key, Default: defValue },
         function(data) {
-            result = data.SettingList.Settings[key];
+            result = data.String;
         }).error(function(data) {
             setErrorMessage("<i18n>Unable to retrieve setting.</i18n>");
         });
     $.ajaxSetup({ async: true });
+
+    console.log("getSetting(" + hostname + "," + key + "," + defValue + "):" + result);
 
     return result;
 }
@@ -309,4 +311,14 @@ function formatStr() {
 function handleKeyPress(key) {
     if (currentContentURL == "/tv/guide.qsp")
         handleKeyboardShortcutsTV(key);
+}
+
+function logout()
+{
+    var xmlhttp = new XMLHttpRequest();
+    xmlhttp.open("GET", "/setup/logout", true, "nouser", "nopass"); // Page doesn't exist
+    xmlhttp.setRequestHeader('X-Myth-Clear-Session', '1');
+    xmlhttp.send(null);
+    //xmlhttp.abort();
+    location.href = '/';
 }

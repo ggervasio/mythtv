@@ -3090,6 +3090,59 @@ NULL
             return false;
     }
 
+    if (dbver == "1337")
+    {
+        const char *updates[] = {
+            // All next_record, last_record and last_delete to be NULL.
+            "ALTER TABLE record MODIFY next_record DATETIME NULL",
+            "UPDATE record SET next_record = NULL "
+            "    WHERE next_record = '0000-00-00 00:00:00'",
+            "ALTER TABLE record MODIFY last_record DATETIME NULL",
+            "UPDATE record SET last_record = NULL "
+            "    WHERE last_record = '0000-00-00 00:00:00'",
+            "ALTER TABLE record MODIFY last_delete DATETIME NULL",
+            "UPDATE record SET last_delete = NULL "
+            "    WHERE last_delete = '0000-00-00 00:00:00'",
+            NULL
+        };
+        if (!performActualUpdate(updates, "1338", dbver))
+            return false;
+    }
+
+    if (dbver == "1338")
+    {
+        const char *updates[] = {
+            "CREATE TABLE users ("
+            " userid int(5) unsigned NOT NULL AUTO_INCREMENT,"
+            " username varchar(128) NOT NULL DEFAULT '',"
+            " password_digest varchar(32) NOT NULL DEFAULT '',"
+            " lastlogin datetime NOT NULL DEFAULT '0000-00-00 00:00:00',"
+            " PRIMARY KEY (userid),"
+            " KEY username (username)"
+            " ) ENGINE=MyISAM DEFAULT CHARSET=utf8;",
+            "CREATE TABLE user_permissions ("
+            " userid int(5) unsigned NOT NULL,"
+            " permission varchar(128) NOT NULL DEFAULT '',"
+            " PRIMARY KEY (userid)"
+            " ) ENGINE=MyISAM DEFAULT CHARSET=utf8;",
+            "CREATE TABLE user_sessions ("
+            " sessiontoken varchar(40) NOT NULL DEFAULT ''," // SHA1
+            " userid int(5) unsigned NOT NULL,"
+            " client varchar(128) NOT NULL, "
+            " created datetime NOT NULL,"
+            " lastactive datetime NOT NULL,"
+            " expires datetime NOT NULL,"
+            " PRIMARY KEY (sessionToken),"
+            " UNIQUE KEY userid_client (userid,client)"
+            " ) ENGINE=MyISAM DEFAULT CHARSET=utf8;",
+            "INSERT INTO users SET username='admin'," // Temporary default account
+            " password_digest='bcd911b2ecb15ffbd6d8e6e744d60cf6';",
+            NULL
+        };
+        if (!performActualUpdate(updates, "1339", dbver))
+            return false;
+    }
+
     return true;
 }
 
