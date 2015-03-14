@@ -986,4 +986,3 @@ void MSqlEscapeAsAQuery(QString &query, MSqlBindings &bindings)
                               result.driver()->formatValue(f));
     }
 }
-
