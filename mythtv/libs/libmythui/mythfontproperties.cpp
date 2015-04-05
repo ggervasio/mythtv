@@ -12,7 +12,7 @@
 
 #include "mythuihelper.h"
 #include "mythmainwindow.h"
-#include "xmlparsebase.h"
+#include "mythuitype.h"
 
 #define LOC      QString("MythFontProperties: ")
 

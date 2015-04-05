@@ -9,18 +9,6 @@
 
 #include "mythuiwebbrowser.h"
 
-// qt
-#include <QApplication>
-#include <QWebFrame>
-#include <QWebHistory>
-#include <QPainter>
-#include <QDir>
-#include <QBuffer>
-#include <QStyle>
-#include <QKeyEvent>
-#include <QDomDocument>
-#include <QNetworkCookieJar>
-
 // myth
 #include "mythpainter.h"
 #include "mythimage.h"
@@ -35,6 +23,20 @@
 #include "mythdialogbox.h"
 #include "mythprogressdialog.h"
 #include "mythuiscrollbar.h"
+
+// qt
+#include <QApplication>
+#include <QWebFrame>
+#include <QWebHistory>
+#include <QPainter>
+#include <QDir>
+#include <QBuffer>
+#include <QStyle>
+#include <QKeyEvent>
+#include <QDomDocument>
+#include <QNetworkCookieJar>
+
+#include <unistd.h> // for usleep()
 
 struct MimeType
 {

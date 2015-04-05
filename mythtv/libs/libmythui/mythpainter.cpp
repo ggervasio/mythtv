@@ -8,10 +8,12 @@
 
 // libmythbase headers
 #include "mythlogging.h"
+#include "compat.h"
 
 // libmythui headers
 #include "mythfontproperties.h"
 #include "mythimage.h"
+#include "mythuianimation.h"	// UIEffects
 
 // Own header
 #include "mythpainter.h"

@@ -1,7 +1,11 @@
+
+#include "proglist.h"
+
 // C/C++
-#include <vector>
 #include <algorithm>
 #include <functional>
+#include <deque>                        // for _Deque_iterator, operator-, etc
+#include <iterator>                     // for reverse_iterator
 using namespace std;
 
 // Qt
@@ -12,16 +16,17 @@ using namespace std;
 // MythTV
 #include "scheduledrecording.h"
 #include "mythuibuttonlist.h"
+#include "mythuistatetype.h"
 #include "mythcorecontext.h"
 #include "mythdialogbox.h"
 #include "recordinginfo.h"
 #include "recordingrule.h"
 #include "channelinfo.h"
 #include "channelutil.h"
-#include "proglist.h"
+#include "mythuitext.h"
+#include "tv_actions.h"                 // for ACTION_CHANNELSEARCH
 #include "mythdb.h"
 #include "mythdate.h"
-#include "guidegrid.h"
 
 #define LOC      QString("ProgLister: ")
 #define LOC_WARN QString("ProgLister, Warning: ")

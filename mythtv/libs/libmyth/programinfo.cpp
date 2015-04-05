@@ -9,8 +9,6 @@
 #include <algorithm>
 using std::max;
 using std::min;
-#include <deque>
-using std::deque;
 
 // Qt headers
 #include <QRegExp>
@@ -30,9 +28,10 @@ using std::deque;
 #include "programinfo.h"
 #include "remotefile.h"
 #include "remoteutil.h"
-#include "dialogbox.h"
-#include "mythdate.h"
 #include "mythdb.h"
+#include "compat.h"
+
+#include <unistd.h> // for getpid()
 
 #define LOC      QString("ProgramInfo(%1): ").arg(GetBasename())
 
@@ -3815,6 +3814,175 @@ void ProgramInfo::SavePositionMapDelta(
     }
 }
 
+static const char *from_filemarkup_offset_asc =
+    "SELECT mark, offset FROM filemarkup"
+    " WHERE filename = :PATH"
+    " AND type = :TYPE"
+    " AND mark >= :MARK"
+    " ORDER BY filename ASC, type ASC, mark ASC LIMIT 1;";
+static const char *from_filemarkup_offset_desc =
+    "SELECT mark, offset FROM filemarkup"
+    " WHERE filename = :PATH"
+    " AND type = :TYPE"
+    " AND mark <= :MARK"
+    " ORDER BY filename DESC, type DESC, mark DESC LIMIT 1;";
+static const char *from_recordedseek_offset_asc =
+    "SELECT mark, offset FROM recordedseek"
+    " WHERE chanid = :CHANID"
+    " AND starttime = :STARTTIME"
+    " AND type = :TYPE"
+    " AND mark >= :MARK"
+    " ORDER BY chanid ASC, starttime ASC, type ASC, mark ASC LIMIT 1;";
+static const char *from_recordedseek_offset_desc =
+    "SELECT mark, offset FROM recordedseek"
+    " WHERE chanid = :CHANID"
+    " AND starttime = :STARTTIME"
+    " AND type = :TYPE"
+    " AND mark <= :MARK"
+    " ORDER BY chanid DESC, starttime DESC, type DESC, mark DESC LIMIT 1;";
+
+bool ProgramInfo::QueryKeyFramePosition(uint64_t *position, uint64_t keyframe, bool backwards) const
+{
+    MSqlQuery query(MSqlQuery::InitCon());
+
+    if (IsVideo())
+    {
+        if (backwards)
+            query.prepare(from_filemarkup_offset_desc);
+        else
+            query.prepare(from_filemarkup_offset_asc);
+        query.bindValue(":PATH", StorageGroup::GetRelativePathname(pathname));
+    }
+    else if (IsRecording())
+    {
+        if (backwards)
+            query.prepare(from_recordedseek_offset_desc);
+        else
+            query.prepare(from_recordedseek_offset_asc);
+        query.bindValue(":CHANID", chanid);
+        query.bindValue(":STARTTIME", recstartts);
+    }
+    query.bindValue(":TYPE", MARK_GOP_BYFRAME);
+    query.bindValue(":MARK", (unsigned long long)keyframe);
+
+    if (!query.exec())
+    {
+        MythDB::DBError("QueryKeyFramePosition", query);
+        return false;
+    }
+
+    if (query.next())
+    {
+        *position = query.value(1).toULongLong();
+        return true;
+    }
+
+    if (IsVideo())
+    {
+        if (backwards)
+            query.prepare(from_filemarkup_offset_asc);
+        else
+            query.prepare(from_filemarkup_offset_desc);
+        query.bindValue(":PATH", StorageGroup::GetRelativePathname(pathname));
+    }
+    else if (IsRecording())
+    {
+        if (backwards)
+            query.prepare(from_recordedseek_offset_asc);
+        else
+            query.prepare(from_recordedseek_offset_desc);
+        query.bindValue(":CHANID", chanid);
+        query.bindValue(":STARTTIME", recstartts);
+    }
+    query.bindValue(":TYPE", MARK_GOP_BYFRAME);
+    query.bindValue(":MARK", (unsigned long long)keyframe);
+
+    if (!query.exec())
+    {
+        MythDB::DBError("QueryKeyFramePosition", query);
+        return false;
+    }
+
+    if (query.next())
+    {
+        *position = query.value(1).toULongLong();
+        return true;
+    }
+
+    return false;
+}
+
+bool ProgramInfo::QueryKeyFrameDuration(uint64_t *duration, uint64_t keyframe, bool backwards) const
+{
+    MSqlQuery query(MSqlQuery::InitCon());
+
+    if (IsVideo())
+    {
+        if (backwards)
+            query.prepare(from_filemarkup_offset_desc);
+        else
+            query.prepare(from_filemarkup_offset_asc);
+        query.bindValue(":PATH", StorageGroup::GetRelativePathname(pathname));
+    }
+    else if (IsRecording())
+    {
+        if (backwards)
+            query.prepare(from_recordedseek_offset_desc);
+        else
+            query.prepare(from_recordedseek_offset_asc);
+        query.bindValue(":CHANID", chanid);
+        query.bindValue(":STARTTIME", recstartts);
+    }
+    query.bindValue(":TYPE", MARK_DURATION_MS);
+    query.bindValue(":MARK", (unsigned long long)keyframe);
+
+    if (!query.exec())
+    {
+        MythDB::DBError("QueryKeyFrameDuration", query);
+        return false;
+    }
+
+    if (query.next())
+    {
+        *duration = query.value(1).toULongLong();
+        return true;
+    }
+
+    if (IsVideo())
+    {
+        if (backwards)
+            query.prepare(from_filemarkup_offset_asc);
+        else
+            query.prepare(from_filemarkup_offset_desc);
+        query.bindValue(":PATH", StorageGroup::GetRelativePathname(pathname));
+    }
+    else if (IsRecording())
+    {
+        if (backwards)
+            query.prepare(from_recordedseek_offset_asc);
+        else
+            query.prepare(from_recordedseek_offset_desc);
+        query.bindValue(":CHANID", chanid);
+        query.bindValue(":STARTTIME", recstartts);
+    }
+    query.bindValue(":TYPE", MARK_DURATION_MS);
+    query.bindValue(":MARK", (unsigned long long)keyframe);
+
+    if (!query.exec())
+    {
+        MythDB::DBError("QueryKeyFrameDuration", query);
+        return false;
+    }
+
+    if (query.next())
+    {
+        *duration = query.value(1).toULongLong();
+        return true;
+    }
+
+    return false;
+}
+
 /// \brief Store aspect ratio of a frame in the recordedmark table
 /// \note  All frames until the next one with a stored aspect ratio
 ///        are assumed to have the same aspect ratio
@@ -5174,7 +5342,7 @@ static bool FromProgramQuery(const QString &sql, const MSqlBindings &bindings,
     // limit of 20000.
     if (limit > 0)
         querystr += QString("LIMIT %1 ").arg(limit);
-    else if (!querystr.contains("LIMIT"))
+    else if (!querystr.contains(" LIMIT "))
         querystr += " LIMIT 20000 "; // For performance reasons we have to have an upper limit
 
     MSqlBindings::const_iterator it;
@@ -5648,58 +5816,6 @@ bool LoadFromRecorded(
     }
 
     return true;
-}
-
-QString SkipTypeToString(int flags)
-{
-    if (COMM_DETECT_COMMFREE == flags)
-        return QObject::tr("Commercial Free");
-    if (COMM_DETECT_UNINIT == flags)
-        return QObject::tr("Use Global Setting");
-
-    QChar chr = '0';
-    QString ret = QString("0x%1").arg(flags,3,16,chr);
-    bool blank = COMM_DETECT_BLANK & flags;
-    bool scene = COMM_DETECT_SCENE & flags;
-    bool logo  = COMM_DETECT_LOGO  & flags;
-    bool exp   = COMM_DETECT_2     & flags;
-    bool prePst= COMM_DETECT_PREPOSTROLL & flags;
-
-    if (blank && scene && logo)
-        ret = QObject::tr("All Available Methods");
-    else if (blank && scene && !logo)
-        ret = QObject::tr("Blank Frame + Scene Change");
-    else if (blank && !scene && logo)
-        ret = QObject::tr("Blank Frame + Logo Detection");
-    else if (!blank && scene && logo)
-        ret = QObject::tr("Scene Change + Logo Detection");
-    else if (blank && !scene && !logo)
-        ret = QObject::tr("Blank Frame Detection");
-    else if (!blank && scene && !logo)
-        ret = QObject::tr("Scene Change Detection");
-    else if (!blank && !scene && logo)
-        ret = QObject::tr("Logo Detection");
-
-    if (exp)
-        ret = QObject::tr("Experimental") + ": " + ret;
-    else if(prePst)
-        ret = QObject::tr("Pre & Post Roll") + ": " + ret;
-
-    return ret;
-}
-
-deque<int> GetPreferredSkipTypeCombinations(void)
-{
-    deque<int> tmp;
-    tmp.push_back(COMM_DETECT_BLANK | COMM_DETECT_SCENE | COMM_DETECT_LOGO);
-    tmp.push_back(COMM_DETECT_BLANK);
-    tmp.push_back(COMM_DETECT_BLANK | COMM_DETECT_SCENE);
-    tmp.push_back(COMM_DETECT_SCENE);
-    tmp.push_back(COMM_DETECT_LOGO);
-    tmp.push_back(COMM_DETECT_2 | COMM_DETECT_BLANK | COMM_DETECT_LOGO);
-    tmp.push_back(COMM_DETECT_PREPOSTROLL | COMM_DETECT_BLANK |
-                  COMM_DETECT_SCENE);
-    return tmp;
 }
 
 bool GetNextRecordingList(QDateTime &nextRecordingStart,

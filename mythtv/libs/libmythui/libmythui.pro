@@ -1,6 +1,6 @@
 include ( ../../settings.pro )
 
-QT += xml sql network
+QT += xml sql network opengl
 contains(QT_VERSION, ^4\\.[0-9]\\..*) {
 QT += webkit
 }
@@ -42,7 +42,7 @@ HEADERS += mythdisplay.h mythuivideo.h mythudplistener.h
 HEADERS += mythuiexp.h mythuisimpletext.h mythuistatetracker.h
 HEADERS += mythuianimation.h mythuiscrollbar.h
 HEADERS += mythnotificationcenter.h mythnotificationcenter_private.h
-HEADERS += mythuicomposite.h mythnotification.h
+HEADERS += mythuicomposite.h mythnotification.h mythuidefines.h
 
 SOURCES  = mythmainwindow.cpp mythpainter.cpp mythimage.cpp mythrect.cpp
 SOURCES += myththemebase.cpp  mythpainter_qimage.cpp mythpainter_yuva.cpp
@@ -156,6 +156,8 @@ mingw :DEFINES += USING_MINGW
 mingw | win32-msvc*{
     HEADERS += mythpainter_d3d9.h   mythrender_d3d9.h
     SOURCES += mythpainter_d3d9.cpp mythrender_d3d9.cpp
+    DEFINES += NODRAWTEXT
+
     using_dxva2: DEFINES += USING_DXVA2
 }
 

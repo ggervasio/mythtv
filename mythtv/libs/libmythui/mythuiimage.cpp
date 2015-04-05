@@ -20,12 +20,17 @@
 
 // libmythbase
 #include "mythlogging.h"
+#include "mthreadpool.h"
 
 // Mythui
 #include "mythpainter.h"
 #include "mythmainwindow.h"
 #include "mythuihelper.h"
 #include "mythscreentype.h"
+
+#ifdef _MSC_VER
+#  include "compat.h"   // random
+#endif
 
 class ImageLoadThread;
 

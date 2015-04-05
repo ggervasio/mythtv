@@ -9,6 +9,9 @@
 #include <QKeyEvent>
 #include <QCryptographicHash>
 #include <QTimer>
+#if QT_VERSION >= QT_VERSION_CHECK(5,0,0)
+#include <QUrlQuery>
+#endif
 
 #include "mthread.h"
 #include "mythdate.h"
@@ -19,6 +22,7 @@
 #include "plist.h"
 #include "tv_play.h"
 #include "mythmainwindow.h"
+#include "tv_actions.h"
 
 #include "bonjourregister.h"
 #include "mythairplayserver.h"
@@ -274,8 +278,20 @@ class APHTTPRequest
             return;
         m_method = vals[0].trimmed();
         QUrl url = QUrl::fromEncoded(vals[1].trimmed());
+#if QT_VERSION >= QT_VERSION_CHECK(5,0,0)
+        m_uri = url.path(QUrl::FullyEncoded).toLocal8Bit();
+        m_queries.clear();
+        {
+            QList<QPair<QString, QString> > items =
+                QUrlQuery(url).queryItems(QUrl::FullyEncoded);
+            QList<QPair<QString, QString> >::ConstIterator it = items.constBegin();
+            for ( ; it != items.constEnd(); ++it)
+                m_queries << qMakePair(it->first.toLatin1(), it->second.toLatin1());
+        }
+#else
         m_uri = url.encodedPath();
         m_queries = url.encodedQueryItems();
+#endif
         if (m_method.isEmpty() || m_uri.isEmpty())
             return;
 
