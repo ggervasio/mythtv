@@ -1376,6 +1376,7 @@ void MythPlayer::DisableCaptions(uint mode, bool osd_msg)
 
     QMutexLocker locker(&osdLock);
 
+    textDesired = textDisplayMode & kDisplayAllTextCaptions;
     QString msg = "";
     if (kDisplayNUVTeletextCaptions & mode)
         msg += tr("TXT CAP");
@@ -1412,7 +1413,8 @@ void MythPlayer::DisableCaptions(uint mode, bool osd_msg)
 void MythPlayer::EnableCaptions(uint mode, bool osd_msg)
 {
     QMutexLocker locker(&osdLock);
-    QString msg;
+    textDesired = mode & kDisplayAllTextCaptions;
+    QString msg = "";
     if ((kDisplayCC608 & mode) || (kDisplayCC708 & mode) ||
         (kDisplayAVSubtitle & mode) || kDisplayRawTextSubtitle & mode)
     {
@@ -2887,7 +2889,7 @@ void MythPlayer::EventStart(void)
             // an actual bookmark and not progstart or lastplaypos information.
             player_ctx->playingInfo->SetIgnoreBookmark(false);
             player_ctx->playingInfo->SetIgnoreProgStart(true);
-            player_ctx->playingInfo->SetIgnoreLastPlayPos(true);
+            player_ctx->playingInfo->SetAllowLastPlayPos(false);
         }
     }
     player_ctx->UnlockPlayingInfo(__FILE__, __LINE__);
