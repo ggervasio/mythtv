@@ -53,7 +53,7 @@ class ScreenSaverDBusPrivate
     {
         if (!m_interface->isValid())
         {
-            LOG(VB_GENERAL, LOG_ERR, LOC + "Could not connect to dbus: " +
+            LOG(VB_GENERAL, LOG_WARNING, LOC + "Could not connect to dbus: " +
                 m_interface->lastError().message());
         }
         else
@@ -83,7 +83,7 @@ class ScreenSaverDBusPrivate
             }
             else // msg.type() == QDBusMessage::ErrorMessage
             {
-                LOG(VB_GENERAL, LOG_ERR, LOC + "Failed to disable screensaver: " +
+                LOG(VB_GENERAL, LOG_WARNING, LOC + "Failed to disable screensaver: " +
                     msg.errorMessage());
             }
         }
@@ -164,8 +164,8 @@ bool ScreenSaverDBus::Asleep(void)
     QList<ScreenSaverDBusPrivate *>::iterator i;
     for (i = m_dbusPrivateInterfaces.begin(); i != m_dbusPrivateInterfaces.end(); ++i) {
         if((*i)->m_inhibited) {
-            return false;
+            return true;
         }
     }
-    return true;
+    return false;
 }

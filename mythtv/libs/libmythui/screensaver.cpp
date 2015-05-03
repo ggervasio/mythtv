@@ -17,23 +17,61 @@
 QEvent::Type ScreenSaverEvent::kEventType =
     (QEvent::Type) QEvent::registerEventType();
 
-ScreenSaverControl* ScreenSaverSingleton = NULL;
-
-ScreenSaverControl* ScreenSaverControl::get(void)
+ScreenSaverControl::ScreenSaverControl() :
+    m_screenSavers(QList<ScreenSaver *>())
 {
-    if (!ScreenSaverSingleton)
-    {
-
+    ScreenSaver * tmp;
 #if defined(USING_DBUS)
-        ScreenSaverSingleton = new ScreenSaverDBus();
-#elif defined(USING_X11)
-        ScreenSaverSingleton = new ScreenSaverX11();
-#elif CONFIG_DARWIN
-        ScreenSaverSingleton = new ScreenSaverOSX();
-#else
-        ScreenSaverSingleton = new ScreenSaverNull();
+    tmp = new ScreenSaverDBus();
+    m_screenSavers.push_back(tmp);
 #endif
-    }
+#if defined(USING_X11)
+    tmp = new ScreenSaverX11();
+    m_screenSavers.push_back(tmp);
+#elif CONFIG_DARWIN
+    tmp = new ScreenSaverOSX();
+    m_screenSavers.push_back(tmp);
+#endif
+#if not (defined(USING_DBUS) || defined(USING_X11) || CONFIG_DARWIN)
+    tmp = new ScreenSaverNull();
+    m_screenSavers.push_back(tmp);
+#endif
+}
 
-    return ScreenSaverSingleton;
+ScreenSaverControl::~ScreenSaverControl() {
+    while (!m_screenSavers.isEmpty()) {
+        ScreenSaver *tmp = m_screenSavers.takeLast();
+        delete tmp;
+    }
+}
+
+void ScreenSaverControl::Disable(void) {
+    QList<ScreenSaver *>::iterator i;
+    for (i = m_screenSavers.begin(); i != m_screenSavers.end(); ++i) {
+        (*i)->Disable();
+    }
+}
+
+void ScreenSaverControl::Restore(void) {
+    QList<ScreenSaver *>::iterator i;
+    for (i = m_screenSavers.begin(); i != m_screenSavers.end(); ++i) {
+        (*i)->Restore();
+    }
+}
+
+void ScreenSaverControl::Reset(void) {
+    QList<ScreenSaver *>::iterator i;
+    for (i = m_screenSavers.begin(); i != m_screenSavers.end(); ++i) {
+        (*i)->Reset();
+    }
+}
+
+bool ScreenSaverControl::Asleep(void) {
+    QList<ScreenSaver *>::iterator i;
+    for (i = m_screenSavers.begin(); i != m_screenSavers.end(); ++i) {
+        if((*i)->Asleep()) {
+            return true;
+        }
+    }
+    return false;
 }
