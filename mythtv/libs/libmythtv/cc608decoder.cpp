@@ -66,15 +66,15 @@ CC608Decoder::CC608Decoder(CC608Input *ccr)
     // fill translation table
     for (uint i = 0; i < 128; i++)
         stdchar[i] = QChar(i);
-    stdchar[42]  = 'á';
-    stdchar[92]  = 'é';
-    stdchar[94]  = 'í';
-    stdchar[95]  = 'ó';
-    stdchar[96]  = 'ú';
-    stdchar[123] = 'ç';
-    stdchar[124] = '÷';
-    stdchar[125] = 'Ñ';
-    stdchar[126] = 'ñ';
+    stdchar[42]  = QLatin1Char('á');
+    stdchar[92]  = QLatin1Char('é');
+    stdchar[94]  = QLatin1Char('í');
+    stdchar[95]  = QLatin1Char('ó');
+    stdchar[96]  = QLatin1Char('ú');
+    stdchar[123] = QLatin1Char('ç');
+    stdchar[124] = QLatin1Char('÷');
+    stdchar[125] = QLatin1Char('Ñ');
+    stdchar[126] = QLatin1Char('ñ');
     stdchar[127] = 0x2588; /* full block */
 
     // VPS data (MS Windows doesn't like bzero())
@@ -344,6 +344,7 @@ void CC608Decoder::FormatCCField(int tc, int field, int data)
                                     .arg(b2, 2, 16));
                             // Encode as 0x7000 through 0x700f for the
                             // 16 possible values of b2.
+                            ccbuf[mode] += ' ';
                             ccbuf[mode] += QChar(0x7000 + (b2 & 0xf));
                             len = ccbuf[mode].length();
                             col[mode]++;
@@ -711,7 +712,7 @@ QString CC608Decoder::ToASCII(const QString &cc608str, bool suppress_unknown)
                 if (cpu >= 0x7000 && cpu < 0x7000 + 0x30)
                 {
                     if (!suppress_unknown)
-                        ret += QString("[%1]").arg(cpu - 0x7000, 2, 16);
+                        ret += QString("[%1]").arg(cpu, 2, 16);
                 }
                 else if (cpu <= 0x80)
                     ret += QString(cp.toLatin1());
@@ -877,7 +878,6 @@ int CC608Decoder::NewRowCC(int mode, int len)
     {
         ccbuf[mode] += QChar(newattr[mode] + 0x7000);
         len++;
-        col[mode]++;
     }
 
     newcol[mode] = 0;
