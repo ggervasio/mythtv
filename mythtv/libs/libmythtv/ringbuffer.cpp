@@ -966,7 +966,7 @@ void RingBuffer::run(void)
         long long totfree = ReadBufFree();
 
         const uint KB32  = 32*1024;
-        const uint KB512 = 512*1024;
+        const  int KB512 = 512*1024;
         // These are conditions where we don't want to go through
         // the loop if they are true.
         if (((totfree < KB32) && readsallowed) ||
@@ -1550,7 +1550,7 @@ int RingBuffer::ReadPriv(void *buf, int count, bool peek)
     LOG(VB_FILE, LOG_DEBUG, LOC + loc_desc + " -- copying data");
 
     int rpos;
-    if (rbrpos + readOffset > bufferSize)
+    if (rbrpos + readOffset > (int) bufferSize)
     {
         rpos = (rbrpos + readOffset) - bufferSize;
     }

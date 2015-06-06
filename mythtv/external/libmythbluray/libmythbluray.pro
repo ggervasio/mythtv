@@ -16,15 +16,25 @@ INCLUDEPATH += ../../libs/libmythtv
 
 DEFINES += ENABLE_UDF
 
+bluray_major = 0
+bluray_minor = 8
+bluray_micro = 1
+bluray_version = $$bluray_major"."$$bluray_minor"."$$bluray_micro
+
+DEFINES += BLURAY_VERSION_MAJOR=$$bluray_major
+DEFINES += BLURAY_VERSION_MINOR=$$bluray_minor
+DEFINES += BLURAY_VERSION_MICRO=$$bluray_micro
+DEFINES += BLURAY_VERSION_STRING=\\\"$$bluray_version\\\"
+
 win32-msvc* {
     CONFIG += qt
     DEFINES += HAVE_CONFIG_H DLOPEN_CRYPTO_LIBS HAVE_PTHREAD_H
 
     # needed for vcxproj
-    QMAKE_CXXFLAGS += /TP "/FI compat.h"
+    QMAKE_CXXFLAGS += "/FI compat.h"
 
     # needed for nmake
-    QMAKE_CFLAGS   += /TP "/FI compat.h"
+    QMAKE_CFLAGS   += "/FI compat.h"
 
 } else {
     DEFINES += HAVE_CONFIG_H DLOPEN_CRYPTO_LIBS HAVE_PTHREAD_H HAVE_DIRENT_H HAVE_STRINGS_H
@@ -34,10 +44,11 @@ using_libxml2 {
 DEFINES += HAVE_LIBXML2
 }
 
-QMAKE_CLEAN += $(TARGET) $(TARGETA) $(TARGETD) $(TARGET0) $(TARGET1) $(TARGET2)
+QMAKE_CLEAN += $(TARGET)
 
 # bdnav
-HEADERS += libbluray/bluray.h libbluray/bluray_internal.h libbluray/player_settings.h libbluray/register.h 
+HEADERS += libbluray/bluray.h libbluray/bluray_internal.h libbluray/bluray-version.h
+HEADERS += libbluray/player_settings.h libbluray/register.h
 HEADERS += libbluray/bdnav/bdid_parse.h libbluray/bdnav/bdparse.h libbluray/bdnav/clpi_data.h
 HEADERS += libbluray/bdnav/clpi_parse.h libbluray/bdnav/extdata_parse.h libbluray/bdnav/index_parse.h
 HEADERS += libbluray/bdnav/meta_data.h libbluray/bdnav/meta_parse.h libbluray/bdnav/mpls_parse.h
@@ -82,30 +93,52 @@ macx {
 }
 
 inc_bdnav.path = $${PREFIX}/include/mythtv/bluray
-inc_bdnav.files = bluray.h libbluray/bdnav/*.h libbluray/hdmv/*.h file/*.h util/*.h
+inc_bdnav.files = libbluray/bluray.h libbluray/bdnav/*.h libbluray/hdmv/*.h file/*.h util/*.h
 
 INSTALLS += inc_bdnav
 
 mingw:DEFINES += STDC_HEADERS
 
 using_bdjava {
+    DEFINES += USING_BDJAVA VERSION=\\\"$$bluray_version\\\"
+    using_freetype2:DEFINES += HAVE_FT2
+    using_fontconfig:DEFINES += HAVE_FONTCONFIG
 
-HEADERS += libbluray/bdj/bdj.h libbluray/bdj/bdjo_data.h libbluray/bdj/bdjo_parse.h
-HEADERS += libbluray/bdj/native/bdjo.h libbluray/bdj/native/java_awt_BDFontMetrics.h libbluray/bdj/native/java_awt_BDGraphics.h
-HEADERS += libbluray/bdj/native/org_videolan_Libbluray.h org_videolan_Logger.h register_native.h util.h
-SOURCES += libbluray/bdj/bdj.c libbluray/bdj/bdjo_parse.c libbluray/bdj/native/bdjo.c
-SOURCES += libbluray/bdj/native/java_awt_BDFontMetrics.c libbluray/bdj/native/java_awt_BDGraphics.c
-SOURCES += libbluray/bdj/native/org_videolan_Libbluray.c libbluray/bdj/native/org_videolan_Logger.c
-SOURCES += libbluray/bdj/native/register_native.c libbluray/bdj/native/util.c
+    macx:javaos = darwin
+    win32:javaos = win32
+    linux:javaos = linux
+    freebsd:javaos = freebsd
 
-QMAKE_POST_LINK=/$${ANTBIN} -f libbluray/bdj/build.xml; /$${ANTBIN} -f libbluray/bdj/build.xml clean
+    equals(JDK_HOME, "") {
+        INCLUDEPATH += ./jni ./jni/$$javaos
+        HEADERS += ./jni/jni.h ./jni/$$javaos/jni_md.h
+    } else {
+        INCLUDEPATH += $${JDK_HOME}/include $${JDK_HOME}/include/$$javaos
+    }
 
-installjar.path = $${PREFIX}/share/mythtv/jars
-installjar.files = libmythbluray.jar
+    HEADERS += libbluray/bdj/bdj.h libbluray/bdj/bdjo_data.h libbluray/bdj/bdjo_parse.h
+    HEADERS += libbluray/bdj/native/bdjo.h libbluray/bdj/native/java_awt_BDFontMetrics.h libbluray/bdj/native/java_awt_BDGraphics.h
+    HEADERS += libbluray/bdj/native/org_videolan_Libbluray.h org_videolan_Logger.h register_native.h util.h
+    SOURCES += libbluray/bdj/bdj.c libbluray/bdj/bdjo_parse.c libbluray/bdj/native/bdjo.c
+    SOURCES += libbluray/bdj/native/java_awt_BDFontMetrics.c libbluray/bdj/native/java_awt_BDGraphics.c
+    SOURCES += libbluray/bdj/native/org_videolan_Libbluray.c libbluray/bdj/native/org_videolan_Logger.c
+    SOURCES += libbluray/bdj/native/register_native.c libbluray/bdj/native/util.c
 
-INSTALLS += installjar
+    bdjava.target = libbluray/bdj/.libs/libmythbluray-$${BDJ_TYPE}-"$$bluray_version".jar
+    bdjava.depends = libbluray/bdj/build.xml
+    bdjava.commands = $${ANTBIN} -f $$bdjava.depends -Dbuild=\'build\' -Ddist=\'.libs\' -Dsrc_awt=:java-$${BDJ_TYPE} -Dversion='$${BDJ_TYPE}-$$bluray_version'
 
-QMAKE_CLEAN += libmythbluray.jar
+    bdjava_clean.commands = $${ANTBIN} -f $$bdjava.depends -Dbuild=\'build\' -Ddist=\'.libs\' -Dversion='$${BDJ_TYPE}-$$bluray_version clean'
+
+    installjar.path = $${PREFIX}/share/mythtv/jars
+    installjar.files = $$bdjava.target
+
+    INSTALLS += installjar
+
+    CLEAN_DEPS += bdjava_clean
+    QMAKE_CLEAN += $$bdjava.target
+    PRE_TARGETDEPS += $$bdjava.target
+    QMAKE_EXTRA_TARGETS += bdjava bdjava_clean
 }
 
 mingw {
